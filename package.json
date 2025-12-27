@@ -50,7 +50,7 @@
   },
   "lint-staged": {
     "app/src/**/*.{ts,tsx}": "sh -c 'cd app && bunx --bun @biomejs/biome check --write \"$@\"' --",
-    "app/src-tauri/src/**/*.rs": "cargo fmt --manifest-path app/src-tauri/Cargo.toml",
-    "daemon/src/**/*.rs": "cargo fmt --manifest-path daemon/Cargo.toml"
+    "app/src-tauri/src/**/*.rs": "sh -c 'cargo fmt --manifest-path app/src-tauri/Cargo.toml' --",
+    "daemon/src/**/*.rs": "sh -c 'cargo fmt --manifest-path daemon/Cargo.toml' --"
   }
 }
