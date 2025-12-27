@@ -77,7 +77,7 @@ jobs:
         with:
           name: tauri-bundles
           path: |
-            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
           retention-days: 1
           if-no-files-found: warn
