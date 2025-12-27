@@ -61,8 +61,8 @@ async fn listen_dbus(window: Window) -> Result<(), Box<dyn std::error::Error>> {
     println!("Connected to D-Bus session bus");
 
     // zbus v4 SignalStream API
-    use zbus::proxy;
     use futures_util::stream::StreamExt;
+    use zbus::proxy;
 
     /// D-Bus proxy interface for receiving DoubleTap signals
     #[proxy(

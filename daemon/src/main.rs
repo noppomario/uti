@@ -4,8 +4,8 @@
 //! and sends D-Bus signals to notify the Tauri application.
 
 use evdev::{Device, EventType, Key};
-use zbus::Connection;
 use std::time::{Duration, Instant};
+use zbus::Connection;
 
 /// Maximum time interval between two Ctrl presses to be considered a double tap
 const DOUBLE_TAP_INTERVAL: Duration = Duration::from_millis(300);
@@ -37,7 +37,8 @@ async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
         "io.github.noppomario.uti.DoubleTap",
         "Triggered",
         &(),
-    ).await?;
+    )
+    .await?;
     println!("D-Bus signal sent: Triggered");
     Ok(())
 }
@@ -60,8 +61,10 @@ fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
         if let Some(name) = path.file_name() {
             if name.to_string_lossy().starts_with("event") {
                 if let Ok(device) = Device::open(&path) {
-                    if device.supported_keys().map_or(false, |keys|
-                        keys.contains(Key::KEY_A)) {
+                    if device
+                        .supported_keys()
+                        .map_or(false, |keys| keys.contains(Key::KEY_A))
+                    {
                         println!("Found keyboard device: {}", path.display());
                         return Ok(path);
                     }
@@ -69,7 +72,10 @@ fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
             }
         }
     }
-    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No keyboard found"))
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "No keyboard found",
+    ))
 }
 
 /// Main daemon entry point

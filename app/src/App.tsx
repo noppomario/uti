@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { useEffect } from 'react';
 
 /**
  * Main application component
@@ -27,7 +27,9 @@ function App() {
     };
 
     let unlisten: (() => void) | undefined;
-    setupListener().then(fn => { unlisten = fn; });
+    setupListener().then(fn => {
+      unlisten = fn;
+    });
 
     return () => {
       unlisten?.();
@@ -37,13 +39,10 @@ function App() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">
-          uti
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Press Ctrl twice to toggle visibility
-        </p>
+        <h1 className="text-3xl font-bold text-gray-800 mb-4">uti</h1>
+        <p className="text-gray-600 mb-6">Press Ctrl twice to toggle visibility</p>
         <button
+          type="button"
           onClick={() => invoke('toggle_window')}
           className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded transition duration-200"
         >

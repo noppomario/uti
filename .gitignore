@@ -15,7 +15,9 @@ app/dist/
 Thumbs.db
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
@@ -27,3 +29,9 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Claude Code - Local (personal) configuration
+.claude/*.local.json
+.claude/settings.local.json
+.claude/**/*.secret
+.claude/**/*.private
