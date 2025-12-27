@@ -5,7 +5,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Manager, Window};
+use tauri::{Emitter, Manager, WebviewWindow};
 use zbus::Connection;
 
 /// Toggles the window visibility state
@@ -25,7 +25,7 @@ use zbus::Connection;
 /// invoke('toggle_window');
 /// ```
 #[tauri::command]
-fn toggle_window(window: Window) {
+fn toggle_window(window: WebviewWindow) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
         println!("Window hidden");
@@ -56,7 +56,7 @@ fn toggle_window(window: Window) {
 /// - Failed to connect to D-Bus session bus
 /// - Failed to create the D-Bus proxy
 /// - Failed to subscribe to the signal stream
-async fn listen_dbus(window: Window) -> Result<(), Box<dyn std::error::Error>> {
+async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::session().await?;
     println!("Connected to D-Bus session bus");
 
@@ -75,7 +75,7 @@ async fn listen_dbus(window: Window) -> Result<(), Box<dyn std::error::Error>> {
         fn triggered(&self) -> zbus::Result<()>;
     }
 
-    let proxy = DoubleTapProxy::new(&conn).await?;
+    let proxy = DoubleTapProxy::new(&conn, "io.github.noppomario.uti").await?;
     let mut stream = proxy.receive_triggered().await?;
     println!("Listening for D-Bus signals...");
 
