@@ -8,7 +8,7 @@
     "frontend:lint": "cd app && bun run check",
     "frontend:typecheck": "cd app && bun run type-check",
     "frontend:build": "cd app && bun run build",
-    "frontend:test": "cd app && bun test",
+    "frontend:test": "cd app && bun run test",
     "frontend:all": "npm-run-all frontend:format frontend:lint frontend:typecheck frontend:build frontend:test",
     "tauri:format": "cd app/src-tauri && cargo fmt",
     "tauri:lint": "cd app/src-tauri && cargo fmt --check && cargo clippy --all-targets",

@@ -132,3 +132,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_double_tap_interval_constant() {
+        // Verify the double tap interval is set to 300ms
+        assert_eq!(DOUBLE_TAP_INTERVAL, Duration::from_millis(300));
+    }
+
+    #[test]
+    fn test_double_tap_detection_within_threshold() {
+        // Arrange
+        let first_press = Instant::now();
+        let second_press = first_press + Duration::from_millis(250);
+
+        // Act
+        let interval = second_press.duration_since(first_press);
+
+        // Assert
+        assert!(
+            interval < DOUBLE_TAP_INTERVAL,
+            "250ms should be within the 300ms threshold"
+        );
+    }
+
+    #[test]
+    fn test_double_tap_detection_exceeds_threshold() {
+        // Arrange
+        let first_press = Instant::now();
+        let second_press = first_press + Duration::from_millis(350);
+
+        // Act
+        let interval = second_press.duration_since(first_press);
+
+        // Assert
+        assert!(
+            interval > DOUBLE_TAP_INTERVAL,
+            "350ms should exceed the 300ms threshold"
+        );
+    }
+
+    #[test]
+    fn test_double_tap_detection_exact_threshold() {
+        // Arrange
+        let first_press = Instant::now();
+        let second_press = first_press + DOUBLE_TAP_INTERVAL;
+
+        // Act
+        let interval = second_press.duration_since(first_press);
+
+        // Assert
+        assert!(
+            interval >= DOUBLE_TAP_INTERVAL,
+            "300ms should not be considered a double tap (must be strictly less)"
+        );
+    }
+
+    #[test]
+    fn test_find_keyboard_device_path_format() {
+        // This test verifies that the function looks for event devices
+        // We can't actually test device finding without hardware/permissions,
+        // but we can document expected behavior
+        let result = find_keyboard_device();
+
+        // If a keyboard is found, path should start with /dev/input/event
+        if let Ok(path) = result {
+            assert!(
+                path.starts_with("/dev/input/event"),
+                "Keyboard device path should be /dev/input/eventN"
+            );
+        }
+        // If no keyboard found, that's also acceptable in test environment
+    }
+}

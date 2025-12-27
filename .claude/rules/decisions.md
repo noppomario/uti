@@ -311,6 +311,105 @@ Two-layer quality gate:
 
 ---
 
+## ADR-010: Adopt Vitest for testing with TDD methodology
+
+**Date**: 2025-12-27
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+Project had no automated tests. Need to establish testing infrastructure with TDD methodology for future development.
+
+Two main options considered:
+1. **Bun native test runner** - Zero additional dependencies, ultra-fast
+2. **Vitest** - Mature ecosystem, Vite integration
+
+### Decision
+Use **Vitest** for frontend testing, standard `cargo test` for Rust.
+Require **Test-Driven Development (TDD)** for all new code.
+
+### Rationale
+
+#### Why Vitest over Bun Test (2025 analysis)
+
+**Test Isolation (Critical for TDD)**:
+- Vitest: Complete isolation between test suites (default)
+- Bun Test: Shared global state, mocks leak between tests
+
+**Ecosystem Maturity**:
+- Vitest: Full IDE integration, browser mode, sharding, type testing
+- Bun Test: Limited IDE support, experimental coverage
+
+**Vite Ecosystem Consistency**:
+- Already using Vite (Tauri recommended)
+- Vitest shares `vite.config.ts` configuration
+- Same plugin ecosystem
+
+**Production Readiness**:
+- Vitest: Battle-tested, recommended by Evan You (Vite creator)
+- Bun Test: Production-ready for internal tools, but isolated testing issues remain
+
+#### Why NOT Bun Test
+- Global state leakage breaks TDD reliability
+- No IDE integration for watch mode debugging
+- Coverage reporting still basic (CLI-only output)
+
+#### Oxc Ecosystem Consideration
+- oxfmt/oxlint (Dec 2025 alpha) are faster than Biome (2-3x)
+- Decision: Keep Biome for now due to maturity and CST-based editor support
+- Reconsider when oxfmt reaches stable release
+
+### Alternatives Considered
+
+1. **Bun native test runner**
+   - Pro: 5x faster than Vitest, zero dependencies
+   - Con: Test isolation issues, limited tooling
+
+2. **Jest**
+   - Pro: Most popular, huge ecosystem
+   - Con: 8-20x slower than alternatives, outdated architecture
+
+### Consequences
+
+**Positive**:
+- Reliable TDD workflow with isolated tests
+- Excellent watch mode for red-green-refactor cycle
+- Coverage reports integrated with CI
+- Consistent with Vite build tooling
+- Strong TypeScript/React support
+
+**Negative**:
+- 3 additional dependencies vs Bun native
+- Slightly slower than Bun (though fast enough in practice)
+
+**Migration Path**:
+- If Bun test fixes isolation issues in future, migration is easy (Jest-compatible API)
+
+### Implementation Details
+
+**Dependencies**:
+```bash
+bun add -d vitest @testing-library/react @testing-library/dom happy-dom
+```
+
+**Coverage Targets**:
+- Minimum: 70% line coverage
+- Target: 80%+ overall
+- Critical paths (daemon keyboard logic): 90%+
+
+**TDD Enforcement**:
+- Documented in conventions.md
+- Required for all new features/bug fixes
+- CI runs tests on every commit
+- Watch mode recommended for development
+
+### Reconsider When
+- Bun test implements proper test isolation
+- Project scales beyond 10,000+ tests (speed becomes critical)
+- Vitest maintenance stalls
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

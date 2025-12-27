@@ -66,6 +66,9 @@ jobs:
       - name: Run type checks
         run: bun run all:typecheck
 
+      - name: Run tests
+        run: bun run all:test
+
       - name: Run build
         run: bun run all:build
 
