@@ -3,6 +3,8 @@
 ## Overview
 Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
+**For development environment setup**, see [DEVELOPMENT.md](../../../DEVELOPMENT.md)
+
 ## Technology Stack
 
 ### Frontend
