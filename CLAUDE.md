@@ -14,20 +14,19 @@ All team members should read this when starting development.
 
 ### Development Commands
 ```bash
-# Frontend development
-cd app
-bun install
-bun run tauri:dev
+# Monorepo task runner (from root)
+bun run frontend:all    # Frontend: format → lint → typecheck → build → test
+bun run daemon:all      # Daemon: format → lint → build → test
+bun run ci:local        # CI equivalent: lint → typecheck → build → test
 
-# Daemon development (requires root)
-cd daemon
-sudo cargo run
+# Individual tasks (pattern: [workspace]:[task])
+bun run frontend:lint   # Lint frontend only
+bun run daemon:build    # Build daemon only
+bun run rust:format     # Format all Rust code
 
-# Code quality
-bun run check:fix      # Biome lint + format
-bun run type-check     # TypeScript type checking
-cargo fmt              # Rust formatting
-cargo clippy           # Rust linting (when available)
+# Traditional development
+cd app && bun run tauri:dev    # Tauri dev server
+cd daemon && sudo cargo run    # Run daemon
 ```
 
 ### Key Technologies
@@ -43,6 +42,7 @@ cargo clippy           # Rust linting (when available)
 - ✅ No personal information in commits
 - ✅ Work on `claude/*` branches
 - ✅ Commit messages in English, follow conventional commits
+- ✅ **Run `bun run ci:local` before committing** (quality gate)
 
 ### Project Scale
 - **Current**: 3 TypeScript files, ~77 lines

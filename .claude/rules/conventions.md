@@ -201,13 +201,29 @@ Add error handling for evdev device disconnection events.
 - Private helper functions (unless complex)
 - Getters/setters with obvious behavior
 
+## Monorepo Task Naming
+
+Pattern: `[workspace]:[task]`
+
+**Workspaces:** `frontend`, `tauri`, `daemon`, `app`, `rust`, `all`
+**Tasks:** `format`, `lint`, `typecheck`, `build`, `test`, `all`
+
+Examples:
+```bash
+bun run frontend:all    # All tasks for frontend
+bun run daemon:build    # Build daemon only
+bun run all:lint        # Lint all workspaces
+bun run ci:local        # CI equivalent check
+```
+
 ## Code Review Checklist
 
 Before committing:
 1. ✅ Code formatted (auto on save)
 2. ✅ No linting errors (`bun run check`)
 3. ✅ Type check passes (`bun run type-check`)
-4. ✅ Documentation added for public APIs
-5. ✅ Commit message follows convention
-6. ✅ No personal information in changes
-7. ✅ English only in code/comments
+4. ✅ **Run `bun run ci:local` for significant changes**
+5. ✅ Documentation added for public APIs
+6. ✅ Commit message follows convention
+7. ✅ No personal information in changes
+8. ✅ English only in code/comments

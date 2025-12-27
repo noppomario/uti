@@ -241,6 +241,76 @@ Focus on Linux (Fedora 43 GNOME/Wayland) for initial release.
 
 ---
 
+## ADR-008: Monorepo task architecture with workspace-first design
+
+**Date**: 2025-12-27
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+Project has three workspaces (frontend, tauri, daemon). Need standardized task execution across workspaces with CI/local parity.
+
+### Decision
+Use **workspace-first naming** pattern `[workspace]:[task]`:
+- Workspaces: `frontend`, `tauri`, `daemon`, `app`, `rust`, `all`
+- Tasks: `format`, `lint`, `typecheck`, `build`, `test`, `all`
+
+Root `package.json` as task runner with `npm-run-all` for parallel execution.
+Rust workspace (`Cargo.toml`) for unified Rust management.
+
+### Rationale
+- Workspace-centric thinking: `bun run daemon:all`
+- Selective execution: Only run tasks for modified workspace
+- CI/local parity: Same `ci:local` command everywhere
+- Parallel execution: Independent workspaces run concurrently
+
+### Consequences
+**Positive**:
+- Clear task naming
+- Fast selective execution
+- CI and local perfectly aligned
+
+**Negative**:
+- Requires bun/npm installed
+- Learning curve for naming convention
+
+---
+
+## ADR-009: Pre-commit quality gate with ci:local requirement
+
+**Date**: 2025-12-27
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+Need to prevent low-quality commits while maintaining fast workflow.
+
+### Decision
+Two-layer quality gate:
+1. **Automatic**: Pre-commit hook formats and lints staged files
+2. **Manual**: Developers run `bun run ci:local` before significant commits
+
+### Rationale
+- Automatic formatting prevents unformatted code
+- Full `ci:local` check too slow for every commit
+- Trust developers for comprehensive checks
+- CI still catches everything if forgotten
+
+### Consequences
+**Positive**:
+- Fast commits for small changes
+- Automatic formatting
+- Reduced CI failures
+
+**Negative**:
+- Developers might forget `ci:local`
+- Requires discipline
+
+**Reconsider when**:
+- CI failure rate exceeds 20%
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
