@@ -27,12 +27,15 @@ A desktop utility that toggles window visibility with double Ctrl press
 
 ## Setup
 
+**For detailed development environment setup**, see [DEVELOPMENT.md](./DEVELOPMENT.md)
+
 ### Requirements
 
 - Rust (latest stable)
 - Bun (latest)
 - Linux with evdev support
 - D-Bus session bus
+- Tauri development dependencies (see [DEVELOPMENT.md](./DEVELOPMENT.md))
 
 ### 1. Clone Repository
 
