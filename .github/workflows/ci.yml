@@ -73,18 +73,18 @@ jobs:
         run: bun run all:build
 
       - name: Upload daemon binary
-        if: success()
+        if: success() && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: daemon-binary
           path: target/release/double-ctrl
-          retention-days: 1
+          retention-days: 7
 
       - name: Upload Tauri bundles
-        if: success()
+        if: success() && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: tauri-bundles
           path: target/release/bundle/rpm/*.rpm
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: warn
