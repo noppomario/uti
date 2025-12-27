@@ -2,8 +2,21 @@ import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 
+/**
+ * Main application component
+ *
+ * Listens for double-ctrl-pressed events from the Rust backend and toggles
+ * window visibility when the event is received.
+ *
+ * @returns The main application UI
+ */
 function App() {
   useEffect(() => {
+    /**
+     * Sets up the event listener for double Ctrl press events
+     *
+     * @returns Cleanup function to remove the event listener
+     */
     const setupListener = async () => {
       const unlisten = await listen('double-ctrl-pressed', () => {
         console.log('Double Ctrl event received from Rust backend');

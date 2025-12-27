@@ -1,9 +1,35 @@
+//! Double Ctrl Hotkey Daemon
+//!
+//! This daemon monitors keyboard input devices for double Ctrl key presses
+//! and sends D-Bus signals to notify the Tauri application.
+
 use evdev::{Device, EventType, Key};
 use zbus::Connection;
 use std::time::{Duration, Instant};
 
+/// Maximum time interval between two Ctrl presses to be considered a double tap
 const DOUBLE_TAP_INTERVAL: Duration = Duration::from_millis(300);
 
+/// Sends a D-Bus signal to notify listeners of a double Ctrl press event
+///
+/// # Arguments
+///
+/// * `conn` - The D-Bus connection to use for sending the signal
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the signal was sent successfully, or a `zbus::Error` if it failed.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use zbus::Connection;
+/// # async fn example() -> zbus::Result<()> {
+/// let conn = Connection::session().await?;
+/// notify_double_ctrl(&conn).await?;
+/// # Ok(())
+/// # }
+/// ```
 async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
     conn.emit_signal(
         None::<()>,
@@ -16,6 +42,18 @@ async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
     Ok(())
 }
 
+/// Finds the first available keyboard device
+///
+/// Searches through `/dev/input/event*` devices to find a keyboard by checking
+/// if the device supports the 'A' key.
+///
+/// # Returns
+///
+/// Returns the path to the keyboard device if found, or an error if no keyboard is detected.
+///
+/// # Errors
+///
+/// Returns `std::io::Error` with kind `NotFound` if no keyboard device is found.
 fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
     for entry in std::fs::read_dir("/dev/input")? {
         let path = entry?.path();
@@ -34,6 +72,17 @@ fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
     Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No keyboard found"))
 }
 
+/// Main daemon entry point
+///
+/// Initializes the keyboard device monitoring, connects to D-Bus, and enters
+/// an event loop to detect double Ctrl key presses.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No keyboard device is found
+/// - Failed to connect to D-Bus session bus
+/// - Failed to read events from the keyboard device
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Double Ctrl daemon starting...");
@@ -59,7 +108,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
 
-            if event.value() == 0 { // キーリリース
+            // Key release event (value == 0)
+            if event.value() == 0 {
                 let now = Instant::now();
 
                 if let Some(last) = last_ctrl_release {
