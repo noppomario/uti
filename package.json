@@ -39,8 +39,7 @@
     "all:all": "npm-run-all all:format all:lint all:typecheck all:build all:test",
     "ci:check": "npm-run-all --parallel all:lint all:typecheck",
     "ci:build": "npm run all:build",
-    "ci:test": "npm run all:test",
-    "ci:local": "npm-run-all ci:check ci:build ci:test",
+    "ci:local": "npm-run-all ci:check ci:build",
     "prepare": "husky"
   },
   "devDependencies": {

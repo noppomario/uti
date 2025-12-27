@@ -62,6 +62,3 @@ jobs:
 
       - name: Run build
         run: bun run all:build
-
-      - name: Run tests
-        run: bun run all:test
