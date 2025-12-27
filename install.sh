@@ -1,44 +1,44 @@
 #!/bin/bash
 set -e
 
-echo "=== uti インストールスクリプト ==="
+echo "=== uti Installation Script ==="
 echo ""
 
-# 権限チェック
+# Check for root permissions
 if [ "$EUID" -ne 0 ]; then
-    echo "エラー: このスクリプトはroot権限で実行してください"
-    echo "使用方法: sudo ./install.sh"
+    echo "Error: This script must be run with root privileges"
+    echo "Usage: sudo ./install.sh"
     exit 1
 fi
 
-# daemonのビルド
-echo "[1/4] daemon をビルド中..."
+# Build the daemon
+echo "[1/4] Building daemon..."
 cd daemon
 cargo build --release
 cd ..
 
-# daemonのインストール
-echo "[2/4] daemon をインストール中..."
+# Install the daemon
+echo "[2/4] Installing daemon..."
 cp daemon/target/release/double-ctrl /usr/local/bin/
 chmod +x /usr/local/bin/double-ctrl
 
-# systemdサービスのインストール
-echo "[3/4] systemd サービスを設定中..."
+# Install systemd service
+echo "[3/4] Setting up systemd service..."
 cp daemon/systemd/double-ctrl.service /etc/systemd/system/
 systemctl daemon-reload
 
-# サービスの有効化
-echo "[4/4] サービスを有効化中..."
+# Enable the service
+echo "[4/4] Enabling service..."
 systemctl enable double-ctrl.service
 systemctl start double-ctrl.service
 
 echo ""
-echo "✓ インストール完了!"
+echo "✓ Installation complete!"
 echo ""
-echo "サービスステータス:"
+echo "Service status:"
 systemctl status double-ctrl.service --no-pager
 echo ""
-echo "次のステップ:"
+echo "Next steps:"
 echo "  1. cd app"
 echo "  2. bun install"
 echo "  3. bun run tauri:dev"
