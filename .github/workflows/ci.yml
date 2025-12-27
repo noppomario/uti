@@ -26,6 +26,12 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "uti-build"
+          cache-on-failure: true
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
