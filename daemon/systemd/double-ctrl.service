@@ -1,0 +1,13 @@
+[Unit]
+Description=Double Ctrl Hotkey Daemon
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/double-ctrl
+Restart=on-failure
+User=root
+SupplementaryGroups=input
+
+[Install]
+WantedBy=multi-user.target
