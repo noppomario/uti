@@ -1,83 +1,83 @@
 # uti
 
-Ctrl 2回押しで表示/非表示を切り替えるデスクトップツール
+A desktop utility that toggles window visibility with double Ctrl press
 
-## 概要
+## Overview
 
-**uti**は、Ctrlキーを2回素早く押すことでウィンドウの表示/非表示を切り替えられる、Linux向けのデスクトップユーティリティです。
+**uti** is a desktop utility for Linux that allows you to toggle window visibility by quickly pressing the Ctrl key twice.
 
-### 技術スタック
+### Technology Stack
 
 - **Frontend**: React 19 + TypeScript + Tailwind CSS v4
 - **Backend**: Tauri 2 (Rust)
 - **Daemon**: Rust (evdev + zbus)
-- **対象OS**: Linux (Fedora 43 GNOME/Wayland)
+- **Target OS**: Linux (Fedora 43 GNOME/Wayland)
 
-## アーキテクチャ
+## Architecture
 
 ```
-[double-ctrl daemon]  ← root/input権限で動作
-  ↓ (evdevでCtrl監視)
-  ↓ (300ms以内の2回押し検出)
-  ↓ (D-Bus Signal送信)
-[Tauri app]           ← 通常ユーザー権限
-  ↓ (D-Bus受信)
+[double-ctrl daemon]  ← Runs with root/input permissions
+  ↓ (Monitor Ctrl via evdev)
+  ↓ (Detect double press within 300ms)
+  ↓ (Send D-Bus Signal)
+[Tauri app]           ← Runs with normal user permissions
+  ↓ (Receive D-Bus)
   ↓ (window.hide/show)
 ```
 
-## セットアップ
+## Setup
 
-### 必要な環境
+### Requirements
 
 - Rust (latest stable)
 - Bun (latest)
 - Linux with evdev support
 - D-Bus session bus
 
-### 1. リポジトリのクローン
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/noppomario/uti.git
 cd uti
 ```
 
-### 2. Daemonのビルドとインストール
+### 2. Build and Install Daemon
 
 ```bash
 cd daemon
 cargo build --release
 
-# インストール
+# Install
 sudo cp target/release/double-ctrl /usr/local/bin/
 sudo cp systemd/double-ctrl.service /etc/systemd/system/
 
-# サービスの有効化と起動
+# Enable and start service
 sudo systemctl daemon-reload
 sudo systemctl enable --now double-ctrl.service
 
-# ステータス確認
+# Check status
 sudo systemctl status double-ctrl.service
 ```
 
-### 3. Tauri Appのビルドと実行
+### 3. Build and Run Tauri App
 
 ```bash
 cd ../app
 bun install
-bun run tauri:dev   # 開発モード
-bun run tauri:build # リリースビルド
+bun run tauri:dev   # Development mode
+bun run tauri:build # Release build
 ```
 
-## 開発
+## Development
 
-### Daemon開発
+### Daemon Development
 
 ```bash
 cd daemon
-sudo cargo run  # root権限が必要
+sudo cargo run  # Requires root permissions
 ```
 
-### App開発
+### App Development
 
 ```bash
 cd app
@@ -85,38 +85,38 @@ bun install
 bun run tauri:dev
 ```
 
-### デバッグ
+### Debugging
 
-#### D-Busメッセージの監視
+#### Monitor D-Bus Messages
 
 ```bash
 dbus-monitor "interface='io.github.noppomario.uti.DoubleTap'"
 ```
 
-#### デバイス確認
+#### Check Devices
 
 ```bash
 ls -l /dev/input/event*
 ```
 
-#### ログ確認
+#### Check Logs
 
 ```bash
 journalctl -u double-ctrl.service -f
 ```
 
-## プロジェクト構成
+## Project Structure
 
 ```
 uti/
-├── daemon/                          # Ctrl検出デーモン
+├── daemon/                          # Ctrl detection daemon
 │   ├── Cargo.toml
 │   ├── systemd/
 │   │   └── double-ctrl.service
 │   └── src/
 │       └── main.rs
 │
-└── app/                             # Tauri GUIアプリ
+└── app/                             # Tauri GUI app
     ├── package.json
     ├── vite.config.ts
     ├── src/                         # React frontend
@@ -129,26 +129,26 @@ uti/
             └── main.rs
 ```
 
-## トラブルシューティング
+## Troubleshooting
 
-### Daemonが起動しない
+### Daemon Won't Start
 
 ```bash
-# ログを確認
+# Check logs
 sudo journalctl -u double-ctrl.service -n 50
 
-# 手動実行でテスト
+# Test manual execution
 cd daemon
 sudo cargo run
 ```
 
-### D-Bus通信ができない
+### D-Bus Communication Fails
 
 ```bash
-# Session Busの確認
+# Check Session Bus
 echo $DBUS_SESSION_BUS_ADDRESS
 
-# 手動でSignalを送信してテスト
+# Test manual Signal send
 dbus-send --session \
   --type=signal \
   /io/github/noppomario/uti/DoubleTap \
@@ -157,16 +157,16 @@ dbus-send --session \
 
 ## TODO
 
-- [ ] デバイス検出の堅牢化（複数キーボード対応）
-- [ ] 設定ファイル対応（間隔調整など）
-- [ ] トレイアイコン対応
-- [ ] ウィンドウ位置・サイズの永続化
-- [ ] Windows対応
+- [ ] Robust device detection (multiple keyboard support)
+- [ ] Configuration file support (interval adjustment, etc.)
+- [ ] System tray icon support
+- [ ] Window position/size persistence
+- [ ] Windows support
 
-## ライセンス
+## License
 
 MIT License
 
-## 作者
+## Author
 
 Anonymous

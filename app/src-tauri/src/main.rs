@@ -1,8 +1,29 @@
+//! Tauri Application Backend
+//!
+//! This module handles D-Bus signal reception and window visibility toggling
+//! for the uti desktop utility.
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{Manager, Window};
 use zbus::Connection;
 
+/// Toggles the window visibility state
+///
+/// If the window is currently visible, it will be hidden. If hidden, it will be shown
+/// and focused.
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance to toggle
+///
+/// # Examples
+///
+/// This function is invoked from the frontend:
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// invoke('toggle_window');
+/// ```
 #[tauri::command]
 fn toggle_window(window: Window) {
     if window.is_visible().unwrap_or(false) {
@@ -15,6 +36,26 @@ fn toggle_window(window: Window) {
     }
 }
 
+/// Listens for D-Bus signals from the daemon and forwards them to the frontend
+///
+/// This function connects to the D-Bus session bus, subscribes to the DoubleTap
+/// signal, and emits a frontend event whenever the signal is received.
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance for emitting frontend events
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the listener was set up successfully and runs indefinitely.
+/// Returns an error if D-Bus connection or signal subscription fails.
+///
+/// # Errors
+///
+/// This function will return an error if:
+/// - Failed to connect to D-Bus session bus
+/// - Failed to create the D-Bus proxy
+/// - Failed to subscribe to the signal stream
 async fn listen_dbus(window: Window) -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::session().await?;
     println!("Connected to D-Bus session bus");
@@ -23,11 +64,13 @@ async fn listen_dbus(window: Window) -> Result<(), Box<dyn std::error::Error>> {
     use zbus::proxy;
     use futures_util::stream::StreamExt;
 
+    /// D-Bus proxy interface for receiving DoubleTap signals
     #[proxy(
         interface = "io.github.noppomario.uti.DoubleTap",
         default_path = "/io/github/noppomario/uti/DoubleTap"
     )]
     trait DoubleTap {
+        /// Signal emitted when double Ctrl press is detected
         #[zbus(signal)]
         fn triggered(&self) -> zbus::Result<()>;
     }
@@ -44,6 +87,10 @@ async fn listen_dbus(window: Window) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Main application entry point
+///
+/// Sets up the Tauri application with the toggle_window command handler
+/// and spawns an async task to listen for D-Bus signals.
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![toggle_window])
