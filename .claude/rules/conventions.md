@@ -176,17 +176,109 @@ Add error handling for evdev device disconnection events.
 - Explicit error handling
 - Unused code detection
 
-## Testing Conventions (Future)
+## Testing Conventions
 
-### TypeScript
-- Test files: `*.test.tsx` or `*.spec.tsx`
-- Place tests next to source files
-- Use React Testing Library
+### Test-Driven Development (TDD)
+**Required for all new features and bug fixes.**
 
-### Rust
-- Unit tests: In same file with `#[cfg(test)]`
-- Integration tests: In `tests/` directory
-- Use standard `#[test]` attribute
+#### TDD Cycle
+1. **Write test first** - Test must fail initially
+2. **Implement minimal code** - Make test pass
+3. **Refactor** - Improve while keeping tests green
+4. **Repeat** - Continue for next requirement
+
+### TypeScript/React Testing
+
+#### File Organization
+- Test files: `*.test.tsx` (preferred) or `*.spec.tsx`
+- Place tests **next to source files**
+- Use **happy-dom** for DOM simulation
+
+#### Framework
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+describe('ComponentName', () => {
+  it('should do something specific', () => {
+    // Arrange
+    render(<ComponentName />);
+
+    // Act
+    const button = screen.getByRole('button');
+    fireEvent.click(button);
+
+    // Assert
+    expect(button).toHaveTextContent('Clicked');
+  });
+});
+```
+
+#### Best Practices
+- **Arrange-Act-Assert** pattern
+- Test behavior, not implementation
+- Use `screen.getByRole()` for accessibility
+- Avoid testing library internals
+
+### Rust Testing
+
+#### Unit Tests
+Place in same file with `#[cfg(test)]`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_double_tap_detection() {
+        // Arrange
+        let detector = DoubleTapDetector::new();
+
+        // Act
+        let result = detector.check_interval(250);
+
+        // Assert
+        assert!(result.is_within_threshold());
+    }
+}
+```
+
+#### Integration Tests
+Place in `tests/` directory:
+
+```rust
+// tests/dbus_integration.rs
+#[test]
+fn test_dbus_signal_sending() {
+    // Test D-Bus communication
+}
+```
+
+### Coverage Requirements
+- **Minimum**: 70% line coverage
+- **Target**: 80%+ for critical paths
+- **Critical code** (daemon keyboard logic): 90%+
+
+### Running Tests
+
+#### During Development (TDD)
+```bash
+# Watch mode - tests rerun on file change
+bun run test:watch      # Frontend
+cargo watch -x test     # Rust (requires cargo-watch)
+```
+
+#### Before Commit
+```bash
+bun run ci:local        # Includes all:test
+```
+
+#### Coverage Check
+```bash
+bun run test:coverage   # Frontend coverage
+cargo tarpaulin         # Rust coverage (requires cargo-tarpaulin)
+```
 
 ## Documentation Requirements
 

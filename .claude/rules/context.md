@@ -112,15 +112,40 @@ bun run check:fix   # Biome lint + format + auto-fix
 
 ## Testing & Quality
 
-### Current Status
-- No automated tests yet
-- Manual testing only
-- Code quality enforced by Biome linter
+### Test Framework
+- **Frontend**: Vitest + React Testing Library + happy-dom
+- **Rust**: Standard `cargo test` framework
+- **Methodology**: Test-Driven Development (TDD) required for all new code
 
-### Future Considerations
-- Add integration tests when features grow
-- CI/CD setup when team expands
-- End-to-end testing for D-Bus communication
+### TDD Workflow (Red-Green-Refactor)
+1. **Red**: Write failing test first
+2. **Green**: Implement minimal code to pass
+3. **Refactor**: Improve code while keeping tests green
+
+### Test Execution
+```bash
+# Frontend tests
+cd app && bun run test          # Run once
+cd app && bun run test:watch    # Watch mode (TDD)
+cd app && bun run test:coverage # Coverage report
+
+# Rust tests
+cargo test --workspace          # All Rust tests
+cd daemon && cargo test         # Daemon only
+
+# All tests (from root)
+bun run all:test               # Parallel execution
+```
+
+### CI Integration
+- Tests run automatically in GitHub Actions
+- Coverage reports generated for all commits
+- PRs require passing tests
+
+### Test Priorities
+1. **Daemon**: Keyboard event detection (300ms double-tap logic)
+2. **Frontend**: Window control UI components
+3. **Integration**: D-Bus communication end-to-end
 
 ## Deployment
 
