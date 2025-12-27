@@ -3,17 +3,10 @@
 This document serves as the central project memory for Claude Code.
 All team members should read this when starting development.
 
-## Project Context
-
-@.claude/context.md
-
-## Architectural Decisions
-
-@.claude/decisions.md
-
-## Development Conventions
-
-@.claude/conventions.md
+**Note:** Detailed rules are automatically loaded from `.claude/rules/`:
+- `context.md` - Technical stack, architecture, constraints
+- `decisions.md` - Architectural Decision Records (ADRs)
+- `conventions.md` - Code standards, naming, Git conventions
 
 ---
 
