@@ -69,15 +69,6 @@ jobs:
       - name: Run build
         run: bun run all:build
 
-      - name: List build artifacts
-        if: always()
-        run: |
-          echo "=== Daemon binary ==="
-          ls -lh target/release/double-ctrl 2>/dev/null || echo "❌ daemon binary not found"
-          echo ""
-          echo "=== Tauri bundle directory structure ==="
-          find target/release/bundle -type f 2>/dev/null || echo "❌ bundle directory not found"
-
       - name: Upload daemon binary
         if: success()
         uses: actions/upload-artifact@v4
