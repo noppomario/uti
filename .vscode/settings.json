@@ -1,0 +1,56 @@
+{
+  // Editor
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "biomejs.biome",
+  "editor.codeActionsOnSave": {
+    "quickfix.biome": "explicit",
+    "source.organizeImports.biome": "explicit"
+  },
+
+  // Rust
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true
+  },
+
+  // JSON/JSONC
+  "[json]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+
+  // CSS
+  "[css]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+
+  // TypeScript/JavaScript
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+
+  // Biome
+  "biome.lspBin": "./app/node_modules/@biomejs/biome/bin/biome",
+
+  // Tailwind CSS
+  "tailwindCSS.experimental.classRegex": [
+    ["class(?:Name)?\\s*[:=]\\s*['\"`]([^'\"`]*)['\"`]", "([^'\"`]*)"]
+  ],
+
+  // File associations
+  "files.associations": {
+    "*.rs": "rust",
+    "*.toml": "toml"
+  }
+}
