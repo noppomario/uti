@@ -44,7 +44,22 @@ git clone https://github.com/noppomario/uti.git
 cd uti
 ```
 
-### 2. Build and Install Daemon
+### 2. Install Daemon
+
+**Option A: Quick Install (Recommended)**
+
+```bash
+sudo ./install.sh
+```
+
+This script will automatically build the daemon, install it to `/usr/local/bin/`, and set up the systemd service.
+
+To uninstall:
+```bash
+sudo ./uninstall.sh
+```
+
+**Option B: Manual Install**
 
 ```bash
 cd daemon
