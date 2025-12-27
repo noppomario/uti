@@ -31,7 +31,6 @@ Thumbs.db
 .env.local
 
 # Claude Code - Local (personal) configuration
-CLAUDE.local.md
 .claude/*.local.json
 .claude/settings.local.json
 .claude/**/*.secret
