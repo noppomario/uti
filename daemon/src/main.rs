@@ -63,7 +63,7 @@ fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
                 if let Ok(device) = Device::open(&path) {
                     if device
                         .supported_keys()
-                        .map_or(false, |keys| keys.contains(Key::KEY_A))
+                        .is_some_and(|keys| keys.contains(Key::KEY_A))
                     {
                         println!("Found keyboard device: {}", path.display());
                         return Ok(path);
