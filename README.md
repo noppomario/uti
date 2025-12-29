@@ -17,11 +17,11 @@ visibility by quickly pressing the Ctrl key twice.
 ## Architecture
 
 ```text
-[double-ctrl daemon]  ← Runs with root/input permissions
+[double-ctrl daemon]  ← User session service (requires input group)
   ↓ (Monitor Ctrl via evdev)
   ↓ (Detect double press within 300ms)
   ↓ (Send D-Bus Signal)
-[Tauri app]           ← Runs with normal user permissions
+[Tauri app]           ← Normal user application
   ↓ (Receive D-Bus)
   ↓ (window.hide/show)
 ```
@@ -45,49 +45,44 @@ git clone https://github.com/noppomario/uti.git
 cd uti
 ```
 
-### 2. Build and Install Daemon
+### 2. Add User to input Group
 
-#### Option A: Quick Install (Recommended)
+The daemon requires access to `/dev/input/*` devices to monitor keyboard events.
 
 ```bash
-# Build daemon (as normal user)
-cd daemon
-cargo build --release
-cd ..
+# Add current user to input group
+sudo usermod -aG input $USER
+```
 
-# Install system-wide (requires root)
-sudo ./install.sh
+**Important**: Log out and log back in for the group change to take effect.
+
+Verify group membership:
+
+```bash
+groups
+# Should include "input"
+```
+
+### 3. Build and Install Daemon
+
+```bash
+# Build daemon
+cargo build --release
+
+# Install as user session service
+./install.sh
 ```
 
 To uninstall:
 
 ```bash
-sudo ./uninstall.sh
+./uninstall.sh
 ```
 
-#### Option B: Manual Install
+### 4. Build and Run Tauri App
 
 ```bash
-# Build daemon
-cd daemon
-cargo build --release
-
-# Install (requires root)
-sudo cp target/release/double-ctrl /usr/local/bin/
-sudo cp systemd/double-ctrl.service /etc/systemd/system/
-
-# Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable --now double-ctrl.service
-
-# Check status
-sudo systemctl status double-ctrl.service
-```
-
-### 3. Build and Run Tauri App
-
-```bash
-cd ../app
+cd app
 bun install
 bun run tauri:dev   # Development mode
 bun run tauri:build # Release build
@@ -100,11 +95,11 @@ bun run tauri:build # Release build
 ### Quick Start
 
 ```bash
-# One-time setup: Add user to input group
-sudo usermod -a -G input $USER
-# Logout and login for changes to take effect
+# One-time setup: Add user to input group (if not already done)
+sudo usermod -aG input $USER
+# Log out and log back in for changes to take effect
 
-# Terminal 1: Run daemon
+# Terminal 1: Run daemon (no sudo needed)
 cd daemon
 cargo run
 
@@ -131,31 +126,46 @@ ls -l /dev/input/event*
 #### Check Logs
 
 ```bash
-journalctl -u double-ctrl.service -f
+# User session service logs
+journalctl --user -u double-ctrl.service -f
+
+# Show recent logs
+journalctl --user -u double-ctrl.service -n 50
+```
+
+#### Change Log Level
+
+The daemon uses the following log levels:
+
+- `error`: Only errors
+- `warn`: Warnings and errors
+- `info`: Important events (default) - Double Ctrl detection, D-Bus signals
+- `debug`: Verbose debugging - All key events
+
+To change the log level, edit the systemd service file:
+
+```bash
+# Edit service file
+mkdir -p ~/.config/systemd/user
+cp /usr/lib/systemd/user/double-ctrl.service ~/.config/systemd/user/
+nano ~/.config/systemd/user/double-ctrl.service
+
+# Change: Environment="RUST_LOG=info"
+# To:     Environment="RUST_LOG=debug"  (for verbose logging)
+
+# Reload and restart
+systemctl --user daemon-reload
+systemctl --user restart double-ctrl.service
 ```
 
 ## Project Structure
 
 ```text
 uti/
-├── daemon/                          # Ctrl detection daemon
-│   ├── Cargo.toml
-│   ├── systemd/
-│   │   └── double-ctrl.service
-│   └── src/
-│       └── main.rs
-│
-└── app/                             # Tauri GUI app
-    ├── package.json
-    ├── vite.config.ts
-    ├── src/                         # React frontend
-    │   ├── App.tsx
-    │   ├── main.tsx
-    │   └── index.css
-    └── src-tauri/                   # Rust backend
-        ├── Cargo.toml
-        └── src/
-            └── main.rs
+├── daemon/         # Keyboard monitoring daemon (Rust)
+├── app/            # Tauri GUI application (React + Rust)
+├── install.sh      # Daemon installation script
+└── uninstall.sh    # Daemon uninstallation script
 ```
 
 ## Troubleshooting
@@ -164,7 +174,10 @@ uti/
 
 ```bash
 # Check logs
-sudo journalctl -u double-ctrl.service -n 50
+journalctl --user -u double-ctrl.service -n 50
+
+# Verify user is in input group
+groups  # Should include "input"
 
 # Test manual execution (see DEVELOPMENT.md for setup)
 cd daemon
