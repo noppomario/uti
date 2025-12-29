@@ -18,21 +18,37 @@ function App() {
      * @returns Cleanup function to remove the event listener
      */
     const setupListener = async () => {
+      console.log('Setting up double-ctrl-pressed event listener...');
       const unlisten = await listen('double-ctrl-pressed', () => {
         console.log('Double Ctrl event received from Rust backend');
-        invoke('toggle_window');
+        console.log('Invoking toggle_window command...');
+        invoke('toggle_window')
+          .then(() => {
+            console.log('toggle_window command completed');
+          })
+          .catch(err => {
+            console.error('toggle_window command failed:', err);
+          });
       });
 
+      console.log('Event listener registered successfully');
       return unlisten;
     };
 
     let unlisten: (() => void) | undefined;
-    setupListener().then(fn => {
-      unlisten = fn;
-    });
+    setupListener()
+      .then(fn => {
+        unlisten = fn;
+      })
+      .catch(err => {
+        console.error('Failed to setup event listener:', err);
+      });
 
     return () => {
-      unlisten?.();
+      if (unlisten) {
+        console.log('Cleaning up event listener');
+        unlisten();
+      }
     };
   }, []);
 
