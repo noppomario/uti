@@ -3,12 +3,14 @@
 ## Language Requirements
 
 ### All Code & Documentation
+
 - **English only** - No Japanese in code, comments, docs, or commit messages
 - Exception: User-facing UI text can be localized in the future
 
 ## Documentation Standards
 
 ### TypeScript/JavaScript
+
 Use **TSDoc** format:
 
 ```typescript
@@ -28,6 +30,7 @@ Use **TSDoc** format:
 ```
 
 ### Rust
+
 Use **Rust doc comments**:
 
 ```rust
@@ -55,6 +58,7 @@ Use **Rust doc comments**:
 ```
 
 Module-level docs:
+
 ```rust
 //! Module description
 //!
@@ -64,12 +68,14 @@ Module-level docs:
 ## Code Style
 
 ### General
+
 - Max line width: **100 characters**
 - Line endings: **LF** (Unix-style)
 - Encoding: **UTF-8**
 - Final newline: **Required**
 
 ### TypeScript/React
+
 - Indent: **2 spaces**
 - Quotes: **Single quotes** for JS, **double quotes** for JSX
 - Semicolons: **Required**
@@ -85,7 +91,8 @@ const fn2 = (x, y) => x + y;
 const fn = (x) => x * 2;
 ```
 
-### Rust
+### Rust Style
+
 - Indent: **4 spaces**
 - Max line width: **100 characters**
 - Use `rustfmt` defaults with project config
@@ -95,12 +102,14 @@ const fn = (x) => x * 2;
 ## Naming Conventions
 
 ### Files
+
 - TypeScript/React: **PascalCase** for components (`App.tsx`)
 - TypeScript: **camelCase** for utilities (`utils.ts`)
 - Rust: **snake_case** (`main.rs`)
 - Config files: **lowercase** with extensions (`.editorconfig`, `biome.json`)
 
 ### Code
+
 - **TypeScript**:
   - Components: `PascalCase`
   - Functions/variables: `camelCase`
@@ -116,13 +125,17 @@ const fn = (x) => x * 2;
 ## Import Organization
 
 ### TypeScript
+
 Biome automatically organizes imports. Order:
+
 1. External packages
 2. Internal absolute imports
 3. Relative imports
 
-### Rust
+### Rust Imports
+
 Use `rustfmt` import grouping:
+
 1. `std` imports
 2. External crates
 3. Internal modules
@@ -130,7 +143,8 @@ Use `rustfmt` import grouping:
 ## Git Commit Messages
 
 ### Format
-```
+
+```text
 <type>: <short description>
 
 <optional detailed description>
@@ -139,6 +153,7 @@ Use `rustfmt` import grouping:
 ```
 
 ### Types
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation only
@@ -149,7 +164,8 @@ Use `rustfmt` import grouping:
 - `chore`: Tooling, dependencies, config
 
 ### Examples
-```
+
+```text
 feat: Add system tray icon support
 
 Implement tray icon using tauri-plugin-tray with toggle menu.
@@ -157,7 +173,7 @@ Implement tray icon using tauri-plugin-tray with toggle menu.
 Closes #123
 ```
 
-```
+```text
 fix: Prevent daemon crash on keyboard disconnect
 
 Add error handling for evdev device disconnection events.
@@ -166,12 +182,14 @@ Add error handling for evdev device disconnection events.
 ## Linting Rules
 
 ### Enforced by Biome
+
 - Accessibility warnings for interactive elements
 - Type import enforcement (`import type`)
 - No explicit `any` (warn)
 - Button elements must have `type` attribute
 
 ### Enforced by clippy (future)
+
 - Standard Rust best practices
 - Explicit error handling
 - Unused code detection
@@ -179,9 +197,11 @@ Add error handling for evdev device disconnection events.
 ## Testing Conventions
 
 ### Test-Driven Development (TDD)
+
 **Required for all new features and bug fixes.**
 
 #### TDD Cycle
+
 1. **Write test first** - Test must fail initially
 2. **Implement minimal code** - Make test pass
 3. **Refactor** - Improve while keeping tests green
@@ -190,11 +210,13 @@ Add error handling for evdev device disconnection events.
 ### TypeScript/React Testing
 
 #### File Organization
+
 - Test files: `*.test.tsx` (preferred) or `*.spec.tsx`
 - Place tests **next to source files**
 - Use **happy-dom** for DOM simulation
 
 #### Framework
+
 ```typescript
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -215,6 +237,7 @@ describe('ComponentName', () => {
 ```
 
 #### Best Practices
+
 - **Arrange-Act-Assert** pattern
 - Test behavior, not implementation
 - Use `screen.getByRole()` for accessibility
@@ -223,6 +246,7 @@ describe('ComponentName', () => {
 ### Rust Testing
 
 #### Unit Tests
+
 Place in same file with `#[cfg(test)]`:
 
 ```rust
@@ -245,6 +269,7 @@ mod tests {
 ```
 
 #### Integration Tests
+
 Place in `tests/` directory:
 
 ```rust
@@ -256,6 +281,7 @@ fn test_dbus_signal_sending() {
 ```
 
 ### Coverage Requirements
+
 - **Minimum**: 70% line coverage
 - **Target**: 80%+ for critical paths
 - **Critical code** (daemon keyboard logic): 90%+
@@ -263,6 +289,7 @@ fn test_dbus_signal_sending() {
 ### Running Tests
 
 #### During Development (TDD)
+
 ```bash
 # Watch mode - tests rerun on file change
 bun run test:watch      # Frontend
@@ -270,11 +297,13 @@ cargo watch -x test     # Rust (requires cargo-watch)
 ```
 
 #### Before Commit
+
 ```bash
 bun run ci:local        # Includes all:test
 ```
 
 #### Coverage Check
+
 ```bash
 bun run test:coverage   # Frontend coverage
 cargo tarpaulin         # Rust coverage (requires cargo-tarpaulin)
@@ -283,12 +312,14 @@ cargo tarpaulin         # Rust coverage (requires cargo-tarpaulin)
 ## Documentation Requirements
 
 ### When to Document
+
 - All public functions/components
 - All exported types/interfaces
 - Complex logic or algorithms
 - Non-obvious decisions
 
 ### When NOT to Document
+
 - Self-evident code
 - Private helper functions (unless complex)
 - Getters/setters with obvious behavior
@@ -301,6 +332,7 @@ Pattern: `[workspace]:[task]`
 **Tasks:** `format`, `lint`, `typecheck`, `build`, `test`, `all`
 
 Examples:
+
 ```bash
 bun run frontend:all    # All tasks for frontend
 bun run daemon:build    # Build daemon only
@@ -311,6 +343,7 @@ bun run ci:local        # CI equivalent check
 ## Code Review Checklist
 
 Before committing:
+
 1. ✅ Code formatted (auto on save)
 2. ✅ No linting errors (`bun run check`)
 3. ✅ Type check passes (`bun run type-check`)

@@ -4,6 +4,7 @@ This document serves as the central project memory for Claude Code.
 All team members should read this when starting development.
 
 **Note:** Detailed rules are automatically loaded from `.claude/rules/`:
+
 - `context.md` - Technical stack, architecture, constraints
 - `decisions.md` - Architectural Decision Records (ADRs)
 - `conventions.md` - Code standards, naming, Git conventions
@@ -13,6 +14,7 @@ All team members should read this when starting development.
 ## Quick Reference
 
 ### Development Commands
+
 ```bash
 # Monorepo task runner (from root)
 bun run frontend:all    # Frontend: format → lint → typecheck → build → test
@@ -36,6 +38,7 @@ cd daemon && sudo cargo run    # Run daemon
 ```
 
 ### Key Technologies
+
 - **Frontend**: React 19 + TypeScript + Tailwind v4 + Biome
 - **Testing**: Vitest + React Testing Library (TDD required)
 - **Backend**: Tauri 2 + Rust
@@ -43,6 +46,7 @@ cd daemon && sudo cargo run    # Run daemon
 - **Target**: Linux (Fedora 43 GNOME/Wayland)
 
 ### Important Reminders
+
 - ✅ All code and documentation in **English only**
 - ✅ **TDD required**: Write tests BEFORE implementation (Red-Green-Refactor)
 - ✅ Use **TSDoc** for TypeScript, **Rust doc comments** for Rust
@@ -53,10 +57,11 @@ cd daemon && sudo cargo run    # Run daemon
 - ✅ **Run `bun run ci:local` before committing** (includes tests)
 
 ### Project Scale
+
 - **Current**: 3 TypeScript files, ~77 lines
 - **Philosophy**: Keep it simple (YAGNI)
 - **Refactor when**: 5+ components or multiple features
 
 ---
 
-*Last updated: 2025-12-27*
+**Last updated:** 2025-12-27
