@@ -121,21 +121,8 @@ bun run tauri:dev
 - Adding user to `input` group grants read access
 - This is the standard Linux approach (similar to `docker`, `audio` groups)
 - **Reversible**: Remove with `sudo gpasswd -d $USER input`
-
-### Alternative (if you prefer not to modify groups)
-
-If you prefer not to add your user to the `input` group:
-
-```bash
-# Run daemon with sudo (not recommended for development)
-sudo -E env "PATH=$PATH" cargo run
-```
-
-**Warnings**:
-
-- Daemon runs as root (less secure during development)
-- Creates root-owned build artifacts in `target/`
-- Makes debugging more difficult
+- **Required for both development and production** - The daemon runs as a user
+  session service, not as root
 
 ---
 
@@ -160,21 +147,9 @@ Daemon needs access to `/dev/input/*` devices.
 **Solution**: Add user to `input` group (see Development Workflow section above):
 
 ```bash
-sudo usermod -a -G input $USER
-# Logout and login, then:
+sudo usermod -aG input $USER
+# Log out and log back in, then:
 cargo run  # No sudo needed
-```
-
-### "sudo cargo run" fails with "command not found"
-
-`cargo` is installed per-user via rustup and not available in root's PATH.
-
-**Solution**: Use `input` group approach instead (see Development Workflow section).
-
-If you must use sudo:
-
-```bash
-sudo -E env "PATH=$PATH" cargo run
 ```
 
 ### Slow first build

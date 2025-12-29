@@ -4,6 +4,7 @@
 //! and sends D-Bus signals to notify the Tauri application.
 
 use evdev::{Device, EventType, Key};
+use log::{debug, error, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -41,7 +42,7 @@ async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
         &(),
     )
     .await?;
-    println!("D-Bus signal sent: Triggered");
+    info!("D-Bus signal sent: Triggered");
     Ok(())
 }
 
@@ -97,16 +98,16 @@ async fn monitor_device(
     conn: Arc<Connection>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut device = Device::open(&device_path)?;
-    println!("[{}] Monitoring started", device_name);
+    info!("[{}] Monitoring started", device_name);
 
     loop {
         match device.fetch_events() {
             Ok(events) => {
                 for event in events {
-                    // Log all key events for debugging
+                    // Log all key events for debugging (debug level)
                     if event.event_type() == EventType::KEY {
                         let key = Key::new(event.code());
-                        println!(
+                        debug!(
                             "[{}] Key event: {:?} value={} (type={:?})",
                             device_name,
                             key,
@@ -132,7 +133,7 @@ async fn monitor_device(
 
                     // Key press event (value == 1)
                     if event.value() == 1 {
-                        println!("[{}] Ctrl key pressed ({})", device_name, key_name);
+                        debug!("[{}] Ctrl key pressed ({})", device_name, key_name);
                     }
 
                     // Key release event (value == 0)
@@ -142,7 +143,7 @@ async fn monitor_device(
 
                         if let Some(last) = *last_release {
                             let interval = now.duration_since(last);
-                            println!(
+                            debug!(
                                 "[{}] Ctrl key released ({}) - {}ms since last release",
                                 device_name,
                                 key_name,
@@ -150,13 +151,13 @@ async fn monitor_device(
                             );
 
                             if interval < DOUBLE_TAP_INTERVAL {
-                                println!("[{}] Double Ctrl detected!", device_name);
+                                info!("[{}] Double Ctrl detected!", device_name);
                                 notify_double_ctrl(&conn).await?;
                                 *last_release = None;
                                 continue;
                             }
                         } else {
-                            println!(
+                            debug!(
                                 "[{}] Ctrl key released ({}) - first press",
                                 device_name, key_name
                             );
@@ -167,7 +168,7 @@ async fn monitor_device(
                 }
             }
             Err(e) => {
-                eprintln!("[{}] Error fetching events: {}", device_name, e);
+                error!("[{}] Error fetching events: {}", device_name, e);
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
@@ -187,14 +188,17 @@ async fn monitor_device(
 /// - Failed to spawn monitoring tasks
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Double Ctrl daemon starting...");
+    // Initialize logger (default to INFO level if RUST_LOG not set)
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    info!("Double Ctrl daemon starting...");
 
     let keyboards = find_keyboard_devices()?;
-    println!("Found {} keyboard device(s):", keyboards.len());
+    info!("Found {} keyboard device(s):", keyboards.len());
 
     for (i, path) in keyboards.iter().enumerate() {
         if let Ok(dev) = Device::open(path) {
-            println!(
+            info!(
                 "  [{}] {} - {}",
                 i,
                 path.display(),
@@ -207,9 +211,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Request the bus name so other applications can connect to us
     conn.request_name("io.github.noppomario.uti").await?;
-    println!("\nConnected to D-Bus session bus");
-    println!("Registered bus name: io.github.noppomario.uti");
-    println!("Monitoring all keyboard devices for double Ctrl press...\n");
+    info!("Connected to D-Bus session bus");
+    info!("Registered bus name: io.github.noppomario.uti");
+    info!("Monitoring all keyboard devices for double Ctrl press...");
 
     // Shared state for last Ctrl release time across all keyboards
     let last_ctrl_release = Arc::new(Mutex::new(None));
@@ -231,7 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(e) =
                 monitor_device(path, device_name.clone(), last_release_clone, conn_clone).await
             {
-                eprintln!("[{}] Monitoring task failed: {}", device_name, e);
+                error!("[{}] Monitoring task failed: {}", device_name, e);
             }
         });
 
