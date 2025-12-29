@@ -204,7 +204,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let conn = Arc::new(Connection::session().await?);
+
+    // Request the bus name so other applications can connect to us
+    conn.request_name("io.github.noppomario.uti").await?;
     println!("\nConnected to D-Bus session bus");
+    println!("Registered bus name: io.github.noppomario.uti");
     println!("Monitoring all keyboard devices for double Ctrl press...\n");
 
     // Shared state for last Ctrl release time across all keyboards

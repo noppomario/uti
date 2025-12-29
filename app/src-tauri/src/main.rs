@@ -26,7 +26,10 @@ use zbus::Connection;
 /// ```
 #[tauri::command]
 fn toggle_window(window: WebviewWindow) {
-    if window.is_visible().unwrap_or(false) {
+    let is_visible = window.is_visible().unwrap_or(false);
+    println!("Current window state: visible={}", is_visible);
+
+    if is_visible {
         let _ = window.hide();
         println!("Window hidden");
     } else {
@@ -57,12 +60,11 @@ fn toggle_window(window: WebviewWindow) {
 /// - Failed to create the D-Bus proxy
 /// - Failed to subscribe to the signal stream
 async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Connection::session().await?;
-    println!("Connected to D-Bus session bus");
-
-    // zbus v4 SignalStream API
     use futures_util::stream::StreamExt;
     use zbus::proxy;
+
+    let conn = Connection::session().await?;
+    println!("Connected to D-Bus session bus");
 
     /// D-Bus proxy interface for receiving DoubleTap signals
     #[proxy(
@@ -71,7 +73,7 @@ async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Er
     )]
     trait DoubleTap {
         /// Signal emitted when double Ctrl press is detected
-        #[zbus(signal)]
+        #[zbus(signal, name = "Triggered")]
         fn triggered(&self) -> zbus::Result<()>;
     }
 
