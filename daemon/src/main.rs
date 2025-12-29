@@ -4,7 +4,9 @@
 //! and sends D-Bus signals to notify the Tauri application.
 
 use evdev::{Device, EventType, Key};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use zbus::Connection;
 
 /// Maximum time interval between two Ctrl presses to be considered a double tap
@@ -43,19 +45,17 @@ async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
     Ok(())
 }
 
-/// Finds the first available keyboard device
+/// Finds all available keyboard devices
 ///
-/// Searches through `/dev/input/event*` devices to find a keyboard by checking
+/// Searches through `/dev/input/event*` devices to find keyboards by checking
 /// if the device supports the 'A' key.
 ///
 /// # Returns
 ///
-/// Returns the path to the keyboard device if found, or an error if no keyboard is detected.
-///
-/// # Errors
-///
-/// Returns `std::io::Error` with kind `NotFound` if no keyboard device is found.
-fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
+/// Returns a list of keyboard device paths.
+fn find_keyboard_devices() -> std::io::Result<Vec<std::path::PathBuf>> {
+    let mut keyboards = Vec::new();
+
     for entry in std::fs::read_dir("/dev/input")? {
         let path = entry?.path();
         if let Some(name) = path.file_name() {
@@ -65,72 +65,181 @@ fn find_keyboard_device() -> std::io::Result<std::path::PathBuf> {
                         .supported_keys()
                         .is_some_and(|keys| keys.contains(Key::KEY_A))
                     {
-                        println!("Found keyboard device: {}", path.display());
-                        return Ok(path);
+                        keyboards.push(path);
                     }
                 }
             }
         }
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "No keyboard found",
-    ))
+
+    if keyboards.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No keyboard found",
+        ));
+    }
+
+    Ok(keyboards)
+}
+
+/// Monitors a single keyboard device for double Ctrl presses
+///
+/// # Arguments
+///
+/// * `device_path` - Path to the keyboard device
+/// * `device_name` - Name of the keyboard device
+/// * `last_ctrl_release` - Shared state for tracking last Ctrl release time
+/// * `conn` - D-Bus connection for sending signals
+async fn monitor_device(
+    device_path: std::path::PathBuf,
+    device_name: String,
+    last_ctrl_release: Arc<Mutex<Option<Instant>>>,
+    conn: Arc<Connection>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut device = Device::open(&device_path)?;
+    println!("[{}] Monitoring started", device_name);
+
+    loop {
+        match device.fetch_events() {
+            Ok(events) => {
+                for event in events {
+                    // Log all key events for debugging
+                    if event.event_type() == EventType::KEY {
+                        let key = Key::new(event.code());
+                        println!(
+                            "[{}] Key event: {:?} value={} (type={:?})",
+                            device_name,
+                            key,
+                            event.value(),
+                            event.event_type()
+                        );
+                    }
+
+                    if event.event_type() != EventType::KEY {
+                        continue;
+                    }
+
+                    let key = Key::new(event.code());
+                    if key != Key::KEY_LEFTCTRL && key != Key::KEY_RIGHTCTRL {
+                        continue;
+                    }
+
+                    let key_name = if key == Key::KEY_LEFTCTRL {
+                        "LEFT"
+                    } else {
+                        "RIGHT"
+                    };
+
+                    // Key press event (value == 1)
+                    if event.value() == 1 {
+                        println!("[{}] Ctrl key pressed ({})", device_name, key_name);
+                    }
+
+                    // Key release event (value == 0)
+                    if event.value() == 0 {
+                        let now = Instant::now();
+                        let mut last_release = last_ctrl_release.lock().await;
+
+                        if let Some(last) = *last_release {
+                            let interval = now.duration_since(last);
+                            println!(
+                                "[{}] Ctrl key released ({}) - {}ms since last release",
+                                device_name,
+                                key_name,
+                                interval.as_millis()
+                            );
+
+                            if interval < DOUBLE_TAP_INTERVAL {
+                                println!("[{}] Double Ctrl detected!", device_name);
+                                notify_double_ctrl(&conn).await?;
+                                *last_release = None;
+                                continue;
+                            }
+                        } else {
+                            println!(
+                                "[{}] Ctrl key released ({}) - first press",
+                                device_name, key_name
+                            );
+                        }
+
+                        *last_release = Some(now);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[{}] Error fetching events: {}", device_name, e);
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
 }
 
 /// Main daemon entry point
 ///
-/// Initializes the keyboard device monitoring, connects to D-Bus, and enters
-/// an event loop to detect double Ctrl key presses.
+/// Initializes the keyboard device monitoring, connects to D-Bus, and spawns
+/// monitoring tasks for all keyboard devices.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - No keyboard device is found
 /// - Failed to connect to D-Bus session bus
-/// - Failed to read events from the keyboard device
+/// - Failed to spawn monitoring tasks
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Double Ctrl daemon starting...");
 
-    let device_path = find_keyboard_device()?;
-    let mut device = Device::open(&device_path)?;
-    let conn = Connection::session().await?;
+    let keyboards = find_keyboard_devices()?;
+    println!("Found {} keyboard device(s):", keyboards.len());
 
-    println!("Monitoring device: {}", device.name().unwrap_or("unknown"));
-    println!("Connected to D-Bus session bus");
-    println!("Waiting for double Ctrl press...");
-
-    let mut last_ctrl_release: Option<Instant> = None;
-
-    loop {
-        for event in device.fetch_events()? {
-            if event.event_type() != EventType::KEY {
-                continue;
-            }
-
-            let key = Key::new(event.code());
-            if key != Key::KEY_LEFTCTRL && key != Key::KEY_RIGHTCTRL {
-                continue;
-            }
-
-            // Key release event (value == 0)
-            if event.value() == 0 {
-                let now = Instant::now();
-
-                if let Some(last) = last_ctrl_release {
-                    if now.duration_since(last) < DOUBLE_TAP_INTERVAL {
-                        println!("Double Ctrl detected!");
-                        notify_double_ctrl(&conn).await?;
-                        last_ctrl_release = None;
-                        continue;
-                    }
-                }
-
-                last_ctrl_release = Some(now);
-            }
+    for (i, path) in keyboards.iter().enumerate() {
+        if let Ok(dev) = Device::open(path) {
+            println!(
+                "  [{}] {} - {}",
+                i,
+                path.display(),
+                dev.name().unwrap_or("unknown")
+            );
         }
     }
+
+    let conn = Arc::new(Connection::session().await?);
+    println!("\nConnected to D-Bus session bus");
+    println!("Monitoring all keyboard devices for double Ctrl press...\n");
+
+    // Shared state for last Ctrl release time across all keyboards
+    let last_ctrl_release = Arc::new(Mutex::new(None));
+
+    // Spawn a monitoring task for each keyboard device
+    let mut tasks = vec![];
+
+    for path in keyboards {
+        let device_name = if let Ok(dev) = Device::open(&path) {
+            dev.name().unwrap_or("unknown").to_string()
+        } else {
+            path.display().to_string()
+        };
+
+        let last_release_clone = Arc::clone(&last_ctrl_release);
+        let conn_clone = Arc::clone(&conn);
+
+        let task = tokio::spawn(async move {
+            if let Err(e) =
+                monitor_device(path, device_name.clone(), last_release_clone, conn_clone).await
+            {
+                eprintln!("[{}] Monitoring task failed: {}", device_name, e);
+            }
+        });
+
+        tasks.push(task);
+    }
+
+    // Wait for all tasks to complete (they run indefinitely)
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -192,18 +301,20 @@ mod tests {
     }
 
     #[test]
-    fn test_find_keyboard_device_path_format() {
+    fn test_find_keyboard_devices_path_format() {
         // This test verifies that the function looks for event devices
         // We can't actually test device finding without hardware/permissions,
         // but we can document expected behavior
-        let result = find_keyboard_device();
+        let result = find_keyboard_devices();
 
-        // If a keyboard is found, path should start with /dev/input/event
-        if let Ok(path) = result {
-            assert!(
-                path.starts_with("/dev/input/event"),
-                "Keyboard device path should be /dev/input/eventN"
-            );
+        // If keyboards are found, paths should start with /dev/input/event
+        if let Ok(keyboards) = result {
+            for path in keyboards {
+                assert!(
+                    path.starts_with("/dev/input/event"),
+                    "Keyboard device path should be /dev/input/eventN"
+                );
+            }
         }
         // If no keyboard found, that's also acceptable in test environment
     }
