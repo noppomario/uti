@@ -4,7 +4,8 @@ A desktop utility that toggles window visibility with double Ctrl press
 
 ## Overview
 
-**uti** is a desktop utility for Linux that allows you to toggle window visibility by quickly pressing the Ctrl key twice.
+**uti** is a desktop utility for Linux that allows you to toggle window
+visibility by quickly pressing the Ctrl key twice.
 
 ### Technology Stack
 
@@ -15,7 +16,7 @@ A desktop utility that toggles window visibility with double Ctrl press
 
 ## Architecture
 
-```
+```text
 [double-ctrl daemon]  ← Runs with root/input permissions
   ↓ (Monitor Ctrl via evdev)
   ↓ (Detect double press within 300ms)
@@ -46,7 +47,7 @@ cd uti
 
 ### 2. Build and Install Daemon
 
-**Option A: Quick Install (Recommended)**
+#### Option A: Quick Install (Recommended)
 
 ```bash
 # Build daemon (as normal user)
@@ -64,7 +65,7 @@ To uninstall:
 sudo ./uninstall.sh
 ```
 
-**Option B: Manual Install**
+#### Option B: Manual Install
 
 ```bash
 # Build daemon
@@ -135,7 +136,7 @@ journalctl -u double-ctrl.service -f
 
 ## Project Structure
 
-```
+```text
 uti/
 ├── daemon/                          # Ctrl detection daemon
 │   ├── Cargo.toml

@@ -179,7 +179,8 @@ sudo -E env "PATH=$PATH" cargo run
 
 ### Slow first build
 
-First Rust build downloads and compiles all dependencies (~5 minutes). Subsequent builds are much faster (<30 seconds for small changes).
+First Rust build downloads and compiles all dependencies (~5 minutes).
+Subsequent builds are much faster (<30 seconds for small changes).
 
 ---
 
