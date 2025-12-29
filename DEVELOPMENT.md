@@ -38,6 +38,7 @@ sudo dnf install -y \
 ```
 
 **What these provide:**
+
 - **webkit2gtk4.1-devel**: Web rendering for Tauri UI
 - **gtk3-devel, pango-devel, atk-devel, gdk-pixbuf2-devel**: GTK3 stack
 - **libappindicator-gtk3-devel**: System tray support
@@ -84,37 +85,100 @@ bun run ci:local
 
 ## Development Workflow
 
+### Initial Setup (one-time)
+
+Add your user to `input` group to access keyboard devices:
+
 ```bash
-# Run frontend + Tauri app
+sudo usermod -a -G input $USER
+```
+
+**Important**: Logout and login again for group membership to take effect.
+
+Verify group membership:
+
+```bash
+groups
+# Should include "input"
+```
+
+### Running the Application
+
+```bash
+# Terminal 1: Run daemon (no sudo needed after group setup)
+cd daemon
+cargo run
+
+# Terminal 2: Run Tauri app
 cd app
 bun run tauri:dev
-
-# Run daemon (requires root, in separate terminal)
-cd daemon
-sudo cargo run
 ```
+
+### Why input group?
+
+- Daemon needs to read `/dev/input/event*` (keyboard devices)
+- These devices are owned by `root:input` with `660` permissions
+- Adding user to `input` group grants read access
+- This is the standard Linux approach (similar to `docker`, `audio` groups)
+- **Reversible**: Remove with `sudo gpasswd -d $USER input`
+
+### Alternative (if you prefer not to modify groups)
+
+If you prefer not to add your user to the `input` group:
+
+```bash
+# Run daemon with sudo (not recommended for development)
+sudo -E env "PATH=$PATH" cargo run
+```
+
+**Warnings**:
+
+- Daemon runs as root (less secure during development)
+- Creates root-owned build artifacts in `target/`
+- Makes debugging more difficult
 
 ---
 
 ## Troubleshooting
 
 ### "webkit2gtk-4.1 not found"
+
 ```bash
 sudo dnf install webkit2gtk4.1-devel
 ```
 
 ### "libevdev not found"
+
 ```bash
 sudo dnf install libevdev-devel
 ```
 
 ### "permission denied" when running daemon
-Daemon requires root to access `/dev/input`:
+
+Daemon needs access to `/dev/input/*` devices.
+
+**Solution**: Add user to `input` group (see Development Workflow section above):
+
 ```bash
-sudo cargo run
+sudo usermod -a -G input $USER
+# Logout and login, then:
+cargo run  # No sudo needed
+```
+
+### "sudo cargo run" fails with "command not found"
+
+`cargo` is installed per-user via rustup and not available in root's PATH.
+
+**Solution**: Use `input` group approach instead (see Development Workflow section).
+
+If you must use sudo:
+
+```bash
+sudo -E env "PATH=$PATH" cargo run
 ```
 
 ### Slow first build
+
 First Rust build downloads and compiles all dependencies (~5 minutes). Subsequent builds are much faster (<30 seconds for small changes).
 
 ---
@@ -122,11 +186,13 @@ First Rust build downloads and compiles all dependencies (~5 minutes). Subsequen
 ## IDE Setup (VSCode)
 
 Recommended extensions (listed in `.vscode/extensions.json`):
+
 - **Biome**: TypeScript/React linting and formatting
 - **rust-analyzer**: Rust language support
 - **Tauri**: Tauri development tools
 
 Settings (`.vscode/settings.json`) are pre-configured:
+
 - Format on save: Enabled
 - Biome for TypeScript/React
 - rust-analyzer for Rust
@@ -141,5 +207,3 @@ Settings (`.vscode/settings.json`) are pre-configured:
 - [Architectural Decisions](./.claude/rules/decisions.md)
 
 ---
-
-**Last Updated**: 2025-12-27

@@ -10,6 +10,9 @@ bun.lockb
 dist/
 app/dist/
 
+# Tauri generated files
+app/src-tauri/gen/
+
 # OS
 .DS_Store
 Thumbs.db

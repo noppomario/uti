@@ -11,24 +11,30 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Build the daemon
-echo "[1/4] Building daemon..."
-cd daemon
-cargo build --release
-cd ..
+# Check if daemon binary exists
+if [ ! -f "daemon/target/release/double-ctrl" ]; then
+    echo "Error: Daemon binary not found"
+    echo ""
+    echo "Please build the daemon first:"
+    echo "  cd daemon"
+    echo "  cargo build --release"
+    echo "  cd .."
+    echo ""
+    exit 1
+fi
 
 # Install the daemon
-echo "[2/4] Installing daemon..."
+echo "[1/3] Installing daemon..."
 cp daemon/target/release/double-ctrl /usr/local/bin/
 chmod +x /usr/local/bin/double-ctrl
 
 # Install systemd service
-echo "[3/4] Setting up systemd service..."
+echo "[2/3] Setting up systemd service..."
 cp daemon/systemd/double-ctrl.service /etc/systemd/system/
 systemctl daemon-reload
 
 # Enable the service
-echo "[4/4] Enabling service..."
+echo "[3/3] Enabling service..."
 systemctl enable double-ctrl.service
 systemctl start double-ctrl.service
 

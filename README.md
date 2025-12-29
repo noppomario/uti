@@ -44,17 +44,22 @@ git clone https://github.com/noppomario/uti.git
 cd uti
 ```
 
-### 2. Install Daemon
+### 2. Build and Install Daemon
 
 **Option A: Quick Install (Recommended)**
 
 ```bash
+# Build daemon (as normal user)
+cd daemon
+cargo build --release
+cd ..
+
+# Install system-wide (requires root)
 sudo ./install.sh
 ```
 
-This script will automatically build the daemon, install it to `/usr/local/bin/`, and set up the systemd service.
-
 To uninstall:
+
 ```bash
 sudo ./uninstall.sh
 ```
@@ -62,10 +67,11 @@ sudo ./uninstall.sh
 **Option B: Manual Install**
 
 ```bash
+# Build daemon
 cd daemon
 cargo build --release
 
-# Install
+# Install (requires root)
 sudo cp target/release/double-ctrl /usr/local/bin/
 sudo cp systemd/double-ctrl.service /etc/systemd/system/
 
@@ -88,16 +94,20 @@ bun run tauri:build # Release build
 
 ## Development
 
-### Daemon Development
+**For complete development setup instructions**, see [DEVELOPMENT.md](./DEVELOPMENT.md)
+
+### Quick Start
 
 ```bash
+# One-time setup: Add user to input group
+sudo usermod -a -G input $USER
+# Logout and login for changes to take effect
+
+# Terminal 1: Run daemon
 cd daemon
-sudo cargo run  # Requires root permissions
-```
+cargo run
 
-### App Development
-
-```bash
+# Terminal 2: Run Tauri app
 cd app
 bun install
 bun run tauri:dev
@@ -155,9 +165,9 @@ uti/
 # Check logs
 sudo journalctl -u double-ctrl.service -n 50
 
-# Test manual execution
+# Test manual execution (see DEVELOPMENT.md for setup)
 cd daemon
-sudo cargo run
+cargo run
 ```
 
 ### D-Bus Communication Fails
