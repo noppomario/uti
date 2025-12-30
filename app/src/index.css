@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Light theme colors */
+  --color-app-bg: #ffffff;
+  --color-app-header: #f8fafc; /* slate-50 */
+  --color-app-header-border: #e2e8f0; /* slate-200 */
+  --color-app-item: #f1f5f9; /* slate-100 */
+  --color-app-item-hover: #e2e8f0; /* slate-200 */
+  --color-app-item-selected: #3b82f6; /* blue-500 */
+  --color-app-text: #1e293b; /* slate-800 */
+  --color-app-text-muted: #64748b; /* slate-500 */
+  --color-app-text-on-selected: #ffffff;
+}
+
+.dark {
+  /* Dark theme colors */
+  --color-app-bg: #0f172a; /* slate-900 */
+  --color-app-header: #1e293b; /* slate-800 */
+  --color-app-header-border: #334155; /* slate-700 */
+  --color-app-item: #334155; /* slate-700 */
+  --color-app-item-hover: #475569; /* slate-600 */
+  --color-app-item-selected: #2563eb; /* blue-600 */
+  --color-app-text: #e2e8f0; /* slate-200 */
+  --color-app-text-muted: #94a3b8; /* slate-400 */
+  --color-app-text-on-selected: #ffffff;
+}

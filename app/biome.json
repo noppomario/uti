@@ -52,5 +52,11 @@
     "formatter": {
       "trailingCommas": "none"
     }
+  },
+  "css": {
+    "parser": {
+      "cssModules": false,
+      "tailwindDirectives": true
+    }
   }
 }

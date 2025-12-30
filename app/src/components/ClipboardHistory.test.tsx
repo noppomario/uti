@@ -26,16 +26,16 @@ describe('ClipboardHistory', () => {
     const onSelect = vi.fn();
     render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
-    expect(screen.getByText('Item 1')).toBeDefined();
-    expect(screen.getByText('Item 2')).toBeDefined();
-    expect(screen.getByText('Item 3')).toBeDefined();
+    expect(screen.getByText(/1: Item 1/)).toBeDefined();
+    expect(screen.getByText(/2: Item 2/)).toBeDefined();
+    expect(screen.getByText(/3: Item 3/)).toBeDefined();
   });
 
   it('should call onSelect with item text on click', () => {
     const onSelect = vi.fn();
     render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
-    const item = screen.getByText('Item 2');
+    const item = screen.getByText(/2: Item 2/);
     fireEvent.click(item);
 
     expect(onSelect).toHaveBeenCalledWith('Item 2');
@@ -47,7 +47,7 @@ describe('ClipboardHistory', () => {
     const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
     const firstItem = container.querySelector('[data-selected="true"]');
-    expect(firstItem?.textContent).toContain('Item 1');
+    expect(firstItem?.textContent).toContain('1: Item 1');
   });
 
   it('should navigate down with ArrowDown key', () => {
@@ -60,7 +60,7 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowDown' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('Item 2');
+    expect(selectedItem?.textContent).toContain('2: Item 2');
   });
 
   it('should navigate up with ArrowUp key', () => {
@@ -76,7 +76,7 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowUp' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('Item 1');
+    expect(selectedItem?.textContent).toContain('1: Item 1');
   });
 
   it('should not go below first item with ArrowUp', () => {
@@ -90,7 +90,7 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowUp' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('Item 1');
+    expect(selectedItem?.textContent).toContain('1: Item 1');
   });
 
   it('should not go beyond last item with ArrowDown', () => {
@@ -107,7 +107,7 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowDown' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('Item 3');
+    expect(selectedItem?.textContent).toContain('3: Item 3');
   });
 
   it('should call onSelect with selected item on Enter key', () => {
@@ -133,5 +133,31 @@ describe('ClipboardHistory', () => {
 
     const item = container.querySelector('[data-clipboard-item]');
     expect(item?.classList.contains('truncate')).toBe(true);
+  });
+
+  it('should display item numbers in format "1: text"', () => {
+    const onSelect = vi.fn();
+    render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+    expect(screen.getByText(/1:/)).toBeDefined();
+    expect(screen.getByText(/2:/)).toBeDefined();
+    expect(screen.getByText(/3:/)).toBeDefined();
+  });
+
+  it('should have dark mode classes for selected items', () => {
+    const onSelect = vi.fn();
+    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+    const selectedItem = container.querySelector('[data-selected="true"]');
+    expect(selectedItem?.className).toContain('dark:bg-blue-600');
+  });
+
+  it('should have dark mode classes for unselected items', () => {
+    const onSelect = vi.fn();
+    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+    const unselectedItem = container.querySelector('[data-selected="false"]');
+    expect(unselectedItem?.className).toContain('dark:bg-gray-800');
+    expect(unselectedItem?.className).toContain('dark:text-gray-200');
   });
 });

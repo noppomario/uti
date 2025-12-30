@@ -10,9 +10,115 @@ mod clipboard_store;
 
 use clipboard::ClipboardItem;
 use clipboard_store::ClipboardStore;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, State, WebviewWindow};
 use zbus::Connection;
+
+/// Application configuration
+///
+/// This struct represents the user's configuration for the uti application.
+/// The configuration is stored in `~/.config/uti/config.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppConfig {
+    /// Theme mode: 'light' or 'dark'
+    #[serde(default = "default_theme")]
+    pub theme: String,
+
+    /// Maximum number of clipboard items to store
+    #[serde(default = "default_clipboard_limit")]
+    pub clipboard_history_limit: usize,
+}
+
+fn default_theme() -> String {
+    "dark".to_string()
+}
+
+fn default_clipboard_limit() -> usize {
+    50
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            theme: default_theme(),
+            clipboard_history_limit: default_clipboard_limit(),
+        }
+    }
+}
+
+impl AppConfig {
+    /// Get the path to the config file
+    ///
+    /// Returns `~/.config/uti/config.json`
+    fn get_config_path() -> PathBuf {
+        let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        path.push("uti");
+        path.push("config.json");
+        path
+    }
+
+    /// Validate configuration values
+    ///
+    /// Ensures theme is one of: 'dark' or 'light'
+    fn validate(&mut self) {
+        // Validate theme
+        if !matches!(self.theme.as_str(), "dark" | "light") {
+            eprintln!("Invalid theme '{}', falling back to 'dark'", self.theme);
+            self.theme = "dark".to_string();
+        }
+
+        // Validate clipboard_history_limit
+        if self.clipboard_history_limit == 0 {
+            eprintln!("clipboard_history_limit cannot be 0, using default (50)");
+            self.clipboard_history_limit = 50;
+        }
+    }
+
+    /// Load configuration from file
+    ///
+    /// If the file doesn't exist or can't be read, returns default config.
+    fn load() -> Self {
+        let path = Self::get_config_path();
+
+        match std::fs::read_to_string(&path) {
+            Ok(contents) => match serde_json::from_str::<Self>(&contents) {
+                Ok(mut config) => {
+                    println!("Loaded config from: {:?}", path);
+                    config.validate();
+                    config
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse config file: {}", e);
+                    Self::default()
+                }
+            },
+            Err(_) => {
+                println!("Config file not found, using defaults");
+                Self::default()
+            }
+        }
+    }
+}
+
+/// Reads the application configuration
+///
+/// Returns the user's configuration from `~/.config/uti/config.json`.
+/// If the file doesn't exist, returns default configuration.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const config = await invoke('read_config');
+/// console.log(config.theme); // 'dark' | 'light'
+/// ```
+#[tauri::command]
+fn read_config() -> AppConfig {
+    AppConfig::load()
+}
 
 /// Gets the clipboard history
 ///
@@ -174,9 +280,21 @@ async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Er
 /// Sets up the Tauri application with clipboard management commands
 /// and spawns an async task to listen for D-Bus signals.
 fn main() {
-    // Load clipboard store from file
+    // Load config to get clipboard history limit
+    let config = AppConfig::load();
+
+    // Load clipboard store from file, respecting config limit
     let path = ClipboardStore::get_storage_path();
-    let store = ClipboardStore::load(&path);
+    let mut store = ClipboardStore::load(&path);
+
+    // Apply config limit (in case it changed since last save)
+    if store.max_items != config.clipboard_history_limit {
+        store.max_items = config.clipboard_history_limit;
+        // Save updated limit to file
+        if let Err(e) = store.save(&path) {
+            eprintln!("Failed to save updated max_items: {}", e);
+        }
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -185,7 +303,8 @@ fn main() {
             toggle_window,
             get_clipboard_history,
             add_clipboard_item,
-            paste_item
+            paste_item,
+            read_config
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
