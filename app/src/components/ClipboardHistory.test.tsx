@@ -47,7 +47,8 @@ describe('ClipboardHistory', () => {
     const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
     const firstItem = container.querySelector('[data-selected="true"]');
-    expect(firstItem?.textContent).toContain('1: Item 1');
+    expect(firstItem?.textContent).toContain('1:');
+    expect(firstItem?.textContent).toContain('Item 1');
   });
 
   it('should navigate down with ArrowDown key', () => {
@@ -60,7 +61,8 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowDown' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('2: Item 2');
+    expect(selectedItem?.textContent).toContain('2:');
+    expect(selectedItem?.textContent).toContain('Item 2');
   });
 
   it('should navigate up with ArrowUp key', () => {
@@ -76,7 +78,8 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowUp' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('1: Item 1');
+    expect(selectedItem?.textContent).toContain('1:');
+    expect(selectedItem?.textContent).toContain('Item 1');
   });
 
   it('should not go below first item with ArrowUp', () => {
@@ -90,7 +93,8 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowUp' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('1: Item 1');
+    expect(selectedItem?.textContent).toContain('1:');
+    expect(selectedItem?.textContent).toContain('Item 1');
   });
 
   it('should not go beyond last item with ArrowDown', () => {
@@ -107,7 +111,8 @@ describe('ClipboardHistory', () => {
     fireEvent.keyDown(list, { key: 'ArrowDown' });
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.textContent).toContain('3: Item 3');
+    expect(selectedItem?.textContent).toContain('3:');
+    expect(selectedItem?.textContent).toContain('Item 3');
   });
 
   it('should call onSelect with selected item on Enter key', () => {
@@ -144,20 +149,22 @@ describe('ClipboardHistory', () => {
     expect(screen.getByText(/3:/)).toBeDefined();
   });
 
-  it('should have dark mode classes for selected items', () => {
+  it('should have semantic color classes for selected items', () => {
     const onSelect = vi.fn();
     const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
     const selectedItem = container.querySelector('[data-selected="true"]');
-    expect(selectedItem?.className).toContain('dark:bg-blue-600');
+    expect(selectedItem?.className).toContain('bg-app-item-selected');
+    expect(selectedItem?.className).toContain('text-app-text-on-selected');
   });
 
-  it('should have dark mode classes for unselected items', () => {
+  it('should have semantic color classes for unselected items', () => {
     const onSelect = vi.fn();
     const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
     const unselectedItem = container.querySelector('[data-selected="false"]');
-    expect(unselectedItem?.className).toContain('dark:bg-gray-800');
-    expect(unselectedItem?.className).toContain('dark:text-gray-200');
+    expect(unselectedItem?.className).toContain('bg-app-item');
+    expect(unselectedItem?.className).toContain('text-app-text');
+    expect(unselectedItem?.className).toContain('hover:bg-app-item-hover');
   });
 });
