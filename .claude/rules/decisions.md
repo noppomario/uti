@@ -491,6 +491,236 @@ bun add -d vitest @testing-library/react @testing-library/dom happy-dom
 
 ---
 
+---
+
+## ADR-011: Externalize configuration to JSON file
+
+**Date**: 2025-12-30
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Application settings (theme, clipboard limit) were hardcoded in source files.
+Users need to customize settings without recompiling.
+
+### Decision
+
+Use `~/.config/uti/config.json` for persistent user configuration with:
+
+- `theme`: "light" or "dark"
+- `clipboardHistoryLimit`: Number of items to store
+
+### Rationale
+
+**Separation of concerns**:
+
+- Code defines behavior
+- Config defines preferences
+- Clear boundary between application logic and user settings
+
+**Linux standards**:
+
+- Follow XDG Base Directory spec (`~/.config/`)
+- JSON format for human readability
+- Auto-created with defaults on first run
+
+**Auto-migration**:
+
+- `clipboard.json` max_items syncs with `clipboardHistoryLimit` on startup
+- No manual intervention required for existing users
+
+### Alternatives Considered
+
+1. **Environment variables**
+   - Pro: Simple
+   - Con: Not persistent, hard to edit
+
+2. **TOML/YAML format**
+   - Pro: More human-friendly
+   - Con: Requires additional parser, JSON is standard
+
+3. **Single combined file**
+   - Pro: One file for everything
+   - Con: Mixing config and data (clipboard history)
+
+### Consequences
+
+**Positive**:
+
+- Users can customize settings without code changes
+- Clear separation: `config.json` (settings) vs `clipboard.json` (data)
+- Auto-migration ensures smooth upgrades
+
+**Negative**:
+
+- Two JSON files instead of one
+- Potential for config/data desync (mitigated by auto-migration)
+
+**Reconsider when**:
+
+- Need for more complex config (nested settings, profiles)
+- Performance issues with JSON parsing (unlikely at this scale)
+
+---
+
+## ADR-012: Centralize theme management with Tailwind CSS v4 @theme
+
+**Date**: 2025-12-30
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Color definitions were scattered across 6 locations (components, CSS files).
+Tailwind CSS v4 introduced CSS-first configuration with `@theme` directive.
+
+### Decision
+
+Use Tailwind v4 `@theme` directive with CSS variables in `index.css`:
+
+```css
+@theme {
+  --color-app-bg: #ffffff;
+  --color-app-item: #f1f5f9;
+}
+
+.dark {
+  --color-app-bg: #0f172a;
+  --color-app-item: #334155;
+}
+```
+
+Components use semantic tokens: `bg-app-bg`, `text-app-text`
+
+### Rationale
+
+**Centralization**:
+
+- All colors in one file (`index.css`)
+- Single source of truth for theme
+- Easy to modify entire color scheme
+
+**Tailwind v4 best practices**:
+
+- CSS-first approach (vs v3's JavaScript config)
+- Leverages native CSS custom properties
+- Better build-time performance
+
+**Semantic naming**:
+
+- `bg-app-bg` vs `bg-slate-900` (implementation detail)
+- Easier to understand component intent
+- Can change underlying colors without touching components
+
+### Alternatives Considered
+
+1. **Tailwind v3 style (tailwind.config.js)**
+   - Pro: Familiar to v3 users
+   - Con: Not the v4 recommended approach
+
+2. **Inline CSS variables in components**
+   - Pro: Co-located with usage
+   - Con: Duplicated definitions, hard to maintain
+
+3. **CSS modules**
+   - Pro: Scoped styles
+   - Con: More complex, doesn't leverage Tailwind utilities
+
+### Consequences
+
+**Positive**:
+
+- Theme changes in one file
+- Follows Tailwind v4 conventions
+- Dark mode via simple `.dark` class toggle
+
+**Negative**:
+
+- VSCode CSS language server doesn't recognize `@theme` (shows warnings)
+- Requires Tailwind v4 (beta), not stable yet
+
+**Reconsider when**:
+
+- Tailwind v5 changes `@theme` directive significantly
+- Need for component-specific color overrides
+
+---
+
+## ADR-013: Class-based dark mode only (no system theme detection)
+
+**Date**: 2025-12-30
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Attempted to detect system theme via `prefers-color-scheme` media query.
+WebKitGTK + Wayland doesn't properly report system color scheme.
+
+### Decision
+
+Use explicit class-based dark mode controlled by `config.json`:
+
+- `@custom-variant dark (&:where(.dark, .dark *))`
+- Theme set by `theme` config option
+- No automatic system detection
+
+### Rationale
+
+**Technical limitation**:
+
+- WebKitGTK on Wayland doesn't expose `prefers-color-scheme`
+- Tested with standalone HTML - same issue
+- X11 may work, but Wayland is primary target (Fedora 43 GNOME)
+
+**User control**:
+
+- Explicit config is predictable
+- No "magic" behavior that might fail
+- Users can set theme independently of system
+
+**Implementation simplicity**:
+
+- Class-based switching is reliable
+- No need for media query listeners
+- Works on all platforms
+
+### Alternatives Considered
+
+1. **Media query with fallback**
+   - Pro: Respects system settings when available
+   - Con: Unreliable on target platform
+
+2. **Tauri API for system theme**
+   - Pro: Platform-specific detection
+   - Con: Tauri 2.x doesn't expose this API
+
+3. **Manual theme toggle button**
+   - Pro: User control
+   - Con: Extra UI complexity for MVP
+
+### Consequences
+
+**Positive**:
+
+- Reliable on all platforms
+- Clear user control
+- Simple implementation
+
+**Negative**:
+
+- No automatic sync with system theme
+- Users must manually set preference
+
+**Reconsider when**:
+
+- WebKitGTK fixes `prefers-color-scheme` on Wayland
+- Tauri adds system theme detection API
+- Significant user demand for auto-detection
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

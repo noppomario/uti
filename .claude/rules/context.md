@@ -60,24 +60,31 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 ### Why NOT complex folder structure?
 
 - YAGNI principle - don't add complexity until needed
-- Current scale: 3 files, 1 component
-- Will refactor when we have 5+ components
+- Current scale: 6 TypeScript files (~369 lines), 2 components
+- Will refactor when complexity requires better organization
 
 ## Repository Structure
 
 ```text
 uti/
-├── .vscode/              # VSCode configuration
-├── app/                  # Tauri frontend
+├── .vscode/                    # VSCode configuration
+├── app/                        # Tauri frontend
 │   ├── src/
-│   │   ├── App.tsx      # Main component (56 lines)
-│   │   ├── main.tsx     # Entry point (20 lines)
-│   │   └── index.css    # Tailwind imports
-│   └── src-tauri/       # Rust backend
-│       └── src/main.rs  # D-Bus listener + window control
+│   │   ├── components/
+│   │   │   └── ClipboardHistory.tsx  # Clipboard history list with keyboard nav
+│   │   ├── hooks/
+│   │   │   └── useClipboard.ts       # Clipboard monitoring hook
+│   │   ├── App.tsx             # Main component
+│   │   ├── main.tsx            # Entry point + theme initialization
+│   │   ├── config.ts           # Configuration loader
+│   │   └── index.css           # Tailwind v4 theme with @theme directive
+│   └── src-tauri/              # Rust backend
+│       └── src/
+│           ├── main.rs         # D-Bus listener + window control + config
+│           └── clipboard_store.rs    # LRU clipboard storage
 ├── daemon/
-│   └── src/main.rs      # evdev keyboard monitor + D-Bus sender
-└── README.md            # English documentation
+│   └── src/main.rs             # evdev keyboard monitor + D-Bus sender
+└── README.md                   # English documentation
 ```
 
 ## Important Constraints
@@ -95,6 +102,32 @@ uti/
 - D-Bus path: `/io/github/noppomario/uti/DoubleTap`
 - Application ID: `io.github.noppomario.uti`
 - GitHub repo: `noppomario/uti`
+
+### Configuration Management
+
+**User configuration file**: `~/.config/uti/config.json`
+
+**Format**:
+
+```json
+{
+  "theme": "dark",
+  "clipboardHistoryLimit": 50
+}
+```
+
+**Validation**:
+
+- `theme`: "light" or "dark" (default: "dark")
+- `clipboardHistoryLimit`: Must be > 0 (default: 50)
+
+**Auto-migration**: On startup, `clipboard.json` max_items syncs with
+`clipboardHistoryLimit`
+
+**Implementation**:
+
+- Rust: `AppConfig::load()` at startup
+- TypeScript: `getConfig()` async function
 
 ## Development Environment
 
