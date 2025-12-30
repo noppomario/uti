@@ -93,9 +93,15 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-white flex flex-col">
-      <div className="border-b px-2 py-1 bg-gray-50">
-        <h1 className="text-xs font-semibold text-gray-800">Clipboard History</h1>
+    <div className="h-screen bg-app-bg flex flex-col">
+      <div className="border-b border-app-header-border px-2 py-1 bg-app-header">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xs font-semibold text-app-text">Clipboard History</h1>
+          <span className="text-xs text-app-text-muted" title="Dark mode indicator">
+            <span className="hidden dark:inline">🌙</span>
+            <span className="inline dark:hidden">☀️</span>
+          </span>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         <ClipboardHistory items={history} onSelect={handleSelect} />

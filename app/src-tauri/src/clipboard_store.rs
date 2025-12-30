@@ -18,11 +18,11 @@ pub struct ClipboardStore {
 impl ClipboardStore {
     /// Creates a new clipboard store with default settings
     ///
-    /// Default max_items is 10.
+    /// Default max_items is 50.
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
-            max_items: 10,
+            max_items: 50,
         }
     }
 
@@ -124,7 +124,7 @@ mod tests {
     fn test_new_creates_empty_store() {
         let store = ClipboardStore::new();
         assert_eq!(store.items.len(), 0);
-        assert_eq!(store.max_items, 10);
+        assert_eq!(store.max_items, 50);
     }
 
     #[test]
@@ -188,7 +188,7 @@ mod tests {
 
         let store = ClipboardStore::load(&path);
         assert_eq!(store.items.len(), 0);
-        assert_eq!(store.max_items, 10);
+        assert_eq!(store.max_items, 50);
     }
 
     #[test]

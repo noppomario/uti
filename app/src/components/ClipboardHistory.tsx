@@ -62,7 +62,7 @@ export function ClipboardHistory({ items, onSelect }: ClipboardHistoryProps) {
   };
 
   if (items.length === 0) {
-    return <div className="p-4 text-center text-gray-500">No clipboard history</div>;
+    return <div className="p-4 text-center text-app-text-muted">No clipboard history</div>;
   }
 
   return (
@@ -85,12 +85,12 @@ export function ClipboardHistory({ items, onSelect }: ClipboardHistoryProps) {
 							truncate
 							${
                 index === selectedIndex
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  ? 'bg-app-item-selected text-app-text-on-selected'
+                  : 'bg-app-item text-app-text hover:bg-app-item-hover'
               }
 						`}
           >
-            {item.text}
+            {index + 1}:&nbsp;&nbsp;&nbsp;&nbsp;{item.text}
           </button>
         </li>
       ))}

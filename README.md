@@ -88,6 +88,35 @@ bun run tauri:dev   # Development mode
 bun run tauri:build # Release build
 ```
 
+## Configuration
+
+The application can be configured via `~/.config/uti/config.json`.
+
+### Configuration File
+
+Create `~/.config/uti/config.json` with the following options:
+
+```json
+{
+  "theme": "dark",
+  "clipboardHistoryLimit": 50
+}
+```
+
+### Configuration Options
+
+| Option                  | Type   | Default  | Description                                     |
+|-------------------------|--------|----------|-------------------------------------------------|
+| `theme`                 | string | `"dark"` | UI theme mode: `"dark"` or `"light"`            |
+| `clipboardHistoryLimit` | number | `50`     | Maximum number of clipboard items to store      |
+
+### Theme Options
+
+- `"dark"` - Use dark mode (default)
+- `"light"` - Use light mode
+
+**Note**: If the config file doesn't exist, default values are used.
+
 ## Development
 
 **For complete development setup instructions**, see [DEVELOPMENT.md](./DEVELOPMENT.md)
