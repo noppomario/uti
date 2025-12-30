@@ -23,12 +23,15 @@
     "windows": [
       {
         "title": "uti",
-        "width": 800,
+        "width": 250,
         "height": 600,
-        "resizable": true,
+        "resizable": false,
         "fullscreen": false,
-        "decorations": true,
-        "center": true
+        "decorations": false,
+        "center": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {
@@ -44,7 +47,11 @@
             "core:window:allow-show",
             "core:window:allow-hide",
             "core:window:allow-set-focus",
-            "core:window:allow-is-visible"
+            "core:window:allow-is-visible",
+            "core:window:allow-cursor-position",
+            "core:window:allow-set-position",
+            "clipboard-manager:allow-read-text",
+            "clipboard-manager:allow-write-text"
           ]
         }
       ]

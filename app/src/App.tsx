@@ -1,16 +1,36 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useEffect } from 'react';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { useCallback, useEffect, useState } from 'react';
+import { ClipboardHistory, type ClipboardItem } from './components/ClipboardHistory';
+import { useClipboard } from './hooks/useClipboard';
 
 /**
  * Main application component
  *
- * Listens for double-ctrl-pressed events from the Rust backend and toggles
- * window visibility when the event is received.
+ * Displays clipboard history and handles window visibility toggling.
  *
  * @returns The main application UI
  */
 function App() {
+  const [history, setHistory] = useState<ClipboardItem[]>([]);
+
+  // Start clipboard monitoring
+  useClipboard();
+
+  /**
+   * Loads clipboard history from backend
+   */
+  const loadHistory = useCallback(async () => {
+    try {
+      const items = await invoke<ClipboardItem[]>('get_clipboard_history');
+      setHistory(items);
+    } catch (err) {
+      console.error('Failed to load clipboard history:', err);
+    }
+  }, []);
+
+  // Listen for double Ctrl press to toggle window
   useEffect(() => {
     /**
      * Sets up the event listener for double Ctrl press events
@@ -25,6 +45,8 @@ function App() {
         invoke('toggle_window')
           .then(() => {
             console.log('toggle_window command completed');
+            // Load clipboard history when window becomes visible
+            loadHistory();
           })
           .catch(err => {
             console.error('toggle_window command failed:', err);
@@ -50,20 +72,33 @@ function App() {
         unlisten();
       }
     };
-  }, []);
+  }, [loadHistory]);
+
+  /**
+   * Handles clipboard item selection
+   *
+   * @param text - The selected clipboard text
+   */
+  const handleSelect = async (text: string) => {
+    try {
+      // Write to system clipboard
+      await writeText(text);
+      console.log('Clipboard updated:', text);
+
+      // Hide window after selection
+      await invoke('toggle_window');
+    } catch (err) {
+      console.error('Failed to paste item:', err);
+    }
+  };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">uti</h1>
-        <p className="text-gray-600 mb-6">Press Ctrl twice to toggle visibility</p>
-        <button
-          type="button"
-          onClick={() => invoke('toggle_window')}
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded transition duration-200"
-        >
-          Toggle Window
-        </button>
+    <div className="h-screen bg-white flex flex-col">
+      <div className="border-b px-2 py-1 bg-gray-50">
+        <h1 className="text-xs font-semibold text-gray-800">Clipboard History</h1>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <ClipboardHistory items={history} onSelect={handleSelect} />
       </div>
     </div>
   );

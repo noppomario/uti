@@ -311,19 +311,31 @@ mod tests {
     #[test]
     fn test_find_keyboard_devices_path_format() {
         // This test verifies that the function looks for event devices
-        // We can't actually test device finding without hardware/permissions,
-        // but we can document expected behavior
+        // In CI/test environments without /dev/input access, this is expected to fail
         let result = find_keyboard_devices();
 
-        // If keyboards are found, paths should start with /dev/input/event
-        if let Ok(keyboards) = result {
-            for path in keyboards {
+        match result {
+            Ok(keyboards) => {
+                // If keyboards are found, paths should start with /dev/input/event
+                for path in keyboards {
+                    let path_str = path.to_string_lossy();
+                    assert!(
+                        path_str.starts_with("/dev/input/event"),
+                        "Keyboard device path should be /dev/input/eventN, got: {}",
+                        path_str
+                    );
+                }
+            }
+            Err(e) => {
+                // In test environment, it's acceptable to not have keyboard access
+                // Just verify the error is what we expect
                 assert!(
-                    path.starts_with("/dev/input/event"),
-                    "Keyboard device path should be /dev/input/eventN"
+                    e.kind() == std::io::ErrorKind::NotFound
+                        || e.kind() == std::io::ErrorKind::PermissionDenied,
+                    "Expected NotFound or PermissionDenied, got: {:?}",
+                    e.kind()
                 );
             }
         }
-        // If no keyboard found, that's also acceptable in test environment
     }
 }
