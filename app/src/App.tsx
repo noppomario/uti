@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useCallback, useEffect, useState } from 'react';
 import { ClipboardHistory, type ClipboardItem } from './components/ClipboardHistory';
+import { type AppConfig, defaultConfig, getConfig } from './config';
 import { useClipboard } from './hooks/useClipboard';
 
 /**
@@ -15,6 +16,7 @@ import { useClipboard } from './hooks/useClipboard';
  */
 function App() {
   const [history, setHistory] = useState<ClipboardItem[]>([]);
+  const [config, setConfig] = useState<AppConfig>(defaultConfig);
 
   // Start clipboard monitoring
   useClipboard();
@@ -31,8 +33,9 @@ function App() {
     }
   }, []);
 
-  // Load clipboard history on initial mount
+  // Load config and clipboard history on initial mount
   useEffect(() => {
+    getConfig().then(setConfig);
     loadHistory();
   }, [loadHistory]);
 
@@ -123,8 +126,13 @@ function App() {
           </span>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        <ClipboardHistory items={history} onSelect={handleSelect} />
+      <div className="flex-1 min-h-0">
+        <ClipboardHistory
+          items={history}
+          onSelect={handleSelect}
+          showTooltip={config.showTooltip}
+          tooltipDelay={config.tooltipDelay}
+        />
       </div>
     </div>
   );

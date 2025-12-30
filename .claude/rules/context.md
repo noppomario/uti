@@ -216,9 +216,10 @@ bun run all:test               # Parallel execution
 
 **Status**: Implemented
 
-- Tray icon with context menu (Show/Hide, About, Quit)
+- Tray icon with context menu (Show/Hide, Auto-start, GitHub, Version, Quit)
 - Left-click toggles window visibility
 - Right-click shows menu
+- **Auto-start**: Toggle via tray menu to start app on login
 - **GNOME 43+ requirement**: AppIndicator extension
   - Install: `sudo dnf install gnome-shell-extension-appindicator`
   - Enable: `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`
@@ -230,6 +231,8 @@ bun run all:test               # Parallel execution
 3. Linux-only (Wayland/X11)
 4. Window position/size not persisted
 5. GNOME users require AppIndicator extension for tray icon
+6. Window appears in dock/taskbar on Wayland (Tauri limitation, see
+   [#9829](https://github.com/tauri-apps/tauri/issues/9829))
 
 ## Roadmap
 

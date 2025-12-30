@@ -38,8 +38,9 @@
     "all:test": "npm-run-all --parallel frontend:test rust:test",
     "all:all": "npm-run-all all:format all:lint all:typecheck all:build all:test",
     "ci:check": "npm-run-all --parallel all:lint all:typecheck",
+    "ci:test": "npm run all:test",
     "ci:build": "npm run all:build",
-    "ci:local": "npm-run-all ci:check ci:build",
+    "ci:local": "npm-run-all ci:check ci:test ci:build",
     "prepare": "husky"
   },
   "devDependencies": {

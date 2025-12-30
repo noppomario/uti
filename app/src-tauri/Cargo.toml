@@ -23,6 +23,8 @@ zbus = "4"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 dirs = "5"
+tauri-plugin-autostart = "2.5.1"
+open = "5.3.3"
 
 [dev-dependencies]
 tempfile = "3"

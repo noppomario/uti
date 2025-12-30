@@ -116,6 +116,12 @@ bun run tauri:dev   # Development mode
 bun run tauri:build # Release build
 ```
 
+### 5. Install Release Build (Optional)
+
+```bash
+sudo dnf install ./target/release/bundle/rpm/uti-*.x86_64.rpm
+```
+
 ## Configuration
 
 The application can be configured via `~/.config/uti/config.json`.
@@ -144,6 +150,16 @@ Create `~/.config/uti/config.json` with the following options:
 - `"light"` - Use light mode
 
 **Note**: If the config file doesn't exist, default values are used.
+
+### Auto-start
+
+Enable auto-start via the system tray menu:
+
+1. Right-click the tray icon
+2. Click "Auto-start" to toggle
+
+When enabled, the application will start automatically on login.
+The setting creates a `.desktop` file in `~/.config/autostart/`.
 
 ## Development
 
@@ -225,6 +241,15 @@ uti/
 └── uninstall.sh    # Daemon uninstallation script
 ```
 
+## Known Limitations
+
+- **Window in dock/taskbar (Wayland)**: On Wayland, the window appears in the
+  dock/taskbar when visible. This is a Tauri limitation
+  ([#9829](https://github.com/tauri-apps/tauri/issues/9829)). The `skipTaskbar`
+  setting works correctly on X11.
+- **Fixed interval**: Double-tap detection interval is fixed at 300ms
+- **Linux only**: Windows/macOS not supported
+
 ## Troubleshooting
 
 ### Tray Icon Not Visible (GNOME)
@@ -274,9 +299,6 @@ dbus-send --session \
 
 ## TODO
 
-- [ ] Robust device detection (multiple keyboard support)
-- [ ] Configuration file support (interval adjustment, etc.)
-- [ ] Window position/size persistence
 - [ ] Windows support
 
 ## License
