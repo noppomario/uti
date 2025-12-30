@@ -754,7 +754,9 @@ backend for Linux.
 **Menu Design**:
 
 - Show/Hide: Primary action for window toggle
-- About: Version info and GitHub link via JavaScript alert (simple, no dependencies)
+- Auto-start: Toggle to enable/disable launch on login
+- GitHub: Opens repository in browser (external link indicator `↗`)
+- Version: Displays app version (disabled, info only)
 - Quit: Essential for closing app from tray
 
 ### Alternatives Considered
@@ -766,10 +768,6 @@ backend for Linux.
 2. **D-Bus only control**
    - Pro: No GUI dependencies
    - Con: Poor user experience, no visual feedback
-
-3. **Custom About dialog**
-   - Pro: More polished UI
-   - Con: Requires additional dependencies (`rfd` crate) or custom Tauri window
 
 ### Consequences
 
@@ -793,7 +791,6 @@ backend for Linux.
 **Reconsider when**:
 
 - GNOME restores native tray support
-- Users request more sophisticated About dialog
 
 ---
 

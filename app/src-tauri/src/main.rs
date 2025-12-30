@@ -14,10 +14,11 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, State, WebviewWindow,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use zbus::Connection;
 
 /// Application configuration
@@ -34,6 +35,14 @@ pub struct AppConfig {
     /// Maximum number of clipboard items to store
     #[serde(default = "default_clipboard_limit")]
     pub clipboard_history_limit: usize,
+
+    /// Whether to show tooltip on hover
+    #[serde(default = "default_show_tooltip")]
+    pub show_tooltip: bool,
+
+    /// Delay before showing tooltip (milliseconds)
+    #[serde(default = "default_tooltip_delay")]
+    pub tooltip_delay: u32,
 }
 
 fn default_theme() -> String {
@@ -44,11 +53,21 @@ fn default_clipboard_limit() -> usize {
     50
 }
 
+fn default_show_tooltip() -> bool {
+    true
+}
+
+fn default_tooltip_delay() -> u32 {
+    500
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             theme: default_theme(),
             clipboard_history_limit: default_clipboard_limit(),
+            show_tooltip: default_show_tooltip(),
+            tooltip_delay: default_tooltip_delay(),
         }
     }
 }
@@ -301,6 +320,10 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Mutex::new(store))
         .invoke_handler(tauri::generate_handler![
@@ -315,7 +338,30 @@ fn main() {
 
             // === Tray icon setup ===
             let show_hide_i = MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
-            let about_i = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
+
+            // Check if autostart is enabled
+            let autostart_manager = app.autolaunch();
+            let autostart_enabled = autostart_manager.is_enabled().unwrap_or(false);
+            let autostart_i = CheckMenuItem::with_id(
+                app,
+                "autostart",
+                "Auto-start",
+                true,
+                autostart_enabled,
+                None::<&str>,
+            )?;
+
+            // App title with version (disabled, just for info)
+            let version = app.package_info().version.to_string();
+            let title_i = MenuItem::with_id(
+                app,
+                "title",
+                format!("uti v{}", version),
+                false,
+                None::<&str>,
+            )?;
+
+            let github_i = MenuItem::with_id(app, "github", "GitHub ↗", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
             let menu = Menu::with_items(
@@ -323,7 +369,10 @@ fn main() {
                 &[
                     &show_hide_i,
                     &PredefinedMenuItem::separator(app)?,
-                    &about_i,
+                    &autostart_i,
+                    &github_i,
+                    &PredefinedMenuItem::separator(app)?,
+                    &title_i,
                     &quit_i,
                 ],
             )?;
@@ -332,33 +381,41 @@ fn main() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show_hide" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let is_visible = window.is_visible().unwrap_or(false);
-                                if is_visible {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.center();
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show_hide" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            if is_visible {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.center();
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
-                        "about" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.eval(format!(
-                                    r#"alert('uti v{}\n\nDouble Ctrl hotkey desktop tool\n\nhttps://github.com/noppomario/uti')"#,
-                                    app.package_info().version
-                                ));
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "autostart" => {
+                        let autostart_manager = app.autolaunch();
+                        let is_enabled = autostart_manager.is_enabled().unwrap_or(false);
+                        if is_enabled {
+                            if let Err(e) = autostart_manager.disable() {
+                                eprintln!("Failed to disable autostart: {}", e);
+                            } else {
+                                println!("Auto-start disabled");
+                            }
+                        } else if let Err(e) = autostart_manager.enable() {
+                            eprintln!("Failed to enable autostart: {}", e);
+                        } else {
+                            println!("Auto-start enabled");
+                        }
+                    }
+                    "github" => {
+                        let _ = open::that("https://github.com/noppomario/uti");
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {

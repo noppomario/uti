@@ -13,6 +13,12 @@ export interface AppConfig {
 
   /** Maximum number of clipboard items to store */
   clipboardHistoryLimit: number;
+
+  /** Whether to show tooltip on hover */
+  showTooltip: boolean;
+
+  /** Delay before showing tooltip (milliseconds) */
+  tooltipDelay: number;
 }
 
 /**
@@ -23,6 +29,8 @@ export interface AppConfig {
 export const defaultConfig: AppConfig = {
   theme: 'dark',
   clipboardHistoryLimit: 50,
+  showTooltip: true,
+  tooltipDelay: 500,
 };
 
 /**
