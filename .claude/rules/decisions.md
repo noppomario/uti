@@ -721,6 +721,82 @@ Use explicit class-based dark mode controlled by `config.json`:
 
 ---
 
+## ADR-014: System tray implementation with AppIndicator
+
+**Date**: 2025-12-30
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Application needed a way for users to control window visibility beyond
+double Ctrl press. System tray is standard for background applications.
+
+### Decision
+
+Implement system tray using Tauri 2 `tray-icon` feature with libappindicator
+backend for Linux.
+
+### Rationale
+
+**User Experience**:
+
+- Tray icon provides visual indicator that app is running
+- Context menu offers familiar interaction pattern
+- Left-click toggle is intuitive for quick access
+
+**Technical**:
+
+- Tauri 2 has built-in tray support (no additional dependencies)
+- libappindicator is standard on GNOME/Linux
+- Reuses existing app icon (no new assets needed)
+
+**Menu Design**:
+
+- Show/Hide: Primary action for window toggle
+- About: Version info and GitHub link via JavaScript alert (simple, no dependencies)
+- Quit: Essential for closing app from tray
+
+### Alternatives Considered
+
+1. **No tray icon**
+   - Pro: Simpler implementation
+   - Con: Users can't easily tell if app is running
+
+2. **D-Bus only control**
+   - Pro: No GUI dependencies
+   - Con: Poor user experience, no visual feedback
+
+3. **Custom About dialog**
+   - Pro: More polished UI
+   - Con: Requires additional dependencies (`rfd` crate) or custom Tauri window
+
+### Consequences
+
+**Positive**:
+
+- Users can control app from tray
+- Standard desktop application behavior
+- Works on KDE, XFCE out-of-the-box
+
+**Negative**:
+
+- GNOME 43+ requires AppIndicator extension installation
+- Adds setup complexity for GNOME users
+
+**Documentation Added**:
+
+- README: Installation instructions for AppIndicator
+- README: Troubleshooting for GTK warnings
+- context.md: System tray section with requirements
+
+**Reconsider when**:
+
+- GNOME restores native tray support
+- Users request more sophisticated About dialog
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

@@ -37,6 +37,7 @@ visibility by quickly pressing the Ctrl key twice.
 - Linux with evdev support
 - D-Bus session bus
 - Tauri development dependencies (see [DEVELOPMENT.md](./DEVELOPMENT.md))
+- **System tray support** (GNOME users: see below)
 
 ### 1. Clone Repository
 
@@ -63,7 +64,34 @@ groups
 # Should include "input"
 ```
 
-### 3. Build and Install Daemon
+### 3. System Tray Setup (GNOME)
+
+GNOME 43+ users: System tray support requires a GNOME extension.
+
+#### Option 1: Using dnf (Fedora/RHEL)
+
+```bash
+sudo dnf install gnome-shell-extension-appindicator
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+```
+
+#### Option 2: Using GNOME Extensions website
+
+1. Visit [AppIndicator Support](https://extensions.gnome.org/extension/615/appindicator-support/)
+2. Toggle the switch to install
+3. Restart GNOME Shell (Alt+F2, type `r`, press Enter) or re-login
+
+#### Verify Installation
+
+```bash
+gnome-extensions list | grep appindicator
+# Should output: appindicatorsupport@rgcjonas.gmail.com
+```
+
+**Note**: Other desktop environments (KDE, XFCE, etc.) have built-in
+system tray support and don't require additional setup.
+
+### 4. Build and Install Daemon
 
 ```bash
 # Build daemon
@@ -199,6 +227,24 @@ uti/
 
 ## Troubleshooting
 
+### Tray Icon Not Visible (GNOME)
+
+If the tray icon doesn't appear:
+
+```bash
+# Check if AppIndicator extension is installed and enabled
+gnome-extensions list | grep appindicator
+
+# If not found, install it:
+sudo dnf install gnome-shell-extension-appindicator
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+
+# Restart GNOME Shell (Alt+F2, type 'r', press Enter) or re-login
+```
+
+**GTK Warning in logs**: This is expected if the extension is not installed.
+The warning will disappear once the extension is enabled.
+
 ### Daemon Won't Start
 
 ```bash
@@ -230,7 +276,6 @@ dbus-send --session \
 
 - [ ] Robust device detection (multiple keyboard support)
 - [ ] Configuration file support (interval adjustment, etc.)
-- [ ] System tray icon support
 - [ ] Window position/size persistence
 - [ ] Windows support
 

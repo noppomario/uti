@@ -15,6 +15,12 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
 
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: vi.fn(() => ({
+    onFocusChanged: vi.fn(() => Promise.resolve(() => {})),
+  })),
+}));
+
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
   readText: vi.fn(() => Promise.resolve(null)),
   writeText: vi.fn(() => Promise.resolve()),

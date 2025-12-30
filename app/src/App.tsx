@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useCallback, useEffect, useState } from 'react';
 import { ClipboardHistory, type ClipboardItem } from './components/ClipboardHistory';
@@ -30,6 +31,26 @@ function App() {
     }
   }, []);
 
+  // Load clipboard history on initial mount
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  // Listen for window focus to reload history
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const unlisten = appWindow.onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        console.log('Window focused, reloading clipboard history');
+        loadHistory();
+      }
+    });
+
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [loadHistory]);
+
   // Listen for double Ctrl press to toggle window
   useEffect(() => {
     /**
@@ -45,8 +66,7 @@ function App() {
         invoke('toggle_window')
           .then(() => {
             console.log('toggle_window command completed');
-            // Load clipboard history when window becomes visible
-            loadHistory();
+            // History will be loaded by onFocusChanged event
           })
           .catch(err => {
             console.error('toggle_window command failed:', err);
@@ -72,7 +92,7 @@ function App() {
         unlisten();
       }
     };
-  }, [loadHistory]);
+  }, []);
 
   /**
    * Handles clipboard item selection
