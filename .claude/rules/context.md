@@ -212,14 +212,24 @@ bun run all:test               # Parallel execution
 - AUR package for Arch Linux
 - Automated releases via GitHub Actions
 
+## System Tray
+
+**Status**: Implemented
+
+- Tray icon with context menu (Show/Hide, About, Quit)
+- Left-click toggles window visibility
+- Right-click shows menu
+- **GNOME 43+ requirement**: AppIndicator extension
+  - Install: `sudo dnf install gnome-shell-extension-appindicator`
+  - Enable: `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`
+
 ## Known Limitations
 
 1. Single keyboard device detection (first found)
 2. Fixed 300ms double-tap interval
-3. No configuration file support
-4. Linux-only (Wayland/X11)
-5. No system tray icon
-6. Window position/size not persisted
+3. Linux-only (Wayland/X11)
+4. Window position/size not persisted
+5. GNOME users require AppIndicator extension for tray icon
 
 ## Roadmap
 
