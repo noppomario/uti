@@ -348,7 +348,7 @@ fn main() {
                         }
                         "about" => {
                             if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.eval(&format!(
+                                let _ = window.eval(format!(
                                     r#"alert('uti v{}\n\nDouble Ctrl hotkey desktop tool\n\nhttps://github.com/noppomario/uti')"#,
                                     app.package_info().version
                                 ));
@@ -361,25 +361,23 @@ fn main() {
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
-                    match event {
-                        TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } => {
-                            let app = tray.app_handle();
-                            if let Some(window) = app.get_webview_window("main") {
-                                let is_visible = window.is_visible().unwrap_or(false);
-                                if is_visible {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.center();
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            if is_visible {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.center();
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
-                        _ => {}
                     }
                 })
                 .build(app)?;
