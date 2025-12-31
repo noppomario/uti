@@ -8,6 +8,9 @@ URL:            https://github.com/noppomario/uti
 
 # Build requires Rust toolchain (not included in BuildRequires for portability)
 
+# Define _userunitdir if not already defined (for Ubuntu/Debian compatibility)
+%{!?_userunitdir: %define _userunitdir /usr/lib/systemd/user}
+
 %description
 A daemon that monitors keyboard events and sends D-Bus signals
 on double key press (e.g., double Ctrl). Part of the uti desktop utility.
