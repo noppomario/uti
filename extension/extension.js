@@ -2,24 +2,24 @@
  * uti GNOME Shell Extension
  *
  * Features:
- * 1. Panel icon with menu (replaces AppIndicator requirement)
+ * 1. Panel icon with menu (shown only when app is running)
  * 2. Positions uti window at cursor location on Ctrl double-tap
  *
  * Architecture:
  *   daemon (evdev) --D-Bus--> Extension --move window--> Tauri app
  *
- * D-Bus Interface (daemon):
- *   Bus name: io.github.noppomario.uti
- *   Path: /io/github/noppomario/uti/DoubleTap
- *   Interface: io.github.noppomario.uti.DoubleTap
- *   Signal: Triggered()
+ * D-Bus Interfaces:
+ *   Daemon:
+ *     Bus name: io.github.noppomario.uti
+ *     Signal: Triggered()
+ *   App:
+ *     Bus name: io.github.noppomario.uti.App (presence indicates app is running)
  */
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
-import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -28,6 +28,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 const DAEMON_BUS_NAME = 'io.github.noppomario.uti';
 const DAEMON_OBJECT_PATH = '/io/github/noppomario/uti/DoubleTap';
 const DAEMON_INTERFACE = 'io.github.noppomario.uti.DoubleTap';
+const APP_BUS_NAME = 'io.github.noppomario.uti.App';
 const UTI_WM_CLASS = 'uti';
 
 /**
@@ -97,13 +98,6 @@ class UtiIndicator extends PanelMenu.Button {
                 this._extension._moveWindowToCursor(window, x, y);
                 this._extension._activateWindow(window);
             }
-        } else {
-            // Try to launch uti app
-            try {
-                GLib.spawn_command_line_async('uti');
-            } catch (e) {
-                console.error(`[uti] Failed to launch uti: ${e.message}`);
-            }
         }
     }
 
@@ -121,30 +115,93 @@ export default class UtiExtension extends Extension {
         this._indicator = null;
         this._dbusConnection = null;
         this._signalSubscriptionId = null;
+        this._appWatcherId = null;
     }
 
     enable() {
         console.log('[uti] Extension enabled');
 
-        // Create panel indicator
-        this._indicator = new UtiIndicator(this);
-        Main.panel.addToStatusArea(this.uuid, this._indicator);
-
-        // Connect to D-Bus
+        // Connect to D-Bus for daemon signals
         this._connectToDbus();
+
+        // Watch for app D-Bus name to show/hide panel icon
+        this._watchAppBusName();
     }
 
     disable() {
         console.log('[uti] Extension disabled');
 
         // Remove panel indicator
-        if (this._indicator) {
-            this._indicator.destroy();
-            this._indicator = null;
-        }
+        this._removeIndicator();
+
+        // Stop watching app bus name
+        this._unwatchAppBusName();
 
         // Disconnect from D-Bus
         this._disconnectFromDbus();
+    }
+
+    /**
+     * Watch for app D-Bus name appearance/disappearance
+     */
+    _watchAppBusName() {
+        this._appWatcherId = Gio.bus_watch_name(
+            Gio.BusType.SESSION,
+            APP_BUS_NAME,
+            Gio.BusNameWatcherFlags.NONE,
+            this._onAppAppeared.bind(this),
+            this._onAppVanished.bind(this)
+        );
+        console.log('[uti] Watching for app D-Bus name');
+    }
+
+    /**
+     * Stop watching app D-Bus name
+     */
+    _unwatchAppBusName() {
+        if (this._appWatcherId) {
+            Gio.bus_unwatch_name(this._appWatcherId);
+            this._appWatcherId = null;
+        }
+    }
+
+    /**
+     * Called when app D-Bus name appears (app started)
+     */
+    _onAppAppeared(connection, name, owner) {
+        console.log(`[uti] App appeared on D-Bus: ${name}`);
+        this._createIndicator();
+    }
+
+    /**
+     * Called when app D-Bus name vanishes (app stopped)
+     */
+    _onAppVanished(connection, name) {
+        console.log(`[uti] App vanished from D-Bus: ${name}`);
+        this._removeIndicator();
+    }
+
+    /**
+     * Create panel indicator
+     */
+    _createIndicator() {
+        if (this._indicator) {
+            return; // Already exists
+        }
+        this._indicator = new UtiIndicator(this);
+        Main.panel.addToStatusArea(this.uuid, this._indicator);
+        console.log('[uti] Panel indicator created');
+    }
+
+    /**
+     * Remove panel indicator
+     */
+    _removeIndicator() {
+        if (this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+            console.log('[uti] Panel indicator removed');
+        }
     }
 
     /**

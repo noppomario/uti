@@ -314,12 +314,19 @@ fn toggle_window(window: WebviewWindow) {
 /// - Failed to connect to D-Bus session bus
 /// - Failed to create the D-Bus proxy
 /// - Failed to subscribe to the signal stream
+/// D-Bus bus name for the uti app (used by GNOME extension to detect app state)
+const APP_DBUS_NAME: &str = "io.github.noppomario.uti.App";
+
 async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
     use futures_util::stream::StreamExt;
     use zbus::proxy;
 
     let conn = Connection::session().await?;
     println!("Connected to D-Bus session bus");
+
+    // Register app D-Bus name so GNOME extension can detect app state
+    conn.request_name(APP_DBUS_NAME).await?;
+    println!("Registered D-Bus name: {}", APP_DBUS_NAME);
 
     /// D-Bus proxy interface for receiving DoubleTap signals
     #[proxy(
