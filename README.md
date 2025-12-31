@@ -133,24 +133,13 @@ Configuration file: `~/.config/uti/config.json`
 }
 ```
 
-| Option                  | Type    | Default       | Description                     |
-| ----------------------- | ------- | ------------- | ------------------------------- |
-| `theme`                 | string  | `dark`        | UI theme: `dark` or `light`     |
-| `clipboardHistoryLimit` | number  | `50`          | Max clipboard items to store    |
-| `showTooltip`           | boolean | `true`        | Show tooltip on hover           |
-| `tooltipDelay`          | number  | `500`         | Tooltip delay in ms             |
-| `useTauriSystemTray`    | boolean | auto-detected | Use Tauri system tray (see below) |
-
-### System Tray Behavior
-
-| Environment | Default | Recommended |
-| ----------- | ------- | ----------- |
-| GNOME       | `false` | Use uti extension for panel icon |
-| KDE, XFCE, etc. | `true` | Tauri system tray |
-
-On GNOME, the uti extension provides the panel icon, so Tauri's system tray is
-disabled by default. If you prefer AppIndicator extension, set
-`"useTauriSystemTray": true`.
+| Option                  | Type    | Default | Description                     |
+| ----------------------- | ------- | ------- | ------------------------------- |
+| `theme`                 | string  | `dark`  | UI theme: `dark` or `light`     |
+| `clipboardHistoryLimit` | number  | `50`    | Max clipboard items to store    |
+| `showTooltip`           | boolean | `true`  | Show tooltip on hover           |
+| `tooltipDelay`          | number  | `500`   | Tooltip delay in ms             |
+| `useTauriSystemTray`    | boolean | `true`  | Enable system tray icon         |
 
 ## 🛠️ Tech Stack
 
@@ -173,8 +162,7 @@ disabled by default. If you prefer AppIndicator extension, set
 
 #### uti Extension (Required)
 
-On GNOME, enable the uti extension to get the panel icon and cursor-relative
-window positioning:
+On GNOME, enable the uti extension for full functionality:
 
 ```bash
 gnome-extensions enable uti@noppomario.github.io
@@ -183,9 +171,11 @@ gnome-extensions enable uti@noppomario.github.io
 The extension is automatically installed by the installer but needs to be
 enabled manually. This extension provides:
 
-- Panel icon (replaces the need for AppIndicator extension)
-- Cursor-relative window positioning
-- Right-click menu (Show/Hide, GitHub, Quit)
+- **Panel icon with full menu** (same menu as system tray)
+- **Cursor-relative window positioning** (window appears at cursor location)
+
+The extension displays Tauri's tray icon directly, so no additional extensions
+(like AppIndicator) are required.
 
 <details>
 <summary><strong>🔧 Troubleshooting</strong></summary>
@@ -213,8 +203,7 @@ journalctl --user -u double-ctrl.service -n 50
 
 ### Tray Icon Not Visible (GNOME)
 
-Install AppIndicator extension via Extension Manager (see GNOME Users section
-above).
+Enable the uti extension (see GNOME Users section above).
 
 </details>
 

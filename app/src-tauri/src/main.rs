@@ -72,8 +72,7 @@ pub struct AppConfig {
     pub tooltip_delay: u32,
 
     /// Whether to use Tauri's system tray icon
-    /// On GNOME, defaults to false (use uti extension instead)
-    /// On other environments, defaults to true
+    /// Defaults to true. On GNOME, the uti extension displays this tray.
     #[serde(default = "default_use_tauri_system_tray")]
     pub use_tauri_system_tray: bool,
 }
@@ -94,16 +93,8 @@ fn default_tooltip_delay() -> u32 {
     500
 }
 
-/// Check if running in GNOME environment
-fn is_gnome() -> bool {
-    std::env::var("XDG_CURRENT_DESKTOP")
-        .map(|val| val.split(':').any(|de| de == "GNOME"))
-        .unwrap_or(false)
-}
-
-/// Default for useTauriSystemTray: false on GNOME, true otherwise
 fn default_use_tauri_system_tray() -> bool {
-    !is_gnome()
+    true
 }
 
 impl Default for AppConfig {
@@ -314,19 +305,12 @@ fn toggle_window(window: WebviewWindow) {
 /// - Failed to connect to D-Bus session bus
 /// - Failed to create the D-Bus proxy
 /// - Failed to subscribe to the signal stream
-/// D-Bus bus name for the uti app (used by GNOME extension to detect app state)
-const APP_DBUS_NAME: &str = "io.github.noppomario.uti.App";
-
 async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
     use futures_util::stream::StreamExt;
     use zbus::proxy;
 
     let conn = Connection::session().await?;
     println!("Connected to D-Bus session bus");
-
-    // Register app D-Bus name so GNOME extension can detect app state
-    conn.request_name(APP_DBUS_NAME).await?;
-    println!("Registered D-Bus name: {}", APP_DBUS_NAME);
 
     /// D-Bus proxy interface for receiving DoubleTap signals
     #[proxy(

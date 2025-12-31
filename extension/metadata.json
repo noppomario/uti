@@ -1,7 +1,7 @@
 {
   "uuid": "uti@noppomario.github.io",
   "name": "uti",
-  "description": "Position uti window at cursor location on Ctrl double-tap",
+  "description": "Panel icon and cursor positioning for uti clipboard manager",
   "shell-version": ["45", "46", "47", "48", "49"],
   "url": "https://github.com/noppomario/uti"
 }
