@@ -70,6 +70,11 @@ pub struct AppConfig {
     /// Delay before showing tooltip (milliseconds)
     #[serde(default = "default_tooltip_delay")]
     pub tooltip_delay: u32,
+
+    /// Whether to show system tray icon
+    /// Set to false on GNOME with uti extension to avoid duplicate icons
+    #[serde(default = "default_enable_system_tray")]
+    pub enable_system_tray: bool,
 }
 
 fn default_theme() -> String {
@@ -88,6 +93,10 @@ fn default_tooltip_delay() -> u32 {
     500
 }
 
+fn default_enable_system_tray() -> bool {
+    true
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -95,6 +104,7 @@ impl Default for AppConfig {
             clipboard_history_limit: default_clipboard_limit(),
             show_tooltip: default_show_tooltip(),
             tooltip_delay: default_tooltip_delay(),
+            enable_system_tray: default_enable_system_tray(),
         }
     }
 }
@@ -413,6 +423,8 @@ fn run_gui() {
         }
     }
 
+    let enable_tray = config.enable_system_tray;
+
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -428,10 +440,11 @@ fn run_gui() {
             paste_item,
             read_config
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
 
-            // === Tray icon setup ===
+            // === Tray icon setup (if enabled) ===
+            if enable_tray {
             let show_hide_i = MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
 
             // Check if autostart is enabled
@@ -577,6 +590,7 @@ fn run_gui() {
                     }
                 })
                 .build(app)?;
+            } // end if enable_tray
 
             // Auto-hide window when it loses focus
             let window_for_blur = window.clone();
