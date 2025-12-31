@@ -71,10 +71,11 @@ pub struct AppConfig {
     #[serde(default = "default_tooltip_delay")]
     pub tooltip_delay: u32,
 
-    /// Whether to show system tray icon
-    /// Set to false on GNOME with uti extension to avoid duplicate icons
-    #[serde(default = "default_enable_system_tray")]
-    pub enable_system_tray: bool,
+    /// Whether to use Tauri's system tray icon
+    /// On GNOME, defaults to false (use uti extension instead)
+    /// On other environments, defaults to true
+    #[serde(default = "default_use_tauri_system_tray")]
+    pub use_tauri_system_tray: bool,
 }
 
 fn default_theme() -> String {
@@ -93,8 +94,16 @@ fn default_tooltip_delay() -> u32 {
     500
 }
 
-fn default_enable_system_tray() -> bool {
-    true
+/// Check if running in GNOME environment
+fn is_gnome() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|val| val.split(':').any(|de| de == "GNOME"))
+        .unwrap_or(false)
+}
+
+/// Default for useTauriSystemTray: false on GNOME, true otherwise
+fn default_use_tauri_system_tray() -> bool {
+    !is_gnome()
 }
 
 impl Default for AppConfig {
@@ -104,7 +113,7 @@ impl Default for AppConfig {
             clipboard_history_limit: default_clipboard_limit(),
             show_tooltip: default_show_tooltip(),
             tooltip_delay: default_tooltip_delay(),
-            enable_system_tray: default_enable_system_tray(),
+            use_tauri_system_tray: default_use_tauri_system_tray(),
         }
     }
 }
@@ -423,7 +432,7 @@ fn run_gui() {
         }
     }
 
-    let enable_tray = config.enable_system_tray;
+    let use_tray = config.use_tauri_system_tray;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
@@ -444,7 +453,7 @@ fn run_gui() {
             let window = app.get_webview_window("main").unwrap();
 
             // === Tray icon setup (if enabled) ===
-            if enable_tray {
+            if use_tray {
             let show_hide_i = MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
 
             // Check if autostart is enabled
@@ -590,7 +599,7 @@ fn run_gui() {
                     }
                 })
                 .build(app)?;
-            } // end if enable_tray
+            } // end if use_tray
 
             // Auto-hide window when it loses focus
             let window_for_blur = window.clone();

@@ -128,16 +128,29 @@ Configuration file: `~/.config/uti/config.json`
   "theme": "dark",
   "clipboardHistoryLimit": 50,
   "showTooltip": true,
-  "tooltipDelay": 500
+  "tooltipDelay": 500,
+  "useTauriSystemTray": true
 }
 ```
 
-| Option                  | Type    | Default | Description                  |
-| ----------------------- | ------- | ------- | ---------------------------- |
-| `theme`                 | string  | `dark`  | UI theme: `dark` or `light`  |
-| `clipboardHistoryLimit` | number  | `50`    | Max clipboard items to store |
-| `showTooltip`           | boolean | `true`  | Show tooltip on hover        |
-| `tooltipDelay`          | number  | `500`   | Tooltip delay in ms          |
+| Option                  | Type    | Default       | Description                     |
+| ----------------------- | ------- | ------------- | ------------------------------- |
+| `theme`                 | string  | `dark`        | UI theme: `dark` or `light`     |
+| `clipboardHistoryLimit` | number  | `50`          | Max clipboard items to store    |
+| `showTooltip`           | boolean | `true`        | Show tooltip on hover           |
+| `tooltipDelay`          | number  | `500`         | Tooltip delay in ms             |
+| `useTauriSystemTray`    | boolean | auto-detected | Use Tauri system tray (see below) |
+
+### System Tray Behavior
+
+| Environment | Default | Recommended |
+| ----------- | ------- | ----------- |
+| GNOME       | `false` | Use uti extension for panel icon |
+| KDE, XFCE, etc. | `true` | Tauri system tray |
+
+On GNOME, the uti extension provides the panel icon, so Tauri's system tray is
+disabled by default. If you prefer AppIndicator extension, set
+`"useTauriSystemTray": true`.
 
 ## 🛠️ Tech Stack
 
