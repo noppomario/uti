@@ -232,12 +232,27 @@ export default class UtiExtension extends Extension {
         this._signalSubscriptionId = null;
         this._sniBusWatcherId = null;
         this._sniBusName = null;
+        this._settings = null;
+        this._settingsChangedId = null;
     }
 
     enable() {
         console.log('[uti] Extension enabled');
+
+        // Load settings
+        this._settings = this.getSettings();
+        this._settingsChangedId = this._settings.connect(
+            'changed::enable-tray-icon',
+            this._onSettingsChanged.bind(this)
+        );
+
+        // Always connect to D-Bus for cursor positioning
         this._connectToDbus();
-        this._watchForSNI();
+
+        // Watch for SNI only if tray icon is enabled
+        if (this._settings.get_boolean('enable-tray-icon')) {
+            this._watchForSNI();
+        }
     }
 
     disable() {
@@ -245,6 +260,25 @@ export default class UtiExtension extends Extension {
         this._removeIndicator();
         this._unwatchSNI();
         this._disconnectFromDbus();
+
+        if (this._settingsChangedId && this._settings) {
+            this._settings.disconnect(this._settingsChangedId);
+            this._settingsChangedId = null;
+        }
+        this._settings = null;
+    }
+
+    _onSettingsChanged() {
+        const enabled = this._settings.get_boolean('enable-tray-icon');
+        console.log(`[uti] Tray icon setting changed: ${enabled}`);
+
+        if (enabled) {
+            this._watchForSNI();
+        } else {
+            this._removeIndicator();
+            this._unwatchSNI();
+            this._sniBusName = null;
+        }
     }
 
     /**

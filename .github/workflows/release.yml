@@ -92,7 +92,8 @@ jobs:
       - name: Package GNOME Shell Extension
         run: |
           cd extension
-          zip -r ../dist/extension.zip metadata.json extension.js
+          glib-compile-schemas schemas/
+          zip -r ../dist/extension.zip metadata.json extension.js schemas/
 
       - name: Copy Tauri RPM to dist
         run: |

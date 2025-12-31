@@ -3,5 +3,6 @@
   "name": "uti",
   "description": "Panel icon and cursor positioning for uti clipboard manager",
   "shell-version": ["45", "46", "47", "48", "49"],
+  "settings-schema": "org.gnome.shell.extensions.uti",
   "url": "https://github.com/noppomario/uti"
 }

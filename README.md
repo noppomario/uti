@@ -128,8 +128,7 @@ Configuration file: `~/.config/uti/config.json`
   "theme": "dark",
   "clipboardHistoryLimit": 50,
   "showTooltip": true,
-  "tooltipDelay": 500,
-  "useTauriSystemTray": true
+  "tooltipDelay": 500
 }
 ```
 
@@ -139,7 +138,6 @@ Configuration file: `~/.config/uti/config.json`
 | `clipboardHistoryLimit` | number  | `50`    | Max clipboard items to store    |
 | `showTooltip`           | boolean | `true`  | Show tooltip on hover           |
 | `tooltipDelay`          | number  | `500`   | Tooltip delay in ms             |
-| `useTauriSystemTray`    | boolean | `true`  | Enable system tray icon         |
 
 ## 🛠️ Tech Stack
 
@@ -176,6 +174,13 @@ enabled manually. This extension provides:
 
 The extension displays Tauri's tray icon directly, so no additional extensions
 (like AppIndicator) are required.
+
+If you already have AppIndicator extension installed and prefer to use it
+instead, disable the uti extension's tray icon:
+
+```bash
+gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
+```
 
 <details>
 <summary><strong>🔧 Troubleshooting</strong></summary>
