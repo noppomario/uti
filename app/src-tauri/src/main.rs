@@ -7,7 +7,9 @@
 
 mod clipboard;
 mod clipboard_store;
+mod updater;
 
+use clap::{Parser, Subcommand};
 use clipboard::ClipboardItem;
 use clipboard_store::ClipboardStore;
 use serde::{Deserialize, Serialize};
@@ -19,7 +21,28 @@ use tauri::{
     Emitter, Manager, State, WebviewWindow,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use zbus::Connection;
+
+/// uti - Double Ctrl hotkey desktop tool
+#[derive(Parser)]
+#[command(name = "uti")]
+#[command(about = "Desktop utility for toggling window visibility with double Ctrl press")]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Check for updates and install if available
+    Update {
+        /// Check only, don't install
+        #[arg(long)]
+        check: bool,
+    },
+}
 
 /// Application configuration
 ///
@@ -298,11 +321,78 @@ async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
+/// Handle CLI update command
+async fn handle_update_command(check_only: bool) {
+    let current_version = env!("CARGO_PKG_VERSION");
+    println!("Current version: {}", current_version);
+    println!("Checking for updates...");
+
+    match updater::check_for_updates(current_version).await {
+        Ok(result) => {
+            if result.update_available {
+                println!(
+                    "Update available: {} -> {}",
+                    result.current_version, result.latest_version
+                );
+
+                if check_only {
+                    println!("Run 'uti update' to install the update.");
+                    return;
+                }
+
+                if result.uti_rpm_url.is_none() && result.daemon_rpm_url.is_none() {
+                    println!("No RPM packages found in the release.");
+                    return;
+                }
+
+                println!("Installing update...");
+                match updater::perform_update(&result).await {
+                    Ok(()) => {
+                        println!("Update installed successfully!");
+                        println!("Please restart the application.");
+                    }
+                    Err(e) => {
+                        eprintln!("Update failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                println!("You are running the latest version.");
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to check for updates: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 /// Main application entry point
 ///
 /// Sets up the Tauri application with clipboard management commands
 /// and spawns an async task to listen for D-Bus signals.
 fn main() {
+    // Parse CLI arguments
+    let cli = Cli::parse();
+
+    // Handle subcommands
+    if let Some(command) = cli.command {
+        match command {
+            Commands::Update { check } => {
+                // Run update check in a tokio runtime
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                rt.block_on(handle_update_command(check));
+                return;
+            }
+        }
+    }
+
+    // No subcommand: run GUI
+    run_gui();
+}
+
+/// Run the Tauri GUI application
+fn run_gui() {
     // Load config to get clipboard history limit
     let config = AppConfig::load();
 
@@ -325,6 +415,7 @@ fn main() {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(store))
         .invoke_handler(tauri::generate_handler![
             toggle_window,
@@ -361,6 +452,13 @@ fn main() {
                 None::<&str>,
             )?;
 
+            let update_i = MenuItem::with_id(
+                app,
+                "check_update",
+                "Check for Updates...",
+                true,
+                None::<&str>,
+            )?;
             let github_i = MenuItem::with_id(app, "github", "GitHub ↗", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
@@ -370,6 +468,7 @@ fn main() {
                     &show_hide_i,
                     &PredefinedMenuItem::separator(app)?,
                     &autostart_i,
+                    &update_i,
                     &github_i,
                     &PredefinedMenuItem::separator(app)?,
                     &title_i,
@@ -408,6 +507,42 @@ fn main() {
                         } else {
                             println!("Auto-start enabled");
                         }
+                    }
+                    "check_update" => {
+                        let current_version = env!("CARGO_PKG_VERSION").to_string();
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            match updater::check_for_updates(&current_version).await {
+                                Ok(result) => {
+                                    if result.update_available {
+                                        app_handle
+                                            .dialog()
+                                            .message(format!(
+                                                "Update available: {} → {}\n\nRun 'uti update' in terminal to install.",
+                                                result.current_version, result.latest_version
+                                            ))
+                                            .kind(MessageDialogKind::Info)
+                                            .title("Update Available")
+                                            .show(|_| {});
+                                    } else {
+                                        app_handle
+                                            .dialog()
+                                            .message("You are running the latest version.")
+                                            .kind(MessageDialogKind::Info)
+                                            .title("No Update")
+                                            .show(|_| {});
+                                    }
+                                }
+                                Err(e) => {
+                                    app_handle
+                                        .dialog()
+                                        .message(format!("{}", e))
+                                        .kind(MessageDialogKind::Error)
+                                        .title("Update Check Failed")
+                                        .show(|_| {});
+                                }
+                            }
+                        });
                     }
                     "github" => {
                         let _ = open::that("https://github.com/noppomario/uti");

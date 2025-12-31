@@ -52,6 +52,20 @@ sudo dnf install -y \
 
 ---
 
+## Architecture
+
+```text
+[double-ctrl daemon]  ← User session service (requires input group)
+  ↓ Monitor Ctrl via evdev
+  ↓ Detect double press within 300ms
+  ↓ Send D-Bus Signal
+[Tauri app]           ← Normal user application
+  ↓ Receive D-Bus
+  ↓ Toggle window visibility
+```
+
+---
+
 ## Project Setup
 
 ```bash
@@ -172,6 +186,68 @@ Settings (`.vscode/settings.json`) are pre-configured:
 - Format on save: Enabled
 - Biome for TypeScript/React
 - rust-analyzer for Rust
+
+---
+
+## Release Process
+
+### Version Update
+
+Update version in all 6 locations:
+
+| File | Format |
+| ---- | ------ |
+| `package.json` (root) | `"version": "X.Y.Z"` |
+| `app/package.json` | `"version": "X.Y.Z"` |
+| `app/src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
+| `app/src-tauri/Cargo.toml` | `version = "X.Y.Z"` |
+| `daemon/Cargo.toml` | `version = "X.Y.Z"` |
+| `daemon/double-ctrl.spec` | `Version:        X.Y.Z` |
+
+**Note**: All components share the same version number for unified releases.
+
+### Creating a Release
+
+1. Ensure all tests pass:
+
+   ```bash
+   bun run ci:local
+   ```
+
+2. Commit version changes:
+
+   ```bash
+   git add -A
+   git commit -m "chore: bump version to X.Y.Z"
+   ```
+
+3. Create and push a version tag:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin main --tags
+   ```
+
+4. GitHub Actions will automatically:
+   - Build daemon and app RPMs
+   - Create a GitHub Release
+   - Upload RPM packages as release assets
+
+### Manual Release (workflow_dispatch)
+
+For testing or manual releases:
+
+1. Go to GitHub Actions
+2. Select "Release" workflow
+3. Click "Run workflow"
+4. Enter version number (e.g., `0.2.0`)
+
+### Release Artifacts
+
+Each release includes:
+
+- `uti-X.Y.Z-1.x86_64.rpm` - Tauri GUI application
+- `double-ctrl-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
 
 ---
 

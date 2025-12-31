@@ -4,7 +4,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/double-ctrl
+ExecStart=/usr/bin/double-ctrl
 Restart=on-failure
 # Set log level (info=default, debug=verbose, warn=minimal, error=errors only)
 Environment="RUST_LOG=info"

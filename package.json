@@ -19,6 +19,7 @@
     "daemon:lint": "cd daemon && cargo fmt --check && cargo clippy --all-targets",
     "daemon:build": "cd daemon && cargo build --release",
     "daemon:test": "cd daemon && cargo test",
+    "daemon:rpm": "./daemon/build-rpm.sh",
     "daemon:all": "npm-run-all daemon:format daemon:lint daemon:build daemon:test",
     "app:format": "npm-run-all --parallel frontend:format tauri:format",
     "app:lint": "npm-run-all --parallel frontend:lint tauri:lint",

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -35,9 +35,11 @@ describe('App', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the application title', () => {
+  it('renders the application title', async () => {
     // Arrange & Act
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     // Assert
     const title = screen.getByText('Clipboard History');
@@ -45,9 +47,11 @@ describe('App', () => {
     expect(title.tagName).toBe('H1');
   });
 
-  it('renders empty clipboard history state', () => {
+  it('renders empty clipboard history state', async () => {
     // Arrange & Act
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     // Assert
     const emptyState = screen.getByText(/no clipboard history/i);
@@ -59,10 +63,9 @@ describe('App', () => {
     const { listen } = await import('@tauri-apps/api/event');
 
     // Act
-    render(<App />);
-
-    // Wait for useEffect
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await act(async () => {
+      render(<App />);
+    });
 
     // Assert
     expect(listen).toHaveBeenCalledWith('double-ctrl-pressed', expect.any(Function));
@@ -89,16 +92,16 @@ describe('App', () => {
     });
 
     // Act
-    render(<App />);
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await act(async () => {
+      render(<App />);
+    });
 
     // Trigger double ctrl event
-    if (doubleCtrlHandler) {
-      doubleCtrlHandler();
-    }
-
-    // Wait for promises
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await act(async () => {
+      if (doubleCtrlHandler) {
+        doubleCtrlHandler();
+      }
+    });
 
     // Assert
     expect(invoke).toHaveBeenCalledWith('toggle_window');
