@@ -59,14 +59,10 @@ GitHub Actions will automatically build RPMs and create a GitHub Release.
 
 ## Version Format
 
-- `MAJOR.MINOR.PATCH` - Standard release (e.g., `0.2.0`)
-- `MAJOR.MINOR.PATCH-prerelease` - Pre-release (e.g., `0.1.0-test.1`)
-
-Pre-release tags (containing `-`) are automatically marked as prerelease on GitHub.
+`MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)
 
 ## Scripts
 
 ### bump_version.py
 
-Updates version in all 6 locations. Validates semver format with optional
-pre-release suffix.
+Updates version in all 6 locations. Validates semver format (`X.Y.Z`).
