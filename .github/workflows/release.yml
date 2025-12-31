@@ -89,6 +89,11 @@ jobs:
       - name: Build daemon RPM
         run: ./daemon/build-rpm.sh --package-only "${{ steps.version.outputs.version }}"
 
+      - name: Package GNOME Shell Extension
+        run: |
+          cd extension
+          zip -r ../dist/extension.zip metadata.json extension.js
+
       - name: Copy Tauri RPM to dist
         run: |
           mkdir -p dist
@@ -101,7 +106,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-packages
-          path: dist/*.rpm
+          path: |
+            dist/*.rpm
+            dist/*.zip
           retention-days: 7
 
   release:
@@ -126,7 +133,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.rpm
+          files: |
+            dist/*.rpm
+            dist/*.zip
           generate_release_notes: true
           draft: false
           prerelease: false

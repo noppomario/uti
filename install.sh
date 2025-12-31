@@ -102,9 +102,34 @@ main() {
         echo "  ✓ Already in input group."
     fi
 
-    echo "[5/5] Enabling systemd user service..."
+    echo "[5/6] Enabling systemd user service..."
     systemctl --user daemon-reload
     systemctl --user enable --now double-ctrl.service
+
+    echo "[6/6] Installing GNOME Shell Extension (if applicable)..."
+    if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || command -v gnome-extensions &>/dev/null; then
+        local ext_uuid="uti@noppomario.github.io"
+        local ext_dir="$HOME/.local/share/gnome-shell/extensions/${ext_uuid}"
+        local ext_url="https://github.com/${REPO}/releases/download/v${version}/extension.zip"
+
+        echo "  Downloading GNOME Shell Extension..."
+        local ext_zip="/tmp/uti-extension.zip"
+        if curl -L -o "$ext_zip" "$ext_url" 2>/dev/null; then
+            mkdir -p "$ext_dir"
+            unzip -o -q "$ext_zip" -d "$ext_dir"
+            rm -f "$ext_zip"
+            echo "  ✓ Extension installed to $ext_dir"
+            echo ""
+            echo "  To enable the extension, run:"
+            echo "    gnome-extensions enable ${ext_uuid}"
+            echo ""
+            echo "  Or use GNOME Extensions app to enable 'uti'"
+        else
+            echo "  ⚠ Could not download extension (optional, skipping)"
+        fi
+    else
+        echo "  Skipping (not a GNOME environment)"
+    fi
 
     echo ""
     echo "==========================================="

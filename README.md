@@ -65,6 +65,7 @@ When you install uti, the following changes are made to your system:
 | **User service** | `~/.config/systemd/user/` | Daemon autostart service |
 | **Config** | `~/.config/uti/` | User configuration and clipboard history |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
+| **GNOME Extension** | `~/.local/share/gnome-shell/extensions/` | Cursor positioning (GNOME only) |
 
 ### ⚠️ About the Input Group
 
@@ -157,6 +158,8 @@ Configuration file: `~/.config/uti/config.json`
 
 ### GNOME Users
 
+#### System Tray (Required)
+
 GNOME 43+ requires the AppIndicator extension for system tray:
 
 1. Install Extension Manager (if not installed):
@@ -169,6 +172,19 @@ GNOME 43+ requires the AppIndicator extension for system tray:
    - Click Install
 
 3. Log out and back in
+
+#### Cursor Positioning (Optional)
+
+On GNOME, you can enable cursor-relative window positioning by installing the
+uti extension:
+
+```bash
+gnome-extensions enable uti@noppomario.github.io
+```
+
+This allows the clipboard window to appear at the cursor position instead of
+screen center. The extension is automatically installed by the installer but
+needs to be enabled manually.
 
 <details>
 <summary><strong>🔧 Troubleshooting</strong></summary>
@@ -224,8 +240,10 @@ For development setup, see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
 - **Window appears in dock (Wayland)**: On Wayland, the window appears in the
   dock when visible. This is a Tauri limitation
   ([#9829](https://github.com/tauri-apps/tauri/issues/9829)).
-- **Window position**: Window always appears at screen center (Wayland does
-  not support cursor-relative positioning).
+- **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway,
+  etc.), window always appears at screen center. Wayland does not support
+  cursor-relative positioning. On GNOME, enable the uti extension for cursor
+  positioning.
 
 ## 📄 License
 
