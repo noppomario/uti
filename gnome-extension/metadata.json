@@ -1,6 +1,6 @@
 {
   "uuid": "uti@noppomario.github.io",
-  "name": "uti",
+  "name": "uti for GNOME",
   "description": "Panel icon and cursor positioning for uti clipboard manager",
   "shell-version": ["45", "46", "47", "48", "49"],
   "settings-schema": "org.gnome.shell.extensions.uti",

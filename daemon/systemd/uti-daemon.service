@@ -1,10 +1,10 @@
 [Unit]
-Description=Double Ctrl Hotkey Daemon (User Session)
+Description=uti Keyboard Daemon (User Session)
 After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/double-ctrl
+ExecStart=/usr/bin/uti-daemon
 Restart=on-failure
 # Set log level (info=default, debug=verbose, warn=minimal, error=errors only)
 Environment="RUST_LOG=info"

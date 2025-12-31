@@ -33,7 +33,7 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 ## Architecture
 
 ```text
-[double-ctrl daemon]  ← root/input permissions
+[uti-daemon]          ← root/input permissions
   ↓ Monitor Ctrl via evdev
   ↓ Detect double press within 300ms
   ↓ Send D-Bus Signal

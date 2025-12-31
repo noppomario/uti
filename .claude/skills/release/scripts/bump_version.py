@@ -94,8 +94,8 @@ def main():
     # 5. daemon/Cargo.toml
     update_cargo_version(root / "daemon" / "Cargo.toml", version)
 
-    # 6. daemon/double-ctrl.spec
-    update_rpm_spec_version(root / "daemon" / "double-ctrl.spec", version)
+    # 6. daemon/uti-daemon.spec
+    update_rpm_spec_version(root / "daemon" / "uti-daemon.spec", version)
 
     print(f"\n✅ All 6 files updated to version {version}")
     print("\nNext steps:")

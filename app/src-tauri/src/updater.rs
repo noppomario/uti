@@ -111,7 +111,7 @@ pub async fn check_for_updates(current_version: &str) -> Result<UpdateCheckResul
     let daemon_rpm_url = release
         .assets
         .iter()
-        .find(|a| a.name.starts_with("double-ctrl-") && a.name.ends_with(".rpm"))
+        .find(|a| a.name.starts_with("uti-daemon-") && a.name.ends_with(".rpm"))
         .map(|a| a.browser_download_url.clone());
 
     Ok(UpdateCheckResult {
@@ -209,7 +209,7 @@ pub async fn perform_update(result: &UpdateCheckResult) -> Result<(), UpdateErro
         println!("Downloading daemon RPM...");
         let daemon_path = download_rpm(
             daemon_url,
-            &format!("double-ctrl-{}.rpm", result.latest_version),
+            &format!("uti-daemon-{}.rpm", result.latest_version),
         )
         .await?;
         println!("Installing daemon RPM...");

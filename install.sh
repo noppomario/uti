@@ -1,5 +1,5 @@
 #!/bin/bash
-# uti installer - Downloads and installs uti and double-ctrl from GitHub Releases
+# uti installer - Downloads and installs uti and uti-daemon from GitHub Releases
 set -e
 
 REPO="noppomario/uti"
@@ -68,7 +68,7 @@ main() {
 
     # Construct download URLs
     local base_url="https://github.com/${REPO}/releases/download/v${version}"
-    local daemon_rpm="double-ctrl-${version}-1.x86_64.rpm"
+    local daemon_rpm="uti-daemon-${version}-1.x86_64.rpm"
     local uti_rpm="uti-${version}-1.x86_64.rpm"
 
     echo "[2/5] Downloading packages..."
@@ -104,16 +104,16 @@ main() {
 
     echo "[5/6] Enabling systemd user service..."
     systemctl --user daemon-reload
-    systemctl --user enable --now double-ctrl.service
+    systemctl --user enable --now uti-daemon.service
 
-    echo "[6/6] Installing GNOME Shell Extension (if applicable)..."
+    echo "[6/6] Installing uti for GNOME (if applicable)..."
     if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || command -v gnome-extensions &>/dev/null; then
         local ext_uuid="uti@noppomario.github.io"
         local ext_dir="$HOME/.local/share/gnome-shell/extensions/${ext_uuid}"
-        local ext_url="https://github.com/${REPO}/releases/download/v${version}/extension.zip"
+        local ext_url="https://github.com/${REPO}/releases/download/v${version}/gnome-extension.zip"
 
-        echo "  Downloading GNOME Shell Extension..."
-        local ext_zip="/tmp/uti-extension.zip"
+        echo "  Downloading uti for GNOME..."
+        local ext_zip="/tmp/uti-gnome-extension.zip"
         if curl -L -o "$ext_zip" "$ext_url" 2>/dev/null; then
             mkdir -p "$ext_dir"
             unzip -o -q "$ext_zip" -d "$ext_dir"
@@ -123,7 +123,7 @@ main() {
             echo "  To enable the extension, run:"
             echo "    gnome-extensions enable ${ext_uuid}"
             echo ""
-            echo "  Or use GNOME Extensions app to enable 'uti'"
+            echo "  Or use GNOME Extensions app to enable 'uti for GNOME'"
         else
             echo "  ⚠ Could not download extension (optional, skipping)"
         fi
@@ -141,10 +141,10 @@ main() {
     echo "  2. Run 'uti' from the command line or application menu"
     echo ""
     echo "Service status:"
-    systemctl --user status double-ctrl.service --no-pager || true
+    systemctl --user status uti-daemon.service --no-pager || true
     echo ""
     echo "To uninstall:"
-    echo "  sudo dnf remove uti double-ctrl"
+    echo "  sudo dnf remove uti uti-daemon"
     echo ""
 }
 

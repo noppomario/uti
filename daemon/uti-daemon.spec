@@ -1,7 +1,7 @@
-Name:           double-ctrl
+Name:           uti-daemon
 Version:        0.0.2
 Release:        1
-Summary:        Hotkey daemon for double key press detection
+Summary:        uti keyboard daemon for hotkey detection
 
 License:        MIT
 URL:            https://github.com/noppomario/uti
@@ -18,17 +18,17 @@ on double key press (e.g., double Ctrl). Part of the uti desktop utility.
 %install
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_userunitdir}
-install -m 755 %{_sourcedir}/double-ctrl %{buildroot}%{_bindir}/
-install -m 644 %{_sourcedir}/double-ctrl.service %{buildroot}%{_userunitdir}/
+install -m 755 %{_sourcedir}/uti-daemon %{buildroot}%{_bindir}/
+install -m 644 %{_sourcedir}/uti-daemon.service %{buildroot}%{_userunitdir}/
 
 %files
-%{_bindir}/double-ctrl
-%{_userunitdir}/double-ctrl.service
+%{_bindir}/uti-daemon
+%{_userunitdir}/uti-daemon.service
 
 %post
 echo ""
 echo "==========================================="
-echo " double-ctrl installation complete!"
+echo " uti-daemon installation complete!"
 echo "==========================================="
 echo ""
 echo "IMPORTANT: You must add your user to the 'input' group:"
@@ -40,10 +40,10 @@ echo ""
 echo "After that, enable and start the service:"
 echo ""
 echo "    systemctl --user daemon-reload"
-echo "    systemctl --user enable --now double-ctrl.service"
+echo "    systemctl --user enable --now uti-daemon.service"
 echo ""
 
 %preun
 # Stop service before uninstalling
-systemctl --user stop double-ctrl.service 2>/dev/null || true
-systemctl --user disable double-ctrl.service 2>/dev/null || true
+systemctl --user stop uti-daemon.service 2>/dev/null || true
+systemctl --user disable uti-daemon.service 2>/dev/null || true

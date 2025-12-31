@@ -55,7 +55,7 @@ sudo dnf install -y \
 ## Architecture
 
 ```text
-[double-ctrl daemon]  ← User session service (requires input group)
+[uti-daemon]          ← User session service (requires input group)
   ↓ Monitor Ctrl via evdev
   ↓ Detect double press within 300ms
   ↓ Send D-Bus Signal
@@ -202,7 +202,7 @@ Update version in all 6 locations:
 | `app/src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
 | `app/src-tauri/Cargo.toml` | `version = "X.Y.Z"` |
 | `daemon/Cargo.toml` | `version = "X.Y.Z"` |
-| `daemon/double-ctrl.spec` | `Version:        X.Y.Z` |
+| `daemon/uti-daemon.spec` | `Version:        X.Y.Z` |
 
 **Note**: All components share the same version number for unified releases.
 
@@ -247,7 +247,7 @@ For testing or manual releases:
 Each release includes:
 
 - `uti-X.Y.Z-1.x86_64.rpm` - Tauri GUI application
-- `double-ctrl-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
+- `uti-daemon-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
 
 ---
 

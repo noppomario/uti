@@ -29,7 +29,7 @@ Updates all 6 version locations:
 - `app/src-tauri/tauri.conf.json`
 - `app/src-tauri/Cargo.toml`
 - `daemon/Cargo.toml`
-- `daemon/double-ctrl.spec`
+- `daemon/uti-daemon.spec`
 
 ### 3. Commit and Push
 

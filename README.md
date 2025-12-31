@@ -66,9 +66,9 @@ flowchart LR
     end
 
     subgraph Components
-        DAEMON[🔧 double-ctrl<br/>daemon]
-        APP[📋 uti<br/>Tauri app]
-        EXT[🧩 GNOME Extension<br/>optional]
+        DAEMON[🔧 uti-daemon]
+        APP[📋 uti]
+        EXT[🧩 uti for GNOME<br/>optional]
     end
 
     subgraph UI
@@ -88,9 +88,9 @@ flowchart LR
 
 | Component | Role | Why needed |
 | --------- | ---- | ---------- |
-| **double-ctrl** | Detects double Ctrl press | Wayland blocks global shortcuts from apps |
+| **uti-daemon** | Detects double Ctrl press | Wayland blocks global shortcuts from apps |
 | **uti** | Clipboard manager UI | Main application |
-| **GNOME Extension** | Tray icon + cursor positioning | Wayland blocks window positioning; GNOME needs extension for tray |
+| **uti for GNOME** | Tray icon + cursor positioning | GNOME needs extension for tray and window positioning |
 
 > **Note**: On macOS/Windows, only the Tauri app would be needed (no daemon, no extension).
 > Linux/Wayland's security model requires this additional complexity.
@@ -102,11 +102,11 @@ When you install uti, the following changes are made to your system:
 | Component | Location | Description |
 | --------- | -------- | ----------- |
 | **uti** | `/usr/bin/uti` | Main application (RPM package) |
-| **double-ctrl** | `/usr/bin/double-ctrl` | Keyboard daemon (RPM package) |
+| **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
 | **User service** | `~/.config/systemd/user/` | Daemon autostart service |
 | **Config** | `~/.config/uti/` | User configuration and clipboard history |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
-| **GNOME Extension** | `~/.local/share/gnome-shell/extensions/` | Cursor positioning (GNOME only) |
+| **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
 
 ### ⚠️ About the Input Group
 
@@ -199,9 +199,9 @@ Configuration file: `~/.config/uti/config.json`
 
 ### GNOME Users
 
-#### uti Extension (Required)
+#### uti for GNOME (Required)
 
-On GNOME, enable the uti extension for full functionality:
+On GNOME, enable the extension for full functionality:
 
 ```bash
 gnome-extensions enable uti@noppomario.github.io
@@ -217,7 +217,7 @@ The extension displays Tauri's tray icon directly, so no additional extensions
 (like AppIndicator) are required.
 
 If you already have AppIndicator extension installed and prefer to use it
-instead, disable the uti extension's tray icon:
+instead, disable the extension's tray icon:
 
 ```bash
 gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
@@ -243,20 +243,20 @@ sudo usermod -aG input $USER
 Check daemon status:
 
 ```bash
-systemctl --user status double-ctrl.service
-journalctl --user -u double-ctrl.service -n 50
+systemctl --user status uti-daemon.service
+journalctl --user -u uti-daemon.service -n 50
 ```
 
 ### Tray Icon Not Visible (GNOME)
 
-Enable the uti extension (see GNOME Users section above).
+Enable uti for GNOME (see GNOME Users section above).
 
 </details>
 
 ## 🗑️ Uninstallation
 
 ```bash
-sudo dnf remove uti double-ctrl
+sudo dnf remove uti uti-daemon
 ```
 
 This automatically stops and disables the daemon service.
@@ -278,7 +278,7 @@ For development setup, see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
   ([#9829](https://github.com/tauri-apps/tauri/issues/9829)).
 - **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway,
   etc.), window always appears at screen center. Wayland does not support
-  cursor-relative positioning. On GNOME, enable the uti extension for cursor
+  cursor-relative positioning. On GNOME, enable uti for GNOME for cursor
   positioning.
 
 ## 📄 License

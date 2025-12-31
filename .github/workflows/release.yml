@@ -89,11 +89,11 @@ jobs:
       - name: Build daemon RPM
         run: ./daemon/build-rpm.sh --package-only "${{ steps.version.outputs.version }}"
 
-      - name: Package GNOME Shell Extension
+      - name: Package uti for GNOME
         run: |
-          cd extension
+          cd gnome-extension
           glib-compile-schemas schemas/
-          zip -r ../dist/extension.zip metadata.json extension.js schemas/
+          zip -r ../dist/gnome-extension.zip metadata.json extension.js schemas/
 
       - name: Copy Tauri RPM to dist
         run: |
