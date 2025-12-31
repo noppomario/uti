@@ -70,10 +70,10 @@ def main():
 
     version = sys.argv[1]
 
-    # Validate version format (semver with optional pre-release)
-    if not re.match(r"^\d+\.\d+\.\d+(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$", version):
+    # Validate version format (semver only)
+    if not re.match(r"^\d+\.\d+\.\d+$", version):
         print(f"Error: Invalid version format '{version}'")
-        print("Expected format: X.Y.Z or X.Y.Z-prerelease (e.g., 0.2.0, 0.1.0-test.1)")
+        print("Expected format: X.Y.Z (e.g., 0.2.0)")
         sys.exit(1)
 
     root = get_project_root()
