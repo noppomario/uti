@@ -38,3 +38,10 @@ Thumbs.db
 .claude/settings.local.json
 .claude/**/*.secret
 .claude/**/*.private
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Skill packages (generated)
+*.skill

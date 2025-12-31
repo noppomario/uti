@@ -794,6 +794,92 @@ backend for Linux.
 
 ---
 
+## ADR-015: Separate RPM packaging from development workflow
+
+**Date**: 2025-12-31
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Added `daemon:rpm` script for local RPM package building. Question arose whether
+to include it in `daemon:all` for consistency with other `:all` scripts.
+
+### Decision
+
+Keep `daemon:rpm` separate from `daemon:all`. RPM packaging is a release task,
+not a development task.
+
+### Script Structure
+
+```text
+daemon:format  ─┐
+daemon:lint    ─┼─→ daemon:all (development cycle)
+daemon:build   ─┤
+daemon:test    ─┘
+
+daemon:rpm     ─────→ standalone (release packaging)
+```
+
+### Rationale
+
+**Environment dependency**:
+
+- `rpmbuild` is not universally available
+- Including in `:all` would fail on macOS, Windows, or Linux without rpm-build
+- Development workflow should work everywhere
+
+**Separation of concerns**:
+
+- `:build` = compile source to binary
+- `:rpm` = package binary for distribution
+- These are distinct lifecycle phases
+
+**CI/CD alignment**:
+
+- GitHub Actions release workflow calls `daemon:rpm` explicitly
+- `ci:local` focuses on validation, not packaging
+- Packaging happens only during release
+
+**Consistency with Tauri**:
+
+- `tauri:build` produces RPM as side effect (Tauri's design, not ours)
+- Daemon follows explicit separation: build binary, then optionally package
+
+### Alternatives Considered
+
+1. **Include in daemon:all**
+   - Pro: Consistent naming (`all` means everything)
+   - Con: Breaks on systems without rpmbuild
+
+2. **Add daemon:all:full including rpm**
+   - Pro: Choice between quick and full
+   - Con: Adds complexity, rarely needed
+
+3. **Make rpmbuild optional in daemon:rpm**
+   - Pro: Script never fails
+   - Con: Silent failure is confusing
+
+### Consequences
+
+**Positive**:
+
+- Development workflow works on any platform
+- Clear separation: development vs release
+- Explicit `bun run daemon:rpm` when packaging needed
+
+**Negative**:
+
+- `daemon:all` doesn't literally run "all" daemon tasks
+- Developers must remember to test RPM before release
+
+**Reconsider when**:
+
+- Need for cross-platform packaging (AppImage, Flatpak)
+- Automated nightly builds require packaging
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
