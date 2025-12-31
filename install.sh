@@ -44,7 +44,7 @@ download_file() {
     local filename="$2"
     local dest="/tmp/${filename}"
 
-    echo "  Downloading ${filename}..."
+    echo "  Downloading ${filename}..." >&2
     curl -L -o "$dest" "$url" 2>/dev/null
     echo "$dest"
 }
