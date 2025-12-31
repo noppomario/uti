@@ -1,0 +1,33 @@
+{
+  "items": [
+    {
+      "text": "Press Ctrl twice quickly to toggle this window",
+      "timestamp": 1735689600
+    },
+    {
+      "text": "Click any item to copy it back to your clipboard",
+      "timestamp": 1735689500
+    },
+    {
+      "text": "Use arrow keys ↑↓ to navigate, Enter to select",
+      "timestamp": 1735689400
+    },
+    {
+      "text": "https://github.com/noppomario/uti",
+      "timestamp": 1735689300
+    },
+    {
+      "text": "Your clipboard history is automatically saved",
+      "timestamp": 1735689200
+    },
+    {
+      "text": "Right-click the tray icon for more options",
+      "timestamp": 1735689100
+    },
+    {
+      "text": "Built with Rust, Tauri, React, and Tailwind CSS",
+      "timestamp": 1735689000
+    }
+  ],
+  "max_items": 50
+}
