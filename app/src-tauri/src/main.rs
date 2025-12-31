@@ -28,8 +28,12 @@ use zbus::Connection;
 #[derive(Parser)]
 #[command(name = "uti")]
 #[command(about = "Desktop utility for toggling window visibility with double Ctrl press")]
-#[command(version)]
+#[command(version, long_version = env!("CARGO_PKG_VERSION"), disable_version_flag = true)]
 struct Cli {
+    /// Print version
+    #[arg(short = 'v', short_alias = 'V', long = "version", action = clap::ArgAction::Version)]
+    version: (),
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
