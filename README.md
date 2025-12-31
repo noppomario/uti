@@ -54,6 +54,47 @@ Built with Rust backend and modern web frontend
 - 🚀 **Auto-start**: Optional auto-start on login
 - 🔄 **Self-update**: Update via `uti update` command or tray menu
 
+## 🏗️ Architecture (Linux)
+
+Linux/Wayland has security restrictions that require a multi-component architecture:
+
+```mermaid
+flowchart LR
+    subgraph System
+        KB[⌨️ Keyboard]
+        DBUS[(D-Bus)]
+    end
+
+    subgraph Components
+        DAEMON[🔧 double-ctrl<br/>daemon]
+        APP[📋 uti<br/>Tauri app]
+        EXT[🧩 GNOME Extension<br/>optional]
+    end
+
+    subgraph UI
+        TRAY[🔲 Tray Icon]
+        WIN[🪟 Window]
+    end
+
+    KB -->|evdev| DAEMON
+    DAEMON -->|signal| DBUS
+    DBUS -->|Triggered| APP
+    DBUS -->|Triggered| EXT
+    APP -->|StatusNotifierItem| EXT
+    EXT -->|move to cursor| WIN
+    EXT --> TRAY
+    APP --> WIN
+```
+
+| Component | Role | Why needed |
+| --------- | ---- | ---------- |
+| **double-ctrl** | Detects double Ctrl press | Wayland blocks global shortcuts from apps |
+| **uti** | Clipboard manager UI | Main application |
+| **GNOME Extension** | Tray icon + cursor positioning | Wayland blocks window positioning; GNOME needs extension for tray |
+
+> **Note**: On macOS/Windows, only the Tauri app would be needed (no daemon, no extension).
+> Linux/Wayland's security model requires this additional complexity.
+
 ## 📦 What Gets Installed
 
 When you install uti, the following changes are made to your system:
