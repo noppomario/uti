@@ -54,14 +54,22 @@ sudo dnf install -y \
 
 ## Architecture
 
-```text
-[uti-daemon]          ← User session service (requires input group)
-  ↓ Monitor Ctrl via evdev
-  ↓ Detect double press within 300ms
-  ↓ Send D-Bus Signal
-[Tauri app]           ← Normal user application
-  ↓ Receive D-Bus
-  ↓ Toggle window visibility
+For detailed architecture documentation with sequence diagrams, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+```mermaid
+sequenceDiagram
+    participant KB as Keyboard
+    participant D as uti-daemon
+    participant Bus as D-Bus
+    participant App as uti (Tauri)
+    participant Win as Window
+
+    KB->>D: evdev events
+    D->>D: Detect double Ctrl (300ms)
+    D->>Bus: Emit DoubleTap.Triggered
+    Bus->>App: Signal received
+    App->>Win: Toggle visibility
 ```
 
 ---

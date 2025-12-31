@@ -95,6 +95,9 @@ flowchart LR
 > **Note**: On macOS/Windows, only the Tauri app would be needed (no daemon, no extension).
 > Linux/Wayland's security model requires this additional complexity.
 
+For detailed sequence diagrams and platform-specific configurations, see
+[Architecture Documentation](docs/ARCHITECTURE.md).
+
 ## 📦 What Gets Installed
 
 When you install uti, the following changes are made to your system:
