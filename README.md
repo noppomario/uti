@@ -158,33 +158,21 @@ Configuration file: `~/.config/uti/config.json`
 
 ### GNOME Users
 
-#### System Tray (Required)
+#### uti Extension (Required)
 
-GNOME 43+ requires the AppIndicator extension for system tray:
-
-1. Install Extension Manager (if not installed):
-   - Open GNOME Software
-   - Search "Extension Manager" and install
-
-2. Install AppIndicator extension:
-   - Open Extension Manager
-   - Search "AppIndicator and KStatusNotifierItem Support"
-   - Click Install
-
-3. Log out and back in
-
-#### Cursor Positioning (Optional)
-
-On GNOME, you can enable cursor-relative window positioning by installing the
-uti extension:
+On GNOME, enable the uti extension to get the panel icon and cursor-relative
+window positioning:
 
 ```bash
 gnome-extensions enable uti@noppomario.github.io
 ```
 
-This allows the clipboard window to appear at the cursor position instead of
-screen center. The extension is automatically installed by the installer but
-needs to be enabled manually.
+The extension is automatically installed by the installer but needs to be
+enabled manually. This extension provides:
+
+- Panel icon (replaces the need for AppIndicator extension)
+- Cursor-relative window positioning
+- Right-click menu (Show/Hide, GitHub, Quit)
 
 <details>
 <summary><strong>🔧 Troubleshooting</strong></summary>
