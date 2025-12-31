@@ -1,6 +1,6 @@
 {
   "productName": "uti",
-  "version": "0.1.0",
+  "version": "0.1.0-test.1",
   "identifier": "io.github.noppomario.uti",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -10,7 +10,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["rpm"],
+    "targets": [
+      "rpm"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,7 +43,9 @@
         {
           "identifier": "main-capability",
           "description": "Main application capabilities",
-          "windows": ["main"],
+          "windows": [
+            "main"
+          ],
           "permissions": [
             "core:event:allow-listen",
             "core:event:allow-emit",
