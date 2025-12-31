@@ -1,6 +1,6 @@
 [package]
 name = "uti"
-version = "0.0.1"
+version = "0.0.2"
 description = "Double Ctrl hotkey desktop tool"
 authors = []
 license = "MIT"
