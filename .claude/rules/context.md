@@ -4,7 +4,7 @@
 
 Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
-**For development environment setup**, see [DEVELOPMENT.md](../../../DEVELOPMENT.md)
+**For development environment setup**, see [DEVELOPMENT.md](../../../docs/DEVELOPMENT.md)
 
 ## Technology Stack
 
