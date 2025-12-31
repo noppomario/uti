@@ -9,21 +9,20 @@ Create a new release for uti (Tauri app + daemon).
 
 ## Workflow
 
-### 1. Bump Version
+### 1. Create Release Branch
 
-Run the version bump script:
+```bash
+git checkout main && git pull origin main
+git checkout -b claude/release-X.Y.Z
+```
+
+### 2. Bump Version
 
 ```bash
 python .claude/skills/release/scripts/bump_version.py <version>
 ```
 
-Example:
-
-```bash
-python .claude/skills/release/scripts/bump_version.py 0.2.0
-```
-
-This updates all 6 version locations:
+Updates all 6 version locations:
 
 - `package.json` (root)
 - `app/package.json`
@@ -32,45 +31,42 @@ This updates all 6 version locations:
 - `daemon/Cargo.toml`
 - `daemon/double-ctrl.spec`
 
-### 2. Run Tests
-
-```bash
-bun run ci:local
-```
-
-All checks must pass before proceeding.
-
-### 3. Commit Changes
+### 3. Commit and Push
 
 ```bash
 git add -A
 git commit -m "chore: bump version to X.Y.Z"
+git push -u origin claude/release-X.Y.Z
 ```
 
-### 4. Create and Push Tag
+### 4. Create PR
 
 ```bash
-git tag vX.Y.Z
-git push origin main --tags
+gh pr create --title "chore: bump version to X.Y.Z" --body "Release X.Y.Z"
 ```
 
-GitHub Actions will automatically:
+Wait for CI checks to pass, then merge the PR.
 
-- Build daemon and app RPMs
-- Create a GitHub Release
-- Upload RPM packages as release assets
+### 5. Create and Push Tag (after PR merge)
+
+```bash
+git checkout main && git pull origin main
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+GitHub Actions will automatically build RPMs and create a GitHub Release.
 
 ## Version Format
 
-Use semantic versioning: `MAJOR.MINOR.PATCH`
+- `MAJOR.MINOR.PATCH` - Standard release (e.g., `0.2.0`)
+- `MAJOR.MINOR.PATCH-prerelease` - Pre-release (e.g., `0.1.0-test.1`)
 
-- MAJOR: Breaking changes
-- MINOR: New features (backward compatible)
-- PATCH: Bug fixes
+Pre-release tags (containing `-`) are automatically marked as prerelease on GitHub.
 
 ## Scripts
 
 ### bump_version.py
 
-Updates version in all 6 locations simultaneously. Validates version format
-before making changes.
+Updates version in all 6 locations. Validates semver format with optional
+pre-release suffix.

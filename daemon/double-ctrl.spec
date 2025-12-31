@@ -1,5 +1,5 @@
 Name:           double-ctrl
-Version:        0.1.0
+Version:        0.1.0-test.1
 Release:        1
 Summary:        Hotkey daemon for double key press detection
 
