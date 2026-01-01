@@ -11,6 +11,9 @@ jobs:
   ci:
     name: CI Checks
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main-ci' || format('ci-{0}', github.ref) }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
     steps:
       - name: Checkout code
