@@ -152,7 +152,9 @@ async fn monitor_device(
 
                             if interval < DOUBLE_TAP_INTERVAL {
                                 info!("[{}] Double Ctrl detected!", device_name);
-                                notify_double_ctrl(&conn).await?;
+                                if let Err(e) = notify_double_ctrl(&conn).await {
+                                    error!("[{}] Failed to send D-Bus signal: {}", device_name, e);
+                                }
                                 *last_release = None;
                                 continue;
                             }

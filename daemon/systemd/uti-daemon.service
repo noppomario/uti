@@ -1,6 +1,7 @@
 [Unit]
 Description=uti Keyboard Daemon (User Session)
 After=graphical-session.target
+BindsTo=graphical-session.target
 
 [Service]
 Type=simple
