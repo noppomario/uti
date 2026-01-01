@@ -16,10 +16,10 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const DAEMON_BUS_NAME = 'io.github.noppomario.uti';
 const DAEMON_OBJECT_PATH = '/io/github/noppomario/uti/DoubleTap';
@@ -102,10 +102,7 @@ class StatusNotifierWatcher {
 
     enable() {
         const nodeInfo = Gio.DBusNodeInfo.new_for_xml(SNWatcherIface);
-        this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
-            nodeInfo.interfaces[0],
-            this
-        );
+        this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(nodeInfo.interfaces[0], this);
 
         try {
             this._dbusImpl.export(Gio.DBus.session, '/StatusNotifierWatcher');
@@ -244,148 +241,141 @@ class StatusNotifierWatcher {
  * Panel indicator that displays uti's StatusNotifierItem
  */
 const UtiIndicator = GObject.registerClass(
-class UtiIndicator extends PanelMenu.Button {
-    _init(extension, busName, objectPath) {
-        super._init(0.0, 'uti', false);
-        this._extension = extension;
-        this._busName = busName;
-        this._objectPath = objectPath;
-        this._sniProxy = null;
-        this._menuProxy = null;
-        this._menuLayoutId = null;
+    class UtiIndicator extends PanelMenu.Button {
+        _init(extension, busName, objectPath) {
+            super._init(0.0, 'uti', false);
+            this._extension = extension;
+            this._busName = busName;
+            this._objectPath = objectPath;
+            this._sniProxy = null;
+            this._menuProxy = null;
+            this._menuLayoutId = null;
 
-        this._icon = new St.Icon({
-            icon_name: 'edit-paste-symbolic',
-            style_class: 'system-status-icon',
-        });
-        this.add_child(this._icon);
+            this._icon = new St.Icon({
+                icon_name: 'edit-paste-symbolic',
+                style_class: 'system-status-icon',
+            });
+            this.add_child(this._icon);
 
-        this._connectSNI();
+            this._connectSNI();
 
-        // Refresh menu when opened
-        this.menu.connect('open-state-changed', (_menu, open) => {
-            if (open) this._loadMenu();
-        });
+            // Refresh menu when opened
+            this.menu.connect('open-state-changed', (_menu, open) => {
+                if (open) this._loadMenu();
+            });
 
-        // Load menu initially so it's not empty
-        this._loadMenu();
-    }
-
-    _connectSNI() {
-        try {
-            this._sniProxy = new SNIProxy(
-                Gio.DBus.session,
-                this._busName,
-                this._objectPath
-            );
-
-            // Set icon - IconName may be a file path or theme icon name
-            const iconName = this._sniProxy.IconName;
-            if (iconName) {
-                if (iconName.startsWith('/')) {
-                    // File path - create GIcon from file
-                    const file = Gio.File.new_for_path(iconName);
-                    if (file.query_exists(null)) {
-                        this._icon.gicon = Gio.FileIcon.new(file);
-                    }
-                } else {
-                    // Theme icon name
-                    this._icon.icon_name = iconName;
-                }
-            }
-
-            // Connect to menu
-            const menuPath = this._sniProxy.Menu;
-            if (menuPath) {
-                this._menuProxy = new DBusMenuProxy(
-                    Gio.DBus.session,
-                    this._busName,
-                    menuPath
-                );
-                this._menuLayoutId = this._menuProxy.connectSignal(
-                    'LayoutUpdated',
-                    () => { if (this.menu.isOpen) this._loadMenu(); }
-                );
-            }
-
-            console.log(`[uti] Connected to SNI: ${this._busName} at ${this._objectPath}`);
-        } catch (e) {
-            console.error(`[uti] SNI connection failed: ${e.message}`);
+            // Load menu initially so it's not empty
+            this._loadMenu();
         }
-    }
 
-    _loadMenu() {
-        if (!this._menuProxy) return;
+        _connectSNI() {
+            try {
+                this._sniProxy = new SNIProxy(Gio.DBus.session, this._busName, this._objectPath);
 
-        this._menuProxy.GetLayoutRemote(0, -1, [], (result, error) => {
-            if (error) {
-                console.error(`[uti] GetLayout error: ${error.message}`);
+                // Set icon - IconName may be a file path or theme icon name
+                const iconName = this._sniProxy.IconName;
+                if (iconName) {
+                    if (iconName.startsWith('/')) {
+                        // File path - create GIcon from file
+                        const file = Gio.File.new_for_path(iconName);
+                        if (file.query_exists(null)) {
+                            this._icon.gicon = Gio.FileIcon.new(file);
+                        }
+                    } else {
+                        // Theme icon name
+                        this._icon.icon_name = iconName;
+                    }
+                }
+
+                // Connect to menu
+                const menuPath = this._sniProxy.Menu;
+                if (menuPath) {
+                    this._menuProxy = new DBusMenuProxy(Gio.DBus.session, this._busName, menuPath);
+                    this._menuLayoutId = this._menuProxy.connectSignal('LayoutUpdated', () => {
+                        if (this.menu.isOpen) this._loadMenu();
+                    });
+                }
+
+                console.log(`[uti] Connected to SNI: ${this._busName} at ${this._objectPath}`);
+            } catch (e) {
+                console.error(`[uti] SNI connection failed: ${e.message}`);
+            }
+        }
+
+        _loadMenu() {
+            if (!this._menuProxy) return;
+
+            this._menuProxy.GetLayoutRemote(0, -1, [], (result, error) => {
+                if (error) {
+                    console.error(`[uti] GetLayout error: ${error.message}`);
+                    return;
+                }
+                this.menu.removeAll();
+                const [, layout] = result;
+                this._buildMenu(layout);
+            });
+        }
+
+        _buildMenu(layout) {
+            const [, , children] = layout;
+            for (const child of children) {
+                const item = child.recursiveUnpack();
+                this._addMenuItem(item);
+            }
+        }
+
+        _addMenuItem(item) {
+            const [id, props, _children] = item;
+            const type = props['type'] || '';
+            const label = (props['label'] || '').replace(/_/g, '');
+            const enabled = props['enabled'] !== false;
+            const visible = props['visible'] !== false;
+            const toggleType = props['toggle-type'] || '';
+            const toggleState = props['toggle-state'] || 0;
+
+            if (!visible) return;
+
+            if (type === 'separator') {
+                this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
                 return;
             }
-            this.menu.removeAll();
-            const [, layout] = result;
-            this._buildMenu(layout);
-        });
-    }
 
-    _buildMenu(layout) {
-        const [, , children] = layout;
-        for (const child of children) {
-            const item = child.recursiveUnpack();
-            this._addMenuItem(item);
-        }
-    }
-
-    _addMenuItem(item) {
-        const [id, props, children] = item;
-        const type = props['type'] || '';
-        const label = (props['label'] || '').replace(/_/g, '');
-        const enabled = props['enabled'] !== false;
-        const visible = props['visible'] !== false;
-        const toggleType = props['toggle-type'] || '';
-        const toggleState = props['toggle-state'] || 0;
-
-        if (!visible) return;
-
-        if (type === 'separator') {
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            return;
+            let menuItem;
+            if (toggleType === 'checkmark') {
+                menuItem = new PopupMenu.PopupSwitchMenuItem(label, toggleState === 1);
+                menuItem.connect('toggled', () => this._emitEvent(id));
+            } else {
+                menuItem = new PopupMenu.PopupMenuItem(label);
+                menuItem.connect('activate', () => this._emitEvent(id));
+            }
+            menuItem.setSensitive(enabled);
+            this.menu.addMenuItem(menuItem);
         }
 
-        let menuItem;
-        if (toggleType === 'checkmark') {
-            menuItem = new PopupMenu.PopupSwitchMenuItem(label, toggleState === 1);
-            menuItem.connect('toggled', () => this._emitEvent(id));
-        } else {
-            menuItem = new PopupMenu.PopupMenuItem(label);
-            menuItem.connect('activate', () => this._emitEvent(id));
+        _emitEvent(id) {
+            if (!this._menuProxy) return;
+            try {
+                this._menuProxy.EventRemote(
+                    id,
+                    'clicked',
+                    new GLib.Variant('i', 0),
+                    Math.floor(Date.now() / 1000)
+                );
+            } catch (e) {
+                console.error(`[uti] Event failed: ${e.message}`);
+            }
         }
-        menuItem.setSensitive(enabled);
-        this.menu.addMenuItem(menuItem);
-    }
 
-    _emitEvent(id) {
-        if (!this._menuProxy) return;
-        try {
-            this._menuProxy.EventRemote(
-                id, 'clicked',
-                new GLib.Variant('i', 0),
-                Math.floor(Date.now() / 1000)
-            );
-        } catch (e) {
-            console.error(`[uti] Event failed: ${e.message}`);
+        destroy() {
+            if (this._menuLayoutId && this._menuProxy) {
+                this._menuProxy.disconnectSignal(this._menuLayoutId);
+            }
+            this._sniProxy = null;
+            this._menuProxy = null;
+            super.destroy();
         }
     }
-
-    destroy() {
-        if (this._menuLayoutId && this._menuProxy) {
-            this._menuProxy.disconnectSignal(this._menuLayoutId);
-        }
-        this._sniProxy = null;
-        this._menuProxy = null;
-        super.destroy();
-    }
-});
+);
 
 export default class UtiExtension extends Extension {
     constructor(metadata) {
@@ -508,7 +498,7 @@ export default class UtiExtension extends Extension {
         }
     }
 
-    _onNameOwnerChanged(conn, sender, path, iface, signal, params) {
+    _onNameOwnerChanged(_conn, _sender, _path, _iface, _signal, params) {
         const [name, oldOwner, newOwner] = params.deep_unpack();
 
         if (!name.startsWith('org.kde.StatusNotifierItem-')) return;
@@ -528,16 +518,13 @@ export default class UtiExtension extends Extension {
         // Check if this SNI belongs to uti by reading its Title property
         // (ayatana-appindicator uses Title='uti', Id='tray-icon tray app')
         try {
-            const proxy = new SNIProxy(
-                Gio.DBus.session,
-                busName,
-                objectPath
-            );
+            const proxy = new SNIProxy(Gio.DBus.session, busName, objectPath);
             const title = proxy.Title;
             const id = proxy.Id;
-            console.log(`[uti] Checking SNI: busName=${busName}, path=${objectPath}, Title=${title}, Id=${id}`);
-            if ((title && title.toLowerCase() === 'uti') ||
-                (id && id.toLowerCase() === 'uti')) {
+            console.log(
+                `[uti] Checking SNI: busName=${busName}, path=${objectPath}, Title=${title}, Id=${id}`
+            );
+            if ((title && title.toLowerCase() === 'uti') || (id && id.toLowerCase() === 'uti')) {
                 console.log(`[uti] Found uti SNI: ${busName} at ${objectPath}`);
                 this._sniBusName = busName;
                 this._sniObjectPath = objectPath;

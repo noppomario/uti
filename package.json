@@ -21,6 +21,9 @@
     "daemon:test": "cd daemon && cargo test",
     "daemon:rpm": "./daemon/build-rpm.sh",
     "daemon:all": "npm-run-all daemon:format daemon:lint daemon:build daemon:test",
+    "gnome:format": "cd gnome-extension && bunx --bun @biomejs/biome format --write .",
+    "gnome:lint": "cd gnome-extension && bunx --bun @biomejs/biome check .",
+    "gnome:all": "npm-run-all gnome:format gnome:lint",
     "app:format": "npm-run-all --parallel frontend:format tauri:format",
     "app:lint": "npm-run-all --parallel frontend:lint tauri:lint",
     "app:typecheck": "npm run frontend:typecheck",
@@ -32,8 +35,8 @@
     "rust:build": "cargo build --workspace --release",
     "rust:test": "cargo test --workspace",
     "rust:all": "npm-run-all rust:format rust:lint rust:build rust:test",
-    "all:format": "npm-run-all --parallel frontend:format rust:format",
-    "all:lint": "npm-run-all --parallel frontend:lint rust:lint",
+    "all:format": "npm-run-all --parallel frontend:format rust:format gnome:format",
+    "all:lint": "npm-run-all --parallel frontend:lint rust:lint gnome:lint",
     "all:typecheck": "npm run frontend:typecheck",
     "all:build": "npm-run-all --parallel frontend:build daemon:build tauri:build",
     "all:test": "npm-run-all --parallel frontend:test rust:test",
@@ -52,6 +55,7 @@
   "lint-staged": {
     "app/src/**/*.{ts,tsx}": "sh -c 'cd app && bunx --bun @biomejs/biome check --write \"$@\"' --",
     "app/src-tauri/src/**/*.rs": "sh -c 'cargo fmt --manifest-path app/src-tauri/Cargo.toml' --",
-    "daemon/src/**/*.rs": "sh -c 'cargo fmt --manifest-path daemon/Cargo.toml' --"
+    "daemon/src/**/*.rs": "sh -c 'cargo fmt --manifest-path daemon/Cargo.toml' --",
+    "gnome-extension/**/*.js": "sh -c 'cd gnome-extension && bunx --bun @biomejs/biome check --write \"$@\"' --"
   }
 }
