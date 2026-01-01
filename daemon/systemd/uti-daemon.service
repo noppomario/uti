@@ -11,4 +11,4 @@ Restart=on-failure
 Environment="RUST_LOG=info"
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

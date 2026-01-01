@@ -980,6 +980,52 @@ Rename daemon to `uti-daemon` for consistency with `uti` (Tauri app) and `uti fo
 
 ---
 
+## ADR-018: Daemon lifecycle bound to graphical session
+
+**Date**: 2026-01-01
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After user re-login, double Ctrl press stopped working. The daemon was holding
+a stale D-Bus session connection from the previous login session.
+
+### Decision
+
+Bind daemon lifecycle to `graphical-session.target`:
+
+- `BindsTo=graphical-session.target`: Stop daemon when session ends
+- `WantedBy=graphical-session.target`: Start daemon when session starts
+- Handle D-Bus errors gracefully without exiting monitor loop
+
+### Rationale
+
+**Session-aware design**:
+
+- D-Bus session bus is per-login session
+- Daemon must restart with fresh connection after re-login
+- `BindsTo` ensures clean shutdown on logout
+
+**Graceful error handling**:
+
+- D-Bus send errors during logout shouldn't crash the daemon
+- Log errors but continue monitoring keyboards
+
+### Consequences
+
+**Positive**:
+
+- Double Ctrl works reliably after re-login
+- Clean daemon lifecycle management
+- No stale connections
+
+**Negative**:
+
+- Requires `systemctl --user disable && enable` when changing `WantedBy`
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
