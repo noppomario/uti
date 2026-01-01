@@ -23,13 +23,15 @@ gh workflow run release.yml -f version=0.0.4
 
 ## What It Does
 
-The workflow automatically:
+The workflow automatically (no human intervention required):
 
-1. Bumps version in all 6 locations
-2. Commits to main branch
-3. Creates and pushes tag
-4. Builds packages (Tauri RPM, daemon RPM, GNOME extension)
-5. Creates GitHub Release with artifacts
+1. Creates release branch and bumps version in all 6 locations
+2. Creates PR with auto-merge enabled
+3. Waits for CI to pass
+4. Auto-merges PR when CI succeeds
+5. Creates tag on merge (triggers release build)
+6. Builds packages (Tauri RPM, daemon RPM, GNOME extension)
+7. Creates GitHub Release with artifacts
 
 ## Version Format
 
