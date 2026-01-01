@@ -370,9 +370,9 @@ async fn handle_update_command(check_only: bool) {
                         println!("Update installed successfully!");
                         println!();
                         // Red bold warning box
-                        println!("\x1b[1;31m╔════════════════════════════╗\x1b[0m");
-                        println!("\x1b[1;31m║  ⚠ YOU MUST LOG OUT AND LOG BACK IN TO APPLY CHANGES  ║\x1b[0m");
-                        println!("\x1b[1;31m╚════════════════════════════╝\x1b[0m");
+                        println!("\x1b[1;31m+--------------------------------------------------------------+\x1b[0m");
+                        println!("\x1b[1;31m|  WARNING: YOU MUST LOG OUT AND LOG BACK IN TO APPLY CHANGES  |\x1b[0m");
+                        println!("\x1b[1;31m+--------------------------------------------------------------+\x1b[0m");
                         println!();
                     }
                     Err(e) => {
