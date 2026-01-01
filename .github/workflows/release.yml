@@ -16,6 +16,9 @@ jobs:
     name: Prepare Release PR
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+    concurrency:
+      group: main-ci
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -71,6 +74,14 @@ jobs:
           echo "Created PR: $PR_URL"
           gh pr merge --auto --squash "$PR_URL"
           echo "Auto-merge enabled for PR"
+
+      - name: Trigger CI for PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GitHub Actions doesn't trigger workflows for PRs created by GITHUB_TOKEN
+          # Manually dispatch CI workflow for the release branch
+          gh workflow run ci.yml --ref release/v${{ inputs.version }}
 
       - name: Summary
         run: |
