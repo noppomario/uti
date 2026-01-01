@@ -47,6 +47,7 @@ cd daemon && sudo cargo run    # Run daemon
 
 ### Important Reminders
 
+- ✅ **Terminal output**: ASCII only (Unicode has ambiguous width issues)
 - ✅ All code and documentation in **English only**
 - ✅ **TDD required**: Write tests BEFORE implementation (Red-Green-Refactor)
 - ✅ Use **TSDoc** for TypeScript, **Rust doc comments** for Rust
