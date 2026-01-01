@@ -263,10 +263,21 @@ fn toggle_window(window: WebviewWindow) {
         let _ = window.hide();
         println!("Window hidden");
     } else {
-        // Center window on screen (Wayland doesn't support cursor positioning)
-        match window.center() {
-            Ok(_) => println!("Window centered on screen"),
-            Err(e) => eprintln!("Failed to center window: {}", e),
+        // On GNOME, the extension handles positioning at cursor location.
+        // On other environments, center the window as fallback.
+        let is_gnome = std::env::var("XDG_CURRENT_DESKTOP")
+            .map(|v| v.to_uppercase().contains("GNOME"))
+            .unwrap_or(false);
+
+        if is_gnome {
+            // Wait for GNOME extension to position the window before showing.
+            // The extension receives the D-Bus signal and calls move_frame().
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        } else {
+            match window.center() {
+                Ok(_) => println!("Window centered on screen"),
+                Err(e) => eprintln!("Failed to center window: {}", e),
+            }
         }
 
         let _ = window.show();
@@ -353,7 +364,12 @@ async fn handle_update_command(check_only: bool) {
                 match updater::perform_update(&result).await {
                     Ok(()) => {
                         println!("Update installed successfully!");
-                        println!("Please restart the application.");
+                        println!();
+                        // Red bold warning box
+                        println!("\x1b[1;31m╔════════════════════════════╗\x1b[0m");
+                        println!("\x1b[1;31m║  ⚠ YOU MUST LOG OUT AND LOG BACK IN TO APPLY CHANGES  ║\x1b[0m");
+                        println!("\x1b[1;31m╚════════════════════════════╝\x1b[0m");
+                        println!();
                     }
                     Err(e) => {
                         eprintln!("Update failed: {}", e);

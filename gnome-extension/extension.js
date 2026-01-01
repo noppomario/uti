@@ -2,19 +2,20 @@
  * uti GNOME Shell Extension
  *
  * Features:
- * 1. StatusNotifierItem host for uti's tray icon (replaces AppIndicator)
- * 2. Positions uti window at cursor location on Ctrl double-tap
+ * 1. StatusNotifierWatcher service (replaces AppIndicator extension)
+ * 2. StatusNotifierItem host for uti's tray icon
+ * 3. Positions uti window at cursor location on Ctrl double-tap
  *
  * Architecture:
  *   daemon (evdev) --D-Bus--> Extension --move window--> Tauri app
- *   Tauri app --StatusNotifierItem--> Extension --panel icon--> GNOME Shell
+ *   Tauri app --RegisterStatusNotifierItem--> Extension (Watcher)
+ *   Extension (Watcher) --create indicator--> GNOME Shell panel
  */
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
-import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -30,6 +31,7 @@ const SNIIface = `
 <node>
   <interface name="org.kde.StatusNotifierItem">
     <property name="Id" type="s" access="read"/>
+    <property name="Title" type="s" access="read"/>
     <property name="IconName" type="s" access="read"/>
     <property name="Menu" type="o" access="read"/>
     <method name="Activate">
@@ -66,15 +68,188 @@ const DBusMenuIface = `
 const SNIProxy = Gio.DBusProxy.makeProxyWrapper(SNIIface);
 const DBusMenuProxy = Gio.DBusProxy.makeProxyWrapper(DBusMenuIface);
 
+// StatusNotifierWatcher D-Bus interface (we implement this as a host)
+const SNWatcherIface = `
+<node>
+  <interface name="org.kde.StatusNotifierWatcher">
+    <method name="RegisterStatusNotifierItem">
+      <arg type="s" direction="in"/>
+    </method>
+    <signal name="StatusNotifierItemRegistered">
+      <arg type="s"/>
+    </signal>
+    <signal name="StatusNotifierItemUnregistered">
+      <arg type="s"/>
+    </signal>
+    <property name="RegisteredStatusNotifierItems" type="as" access="read"/>
+    <property name="IsStatusNotifierHostRegistered" type="b" access="read"/>
+  </interface>
+</node>`;
+
+/**
+ * StatusNotifierWatcher implementation
+ * Provides the org.kde.StatusNotifierWatcher D-Bus service so that
+ * StatusNotifierItem clients (like Tauri's tray) can register with us.
+ */
+class StatusNotifierWatcher {
+    constructor(extension) {
+        this._extension = extension;
+        this._registeredItems = [];
+        this._nameOwnerId = null;
+        this._dbusImpl = null;
+        this._nameWatchers = new Map();
+    }
+
+    enable() {
+        const nodeInfo = Gio.DBusNodeInfo.new_for_xml(SNWatcherIface);
+        this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(
+            nodeInfo.interfaces[0],
+            this
+        );
+
+        try {
+            this._dbusImpl.export(Gio.DBus.session, '/StatusNotifierWatcher');
+        } catch (e) {
+            console.error(`[uti] Failed to export StatusNotifierWatcher: ${e.message}`);
+            return;
+        }
+
+        // Own the well-known name
+        this._nameOwnerId = Gio.bus_own_name(
+            Gio.BusType.SESSION,
+            'org.kde.StatusNotifierWatcher',
+            Gio.BusNameOwnerFlags.NONE,
+            null, // bus acquired
+            () => console.log('[uti] StatusNotifierWatcher name acquired'),
+            () => console.log('[uti] StatusNotifierWatcher name lost')
+        );
+
+        console.log('[uti] StatusNotifierWatcher enabled');
+    }
+
+    disable() {
+        if (this._nameOwnerId) {
+            Gio.bus_unown_name(this._nameOwnerId);
+            this._nameOwnerId = null;
+        }
+
+        // Unwatch all registered items
+        for (const watchId of this._nameWatchers.values()) {
+            Gio.bus_unwatch_name(watchId);
+        }
+        this._nameWatchers.clear();
+
+        if (this._dbusImpl) {
+            this._dbusImpl.unexport();
+            this._dbusImpl = null;
+        }
+
+        this._registeredItems = [];
+        console.log('[uti] StatusNotifierWatcher disabled');
+    }
+
+    // D-Bus method: RegisterStatusNotifierItem
+    // Called via D-Bus with invocation object to get sender
+    RegisterStatusNotifierItemAsync(params, invocation) {
+        const [service] = params;
+        const sender = invocation.get_sender();
+
+        // Determine bus name and object path
+        let busName;
+        let objectPath;
+        if (service.startsWith('/')) {
+            // Service is an object path (ayatana-appindicator style)
+            busName = sender;
+            objectPath = service;
+        } else if (service.startsWith(':')) {
+            // Unique bus name
+            busName = service;
+            objectPath = '/StatusNotifierItem';
+        } else {
+            // Well-known name
+            busName = service;
+            objectPath = '/StatusNotifierItem';
+        }
+
+        const itemId = `${busName}${objectPath}`;
+
+        // Avoid duplicates
+        if (this._registeredItems.includes(itemId)) {
+            console.log(`[uti] SNI already registered: ${itemId}`);
+            invocation.return_value(null);
+            return;
+        }
+
+        this._registeredItems.push(itemId);
+        console.log(`[uti] SNI registered: ${itemId}`);
+
+        // Watch for the bus name to vanish
+        const watchId = Gio.bus_watch_name(
+            Gio.BusType.SESSION,
+            busName,
+            Gio.BusNameWatcherFlags.NONE,
+            null,
+            () => this._onItemVanished(itemId)
+        );
+        this._nameWatchers.set(itemId, watchId);
+
+        // Emit signal
+        this._dbusImpl.emit_signal(
+            'StatusNotifierItemRegistered',
+            new GLib.Variant('(s)', [itemId])
+        );
+
+        // Notify extension to check this item
+        this._extension._checkIfUtiSNI(busName, objectPath);
+
+        invocation.return_value(null);
+    }
+
+    _onItemVanished(itemId) {
+        const index = this._registeredItems.indexOf(itemId);
+        if (index >= 0) {
+            this._registeredItems.splice(index, 1);
+            console.log(`[uti] SNI unregistered: ${itemId}`);
+
+            // Emit signal
+            this._dbusImpl.emit_signal(
+                'StatusNotifierItemUnregistered',
+                new GLib.Variant('(s)', [itemId])
+            );
+
+            // Notify extension to remove indicator if it was uti's
+            this._extension._onSNIVanished(itemId);
+        }
+
+        // Stop watching
+        const watchId = this._nameWatchers.get(itemId);
+        if (watchId) {
+            Gio.bus_unwatch_name(watchId);
+            this._nameWatchers.delete(itemId);
+        }
+    }
+
+    // D-Bus property: RegisteredStatusNotifierItems
+    get RegisteredStatusNotifierItems() {
+        return this._registeredItems;
+    }
+
+    // D-Bus property: IsStatusNotifierHostRegistered
+    get IsStatusNotifierHostRegistered() {
+        return true; // We are the host
+    }
+}
+
 /**
  * Panel indicator that displays uti's StatusNotifierItem
  */
 const UtiIndicator = GObject.registerClass(
 class UtiIndicator extends PanelMenu.Button {
-    _init(extension, busName) {
+    _init(extension, busName, objectPath) {
         super._init(0.0, 'uti', false);
         this._extension = extension;
         this._busName = busName;
+        this._objectPath = objectPath;
         this._sniProxy = null;
         this._menuProxy = null;
         this._menuLayoutId = null;
@@ -87,19 +262,13 @@ class UtiIndicator extends PanelMenu.Button {
 
         this._connectSNI();
 
-        // Left-click: toggle window
-        this.connect('button-press-event', (actor, event) => {
-            if (event.get_button() === 1) {
-                this._onActivate();
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
-
         // Refresh menu when opened
-        this.menu.connect('open-state-changed', (menu, open) => {
+        this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) this._loadMenu();
         });
+
+        // Load menu initially so it's not empty
+        this._loadMenu();
     }
 
     _connectSNI() {
@@ -107,12 +276,23 @@ class UtiIndicator extends PanelMenu.Button {
             this._sniProxy = new SNIProxy(
                 Gio.DBus.session,
                 this._busName,
-                '/StatusNotifierItem'
+                this._objectPath
             );
 
-            // Set icon
+            // Set icon - IconName may be a file path or theme icon name
             const iconName = this._sniProxy.IconName;
-            if (iconName) this._icon.icon_name = iconName;
+            if (iconName) {
+                if (iconName.startsWith('/')) {
+                    // File path - create GIcon from file
+                    const file = Gio.File.new_for_path(iconName);
+                    if (file.query_exists(null)) {
+                        this._icon.gicon = Gio.FileIcon.new(file);
+                    }
+                } else {
+                    // Theme icon name
+                    this._icon.icon_name = iconName;
+                }
+            }
 
             // Connect to menu
             const menuPath = this._sniProxy.Menu;
@@ -128,26 +308,9 @@ class UtiIndicator extends PanelMenu.Button {
                 );
             }
 
-            console.log(`[uti] Connected to SNI: ${this._busName}`);
+            console.log(`[uti] Connected to SNI: ${this._busName} at ${this._objectPath}`);
         } catch (e) {
             console.error(`[uti] SNI connection failed: ${e.message}`);
-        }
-    }
-
-    _onActivate() {
-        if (this._sniProxy) {
-            try {
-                const [x, y] = global.get_pointer();
-                this._sniProxy.ActivateRemote(x, y);
-                // Position window at cursor after activation
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
-                    const win = this._extension._findUtiWindow();
-                    if (win) this._extension._moveWindowToCursor(win, x, y);
-                    return GLib.SOURCE_REMOVE;
-                });
-            } catch (e) {
-                console.error(`[uti] Activate failed: ${e.message}`);
-            }
         }
     }
 
@@ -234,6 +397,7 @@ export default class UtiExtension extends Extension {
         this._sniBusName = null;
         this._settings = null;
         this._settingsChangedId = null;
+        this._sniWatcher = null;
     }
 
     enable() {
@@ -249,8 +413,10 @@ export default class UtiExtension extends Extension {
         // Always connect to D-Bus for cursor positioning
         this._connectToDbus();
 
-        // Watch for SNI only if tray icon is enabled
+        // Start StatusNotifierWatcher if tray icon is enabled
         if (this._settings.get_boolean('enable-tray-icon')) {
+            this._sniWatcher = new StatusNotifierWatcher(this);
+            this._sniWatcher.enable();
             this._watchForSNI();
         }
     }
@@ -260,6 +426,11 @@ export default class UtiExtension extends Extension {
         this._removeIndicator();
         this._unwatchSNI();
         this._disconnectFromDbus();
+
+        if (this._sniWatcher) {
+            this._sniWatcher.disable();
+            this._sniWatcher = null;
+        }
 
         if (this._settingsChangedId && this._settings) {
             this._settings.disconnect(this._settingsChangedId);
@@ -273,11 +444,19 @@ export default class UtiExtension extends Extension {
         console.log(`[uti] Tray icon setting changed: ${enabled}`);
 
         if (enabled) {
+            if (!this._sniWatcher) {
+                this._sniWatcher = new StatusNotifierWatcher(this);
+                this._sniWatcher.enable();
+            }
             this._watchForSNI();
         } else {
             this._removeIndicator();
             this._unwatchSNI();
             this._sniBusName = null;
+            if (this._sniWatcher) {
+                this._sniWatcher.disable();
+                this._sniWatcher = null;
+            }
         }
     }
 
@@ -345,30 +524,48 @@ export default class UtiExtension extends Extension {
         }
     }
 
-    _checkIfUtiSNI(busName) {
-        // Check if this SNI belongs to uti by reading its Id property
+    _checkIfUtiSNI(busName, objectPath = '/StatusNotifierItem') {
+        // Check if this SNI belongs to uti by reading its Title property
+        // (ayatana-appindicator uses Title='uti', Id='tray-icon tray app')
         try {
             const proxy = new SNIProxy(
                 Gio.DBus.session,
                 busName,
-                '/StatusNotifierItem'
+                objectPath
             );
+            const title = proxy.Title;
             const id = proxy.Id;
-            if (id && id.toLowerCase() === 'uti') {
-                console.log(`[uti] Found uti SNI: ${busName}`);
+            console.log(`[uti] Checking SNI: busName=${busName}, path=${objectPath}, Title=${title}, Id=${id}`);
+            if ((title && title.toLowerCase() === 'uti') ||
+                (id && id.toLowerCase() === 'uti')) {
+                console.log(`[uti] Found uti SNI: ${busName} at ${objectPath}`);
                 this._sniBusName = busName;
-                this._createIndicator(busName);
+                this._sniObjectPath = objectPath;
+                this._createIndicator(busName, objectPath);
             }
         } catch (e) {
-            // Not our SNI, ignore
+            console.log(`[uti] SNI check failed: ${e.message}`);
         }
     }
 
-    _createIndicator(busName) {
+    _createIndicator(busName, objectPath) {
         if (this._indicator) return;
-        this._indicator = new UtiIndicator(this, busName);
+        this._indicator = new UtiIndicator(this, busName, objectPath);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         console.log('[uti] Indicator created');
+    }
+
+    _onSNIVanished(itemId) {
+        // Check if the vanished SNI was uti's
+        if (this._sniBusName && this._sniObjectPath) {
+            const ourItemId = `${this._sniBusName}${this._sniObjectPath}`;
+            if (itemId === ourItemId) {
+                console.log(`[uti] Our SNI vanished: ${itemId}`);
+                this._removeIndicator();
+                this._sniBusName = null;
+                this._sniObjectPath = null;
+            }
+        }
     }
 
     _removeIndicator() {
@@ -441,13 +638,33 @@ export default class UtiExtension extends Extension {
         const rect = window.get_frame_rect();
         const workArea = Main.layoutManager.getWorkAreaForMonitor(window.get_monitor());
 
-        let newX = x, newY = y;
-        if (newX + rect.width > workArea.x + workArea.width)
-            newX = workArea.x + workArea.width - rect.width;
-        if (newY + rect.height > workArea.y + workArea.height)
-            newY = workArea.y + workArea.height - rect.height;
-        if (newX < workArea.x) newX = workArea.x;
-        if (newY < workArea.y) newY = workArea.y;
+        // Calculate space available in each direction from cursor
+        const spaceRight = workArea.x + workArea.width - x;
+        const spaceLeft = x - workArea.x;
+        const spaceBottom = workArea.y + workArea.height - y;
+        const spaceTop = y - workArea.y;
+
+        // Determine horizontal position: prefer right, flip to left if not enough space
+        let newX;
+        if (rect.width <= spaceRight) {
+            newX = x; // Place to the right of cursor
+        } else if (rect.width <= spaceLeft) {
+            newX = x - rect.width; // Flip: place to the left of cursor
+        } else {
+            // Not enough space on either side, clamp to workArea
+            newX = Math.max(workArea.x, workArea.x + workArea.width - rect.width);
+        }
+
+        // Determine vertical position: prefer below, flip to above if not enough space
+        let newY;
+        if (rect.height <= spaceBottom) {
+            newY = y; // Place below cursor
+        } else if (rect.height <= spaceTop) {
+            newY = y - rect.height; // Flip: place above cursor
+        } else {
+            // Not enough space on either side, clamp to workArea
+            newY = Math.max(workArea.y, workArea.y + workArea.height - rect.height);
+        }
 
         window.move_frame(true, newX, newY);
     }

@@ -89,6 +89,9 @@ jobs:
       - name: Build daemon RPM
         run: ./daemon/build-rpm.sh --package-only "${{ steps.version.outputs.version }}"
 
+      - name: Create dist directory
+        run: mkdir -p dist
+
       - name: Package uti for GNOME
         run: |
           cd gnome-extension
@@ -96,9 +99,7 @@ jobs:
           zip -r ../dist/gnome-extension.zip metadata.json extension.js schemas/
 
       - name: Copy Tauri RPM to dist
-        run: |
-          mkdir -p dist
-          cp target/release/bundle/rpm/*.rpm dist/
+        run: cp target/release/bundle/rpm/*.rpm dist/
 
       - name: List built packages
         run: ls -la dist/

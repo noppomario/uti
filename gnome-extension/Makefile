@@ -1,14 +1,18 @@
 # GNOME Shell Extension Makefile
 UUID = uti@noppomario.github.io
 INSTALL_DIR = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
+SCHEMA_DIR = $(INSTALL_DIR)/schemas
 
 .PHONY: install uninstall reinstall enable disable logs
 
 install:
 	@echo "Installing $(UUID)..."
 	@mkdir -p $(INSTALL_DIR)
+	@mkdir -p $(SCHEMA_DIR)
 	@cp metadata.json $(INSTALL_DIR)/
 	@cp extension.js $(INSTALL_DIR)/
+	@cp schemas/*.xml $(SCHEMA_DIR)/
+	@glib-compile-schemas $(SCHEMA_DIR)
 	@echo "Installed to $(INSTALL_DIR)"
 	@echo ""
 	@echo "To enable the extension:"

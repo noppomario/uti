@@ -76,11 +76,13 @@ After installation, **log out and log back in** (required for input group), then
 
 ### GNOME Users
 
-On GNOME, the installer automatically installs and enables the "uti for GNOME" extension. If it's not enabled (e.g., after a fresh install), run:
+On GNOME, the installer automatically installs the "uti for GNOME" extension. After logging back in, enable it:
 
 ```bash
 gnome-extensions enable uti@noppomario.github.io
 ```
+
+> **Note**: GNOME Shell only detects newly installed local extensions after a logout/login. The extension cannot be enabled until you log back in.
 
 This extension provides:
 

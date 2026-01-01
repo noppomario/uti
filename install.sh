@@ -106,11 +106,20 @@ main() {
     systemctl --user daemon-reload
     systemctl --user enable --now uti-daemon.service
 
+    # ANSI color codes
+    local RED='\033[0;31m'
+    local GREEN='\033[0;32m'
+    local YELLOW='\033[1;33m'
+    local NC='\033[0m' # No Color
+    local BOLD='\033[1m'
+
+    echo ""
     echo "[6/6] Installing uti for GNOME (if applicable)..."
+    local gnome_installed=false
     if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || command -v gnome-extensions &>/dev/null; then
         local ext_uuid="uti@noppomario.github.io"
         local ext_dir="$HOME/.local/share/gnome-shell/extensions/${ext_uuid}"
-        local ext_url="https://github.com/${REPO}/releases/download/v${version}/gnome-extension.zip"
+        local ext_url="${base_url}/gnome-extension.zip"
 
         echo "  Downloading uti for GNOME..."
         local ext_zip="/tmp/uti-gnome-extension.zip"
@@ -118,14 +127,12 @@ main() {
             mkdir -p "$ext_dir"
             unzip -o -q "$ext_zip" -d "$ext_dir"
             rm -f "$ext_zip"
-            echo "  ✓ Extension installed to $ext_dir"
-
-            # Try to enable the extension (may fail if GNOME Shell needs restart)
-            if gnome-extensions enable "${ext_uuid}" 2>/dev/null; then
-                echo "  ✓ Extension enabled"
-            else
-                echo "  Extension will be enabled after logout/login"
+            # Compile schemas if glib-compile-schemas is available
+            if command -v glib-compile-schemas &>/dev/null && [ -d "$ext_dir/schemas" ]; then
+                glib-compile-schemas "$ext_dir/schemas" 2>/dev/null || true
             fi
+            echo "  ✓ Extension installed to $ext_dir"
+            gnome_installed=true
         else
             echo "  ⚠ Could not download extension (optional, skipping)"
         fi
@@ -135,13 +142,25 @@ main() {
 
     echo ""
     echo "==========================================="
-    echo " ✓ Installation complete!"
+    echo -e " ${GREEN}✓ Installation complete!${NC}"
     echo "==========================================="
     echo ""
-    echo "To start using uti:"
-    echo "  1. Log out and log back in (if you were just added to input group)"
-    echo "  2. Run 'uti' from the command line or application menu"
+    echo -e "${RED}${BOLD}╔═════════════════════════╗${NC}"
+    echo -e "${RED}${BOLD}║  ⚠ YOU MUST LOG OUT AND LOG BACK IN TO USE UTI  ║${NC}"
+    echo -e "${RED}${BOLD}╚═════════════════════════╝${NC}"
     echo ""
+    echo "After logging back in:"
+    echo "  1. Run 'uti' from the command line or application menu"
+    echo ""
+
+    # GNOME-specific instructions
+    if [ "$gnome_installed" = true ]; then
+        echo -e "${YELLOW}GNOME Users:${NC}"
+        echo "  After logging back in, enable the extension with:"
+        echo "    gnome-extensions enable uti@noppomario.github.io"
+        echo ""
+    fi
+
     echo "Service status:"
     systemctl --user status uti-daemon.service --no-pager || true
     echo ""

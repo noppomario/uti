@@ -32,6 +32,7 @@ pub struct UpdateCheckResult {
     pub update_available: bool,
     pub uti_rpm_url: Option<String>,
     pub daemon_rpm_url: Option<String>,
+    pub gnome_extension_url: Option<String>,
 }
 
 /// Error types for updater operations
@@ -114,12 +115,19 @@ pub async fn check_for_updates(current_version: &str) -> Result<UpdateCheckResul
         .find(|a| a.name.starts_with("uti-daemon-") && a.name.ends_with(".rpm"))
         .map(|a| a.browser_download_url.clone());
 
+    let gnome_extension_url = release
+        .assets
+        .iter()
+        .find(|a| a.name == "gnome-extension.zip")
+        .map(|a| a.browser_download_url.clone());
+
     Ok(UpdateCheckResult {
         current_version: current_version.to_string(),
         latest_version: latest_version_str.to_string(),
         update_available,
         uti_rpm_url,
         daemon_rpm_url,
+        gnome_extension_url,
     })
 }
 
@@ -167,6 +175,96 @@ pub async fn download_rpm(url: &str, filename: &str) -> Result<PathBuf, UpdateEr
     Ok(path)
 }
 
+/// Download a file to /tmp directory (generic version for any file type)
+///
+/// # Arguments
+///
+/// * `url` - The URL to download from
+/// * `filename` - The filename to save as
+///
+/// # Returns
+///
+/// Returns the path to the downloaded file
+pub async fn download_file(url: &str, filename: &str) -> Result<PathBuf, UpdateError> {
+    let client = Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| UpdateError::Network(e.to_string()))?;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| UpdateError::Download(e.to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(UpdateError::Download(format!(
+            "Download failed with status: {}",
+            response.status()
+        )));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| UpdateError::Download(e.to_string()))?;
+
+    let path = PathBuf::from(format!("/tmp/{}", filename));
+    let mut file = std::fs::File::create(&path)
+        .map_err(|e| UpdateError::Download(format!("Failed to create file: {}", e)))?;
+
+    file.write_all(&bytes)
+        .map_err(|e| UpdateError::Download(format!("Failed to write file: {}", e)))?;
+
+    Ok(path)
+}
+
+/// Install GNOME extension from a zip file
+///
+/// # Arguments
+///
+/// * `zip_path` - The path to the zip file
+///
+/// # Returns
+///
+/// Returns `Ok(())` if installation was successful
+pub fn install_gnome_extension(zip_path: &PathBuf) -> Result<(), UpdateError> {
+    let ext_uuid = "uti@noppomario.github.io";
+    let ext_dir = dirs::data_dir()
+        .ok_or_else(|| UpdateError::Install("Could not find data directory".to_string()))?
+        .join("gnome-shell/extensions")
+        .join(ext_uuid);
+
+    // Create extension directory
+    std::fs::create_dir_all(&ext_dir).map_err(|e| {
+        UpdateError::Install(format!("Failed to create extension directory: {}", e))
+    })?;
+
+    // Extract zip to extension directory
+    let output = Command::new("unzip")
+        .args(["-o", "-q"])
+        .arg(zip_path)
+        .arg("-d")
+        .arg(&ext_dir)
+        .output()
+        .map_err(|e| UpdateError::Install(format!("Failed to run unzip: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(UpdateError::Install(format!("unzip failed: {}", stderr)));
+    }
+
+    // Compile schemas if directory exists
+    let schema_dir = ext_dir.join("schemas");
+    if schema_dir.exists() {
+        let _ = Command::new("glib-compile-schemas")
+            .arg(&schema_dir)
+            .output();
+    }
+
+    Ok(())
+}
+
 /// Install an RPM package using pkexec (Polkit authentication)
 ///
 /// # Arguments
@@ -194,7 +292,7 @@ pub fn install_rpm(rpm_path: &PathBuf) -> Result<(), UpdateError> {
     Ok(())
 }
 
-/// Perform a full update (download and install both RPMs)
+/// Perform a full update (download and install RPMs and GNOME extension)
 ///
 /// # Arguments
 ///
@@ -224,7 +322,26 @@ pub async fn perform_update(result: &UpdateCheckResult) -> Result<(), UpdateErro
         install_rpm(&uti_path)?;
     }
 
+    // Download and install GNOME extension (if available and on GNOME)
+    if let Some(ref ext_url) = result.gnome_extension_url {
+        if is_gnome_environment() {
+            println!("Downloading GNOME extension...");
+            let ext_path = download_file(ext_url, "gnome-extension.zip").await?;
+            println!("Installing GNOME extension...");
+            install_gnome_extension(&ext_path)?;
+            println!("GNOME extension updated. Log out and log back in to apply changes.");
+        }
+    }
+
     Ok(())
+}
+
+/// Check if running in a GNOME environment
+fn is_gnome_environment() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|v| v.to_uppercase().contains("GNOME"))
+        .unwrap_or(false)
+        || std::path::Path::new("/usr/bin/gnome-extensions").exists()
 }
 
 #[cfg(test)]
