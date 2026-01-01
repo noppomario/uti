@@ -1,46 +1,35 @@
 # Architecture
 
-This document describes the architecture of uti across different platforms and
-configurations.
+This document describes the architecture of uti across different platforms and configurations.
 
 ## Overview
 
-uti is a clipboard manager that is invoked by pressing Ctrl twice quickly. Due
-to platform security restrictions (especially on Wayland), a multi-component
-architecture is required on Linux.
+uti is a clipboard manager that is invoked by pressing Ctrl twice quickly. Due to platform security restrictions (especially on Wayland), a multi-component architecture is required on Linux.
 
 ```mermaid
-flowchart TB
-    subgraph "User Input"
-        KB[Keyboard]
-    end
+flowchart LR
+    KB[Keyboard] -->|evdev| DAEMON[uti-daemon]
+    DAEMON -->|D-Bus signal| APP[uti]
+    DAEMON -->|D-Bus signal| EXT[uti for GNOME]
+    APP --> WIN[Window]
+    EXT -->|position| WIN
 
-    subgraph "Linux Components"
-        DAEMON[uti-daemon]
-        APP[uti Tauri app]
-        EXT[uti for GNOME]
-    end
-
-    subgraph "IPC"
-        DBUS[(D-Bus Session Bus)]
-        SNI[StatusNotifierItem]
-    end
-
-    subgraph "Display"
-        WIN[Window]
-        TRAY[Tray Icon]
-    end
-
-    KB -->|evdev| DAEMON
-    DAEMON -->|DoubleTap.Triggered| DBUS
-    DBUS --> APP
-    DBUS --> EXT
-    APP -->|SNI protocol| SNI
-    SNI --> EXT
-    EXT -->|position at cursor| WIN
-    EXT --> TRAY
-    APP --> WIN
+    style KB fill:#e0e0e0,stroke:#666
+    style WIN fill:#e0e0e0,stroke:#666
+    style DAEMON fill:#4a9eff,stroke:#2171c7,color:#fff
+    style APP fill:#4a9eff,stroke:#2171c7,color:#fff
+    style EXT fill:#4a9eff,stroke:#2171c7,color:#fff
 ```
+
+## Requirements
+
+- **Linux** with D-Bus session bus and glibc
+- **systemd** for daemon service management
+- User in `input` group for keyboard access
+
+**Optional**: "uti for GNOME" extension enables tray icon and cursor positioning on **GNOME/Wayland**. Without it, window appears at screen center.
+
+---
 
 ## Components
 
@@ -90,305 +79,44 @@ GNOME Shell extension that provides:
 
 ---
 
-## Platform Configurations
-
-### Legend
-
-```mermaid
-flowchart LR
-    A[Component] -->|message| B[Component]
-    C[Optional] -.->|optional| D[Component]
-```
-
----
-
 ## Linux: GNOME + Wayland (Primary)
 
 The recommended configuration for GNOME desktop.
 
-### Components Required
-
-| Component | Required | Purpose |
-| --------- | -------- | ------- |
-| uti-daemon | Yes | Double Ctrl detection |
-| uti | Yes | Clipboard manager |
-| uti for GNOME | Yes | Tray + cursor positioning |
-
-### Sequence: Toggle Window
+### Toggle Window Sequence
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Keyboard
     participant Daemon as uti-daemon
     participant DBus as D-Bus
-    participant App as uti (Tauri)
-    participant Ext as uti for GNOME
-    participant Window
+    participant App as uti
+    participant Ext as GNOME Extension
+    participant Mutter
 
-    User->>Keyboard: Press Ctrl twice
-    Keyboard->>Daemon: evdev events
-    Daemon->>Daemon: Detect double press (300ms)
     Daemon->>DBus: Emit DoubleTap.Triggered
-
-    par Parallel notification
+    par Broadcast
         DBus->>App: Signal received
         DBus->>Ext: Signal received
     end
-
-    Ext->>Ext: Get cursor position (global.get_pointer)
-    Ext->>Window: Move to cursor (Meta.Window.move_frame)
-    App->>Window: Toggle visibility
-    Window->>User: Show at cursor
+    App->>App: Toggle window visibility
+    Ext->>Ext: Get cursor position
+    Ext->>Mutter: Move window to cursor
 ```
 
-### Sequence: Tray Icon Display
+### Tray Icon Sequence
 
 ```mermaid
 sequenceDiagram
-    participant App as uti (Tauri)
+    participant App as uti
     participant DBus as D-Bus
-    participant Ext as uti for GNOME
-    participant Panel as GNOME Panel
+    participant Ext as GNOME Extension
 
     App->>DBus: Register StatusNotifierItem
-    Note over App,DBus: org.kde.StatusNotifierItem-{pid}-1
-
     Ext->>DBus: Watch for SNI names
-    DBus->>Ext: NameOwnerChanged (uti SNI appeared)
-
-    Ext->>DBus: Get SNI properties (IconName, Menu)
-    DBus->>Ext: Icon and menu path
-
-    Ext->>Panel: Create PanelMenu.Button
-    Panel->>Panel: Display icon
-
-    User->>Panel: Right-click icon
-    Ext->>DBus: GetLayout (DBusMenu)
-    DBus->>Ext: Menu items
-    Ext->>Panel: Show popup menu
+    DBus->>Ext: uti SNI appeared
+    Ext->>DBus: Get icon and menu
+    Ext->>Ext: Display in GNOME Panel
 ```
-
----
-
-## Linux: GNOME + Wayland (AppIndicator Alternative)
-
-For users who prefer AppIndicator extension over uti for GNOME.
-
-### Components Required
-
-| Component | Required | Purpose |
-| --------- | -------- | ------- |
-| uti-daemon | Yes | Double Ctrl detection |
-| uti | Yes | Clipboard manager |
-| AppIndicator extension | Yes | Tray icon |
-| uti for GNOME | No | Not needed |
-
-### Sequence: Toggle Window
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Keyboard
-    participant Daemon as uti-daemon
-    participant DBus as D-Bus
-    participant App as uti (Tauri)
-    participant Window
-
-    User->>Keyboard: Press Ctrl twice
-    Keyboard->>Daemon: evdev events
-    Daemon->>Daemon: Detect double press (300ms)
-    Daemon->>DBus: Emit DoubleTap.Triggered
-    DBus->>App: Signal received
-    App->>Window: Toggle visibility
-    App->>Window: Center on screen
-    Note over Window: Cannot position at cursor<br/>(Wayland limitation)
-    Window->>User: Show at center
-```
-
-### Limitations
-
-- Window appears at screen center (not at cursor)
-- Requires third-party AppIndicator extension
-
----
-
-## Linux: KDE Plasma + Wayland (Future)
-
-KDE has native StatusNotifierItem support.
-
-### Components Required
-
-| Component | Required | Purpose |
-| --------- | -------- | ------- |
-| uti-daemon | Yes | Double Ctrl detection |
-| uti | Yes | Clipboard manager |
-| KDE extension | Maybe | Cursor positioning (TBD) |
-
-### Sequence: Toggle Window
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Keyboard
-    participant Daemon as uti-daemon
-    participant DBus as D-Bus
-    participant App as uti (Tauri)
-    participant KDE as KDE Plasma
-    participant Window
-
-    User->>Keyboard: Press Ctrl twice
-    Keyboard->>Daemon: evdev events
-    Daemon->>DBus: Emit DoubleTap.Triggered
-    DBus->>App: Signal received
-
-    alt KDE extension available
-        App->>KDE: Request cursor position
-        KDE->>Window: Position at cursor
-    else No extension
-        App->>Window: Center on screen
-    end
-
-    App->>Window: Show
-    Window->>User: Display
-```
-
-### Notes
-
-- Tray icon works natively (KDE supports SNI)
-- Cursor positioning may require KWin script or Plasma extension
-- Investigation needed for window positioning API
-
----
-
-## Linux: X11 (Any Desktop)
-
-X11 has fewer restrictions than Wayland.
-
-### Components Required
-
-| Component | Required | Purpose |
-| --------- | -------- | ------- |
-| uti-daemon | Yes | Double Ctrl detection |
-| uti | Yes | Clipboard manager |
-| Extension | No | X11 allows direct positioning |
-
-### Sequence: Toggle Window
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Keyboard
-    participant Daemon as uti-daemon
-    participant DBus as D-Bus
-    participant App as uti (Tauri)
-    participant X11 as X11 Server
-    participant Window
-
-    User->>Keyboard: Press Ctrl twice
-    Keyboard->>Daemon: evdev events
-    Daemon->>DBus: Emit DoubleTap.Triggered
-    DBus->>App: Signal received
-
-    App->>X11: Query cursor position
-    X11->>App: Cursor coordinates
-    App->>Window: Move to cursor position
-    App->>Window: Show
-    Window->>User: Display at cursor
-```
-
-### Notes
-
-- No extension needed for cursor positioning
-- Tray works with standard system tray (X11 tray protocol)
-- libxdo can be used for window positioning
-
----
-
-## macOS (Future)
-
-macOS allows global shortcuts and has native tray support.
-
-### Components Required
-
-| Component | Required | Purpose |
-| --------- | -------- | ------- |
-| uti-daemon | No | macOS allows global shortcuts |
-| uti | Yes | Clipboard manager |
-
-### Sequence: Toggle Window
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant macOS as macOS
-    participant App as uti (Tauri)
-    participant Window
-
-    User->>macOS: Press Ctrl twice
-    macOS->>App: Global shortcut event
-    App->>macOS: Query cursor position
-    macOS->>App: Cursor coordinates
-    App->>Window: Position at cursor
-    App->>Window: Show
-    Window->>User: Display at cursor
-```
-
-### Notes
-
-- Single binary distribution
-- Native menu bar integration
-- Accessibility permissions may be required for global shortcuts
-
----
-
-## Windows (Future)
-
-Windows allows global shortcuts and has native tray support.
-
-### Components Required
-
-| Component | Required | Purpose |
-| --------- | -------- | ------- |
-| uti-daemon | No | Windows allows global shortcuts |
-| uti | Yes | Clipboard manager |
-
-### Sequence: Toggle Window
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Windows as Windows
-    participant App as uti (Tauri)
-    participant Window
-
-    User->>Windows: Press Ctrl twice
-    Windows->>App: Global hotkey event
-    App->>Windows: GetCursorPos
-    Windows->>App: Cursor coordinates
-    App->>Window: SetWindowPos at cursor
-    App->>Window: Show
-    Window->>User: Display at cursor
-```
-
-### Notes
-
-- Single executable distribution
-- Native system tray support
-- No special permissions required for hotkeys
-
----
-
-## Configuration Matrix
-
-| Platform | Daemon | Extension | Tray | Cursor Position |
-| -------- | ------ | --------- | ---- | --------------- |
-| GNOME/Wayland | Required | uti for GNOME | Extension | Extension |
-| GNOME/Wayland | Required | AppIndicator | AppIndicator | Center only |
-| KDE/Wayland | Required | TBD | Native | TBD |
-| Any/X11 | Required | None | Native | Native |
-| macOS | None | None | Native | Native |
-| Windows | None | None | Native | Native |
 
 ---
 
@@ -408,12 +136,9 @@ The Tauri app registers as a StatusNotifierItem on the session bus:
 
 - Bus name: `org.kde.StatusNotifierItem-{pid}-1`
 - Object path: `/StatusNotifierItem`
-- Interfaces:
-  - `org.kde.StatusNotifierItem` - Icon properties
-  - `org.freedesktop.DBusMenu` - Menu items
+- Interfaces: `org.kde.StatusNotifierItem`, `org.freedesktop.DBusMenu`
 
-The extension acts as a StatusNotifierHost, watching for this name and
-proxying the icon and menu to the GNOME panel.
+The extension acts as a StatusNotifierHost, watching for this name and proxying the icon and menu to the GNOME panel.
 
 ---
 

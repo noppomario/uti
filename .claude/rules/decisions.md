@@ -880,6 +880,106 @@ daemon:rpm     ─────→ standalone (release packaging)
 
 ---
 
+## ADR-016: Custom GNOME extension for tray and positioning
+
+**Date**: 2026-01-01
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+On GNOME/Wayland, two features required privileged shell access:
+
+1. **Tray icon**: GNOME 43+ removed native tray support
+2. **Window positioning**: Wayland apps cannot query cursor position
+
+### Decision
+
+Create "uti for GNOME" extension that provides:
+
+1. **StatusNotifierHost**: Displays Tauri's SNI tray icon in GNOME panel
+2. **Cursor positioning**: Moves window to cursor on D-Bus signal
+
+### Rationale
+
+**Single dependency**:
+
+- One extension handles both tray and positioning
+- No need for third-party AppIndicator extension
+- Full control over behavior
+
+**Architecture fit**:
+
+- Extension listens to same D-Bus signal as Tauri app
+- D-Bus broadcast enables parallel handling
+- Extension uses `Meta.Window.move_frame()` for positioning
+
+### Alternatives Considered
+
+1. **AppIndicator extension + libappindicator**
+   - Pro: More widely used
+   - Con: Doesn't solve positioning issue
+
+2. **Separate extensions for tray and positioning**
+   - Pro: Modular
+   - Con: More complexity for users
+
+### Consequences
+
+**Positive**:
+
+- Single installation for full GNOME support
+- Custom tray menu matches app exactly
+- Cursor positioning works on Wayland
+
+**Negative**:
+
+- Must maintain GNOME extension separately
+- Extension API changes with GNOME versions
+
+---
+
+## ADR-017: Unified component naming (uti-daemon)
+
+**Date**: 2026-01-01
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Keyboard daemon was named `double-ctrl` in early development, which didn't match the project branding.
+
+### Decision
+
+Rename daemon to `uti-daemon` for consistency with `uti` (Tauri app) and `uti for GNOME` (extension).
+
+### Changes
+
+| Before | After |
+| ------ | ----- |
+| `double-ctrl.service` | `uti-daemon.service` |
+| `double-ctrl.spec` | `uti-daemon.spec` |
+| Binary: `double-ctrl` | Binary: `uti-daemon` |
+
+### Rationale
+
+- Unified branding across all components
+- Clear association: `uti-daemon` serves `uti` app
+- Easier to discover related packages
+
+### Consequences
+
+**Positive**:
+
+- Consistent naming
+- Better discoverability
+
+**Negative**:
+
+- Breaking change for existing installations (requires reinstall)
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

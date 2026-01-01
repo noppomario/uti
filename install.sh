@@ -119,11 +119,13 @@ main() {
             unzip -o -q "$ext_zip" -d "$ext_dir"
             rm -f "$ext_zip"
             echo "  ✓ Extension installed to $ext_dir"
-            echo ""
-            echo "  To enable the extension, run:"
-            echo "    gnome-extensions enable ${ext_uuid}"
-            echo ""
-            echo "  Or use GNOME Extensions app to enable 'uti for GNOME'"
+
+            # Try to enable the extension (may fail if GNOME Shell needs restart)
+            if gnome-extensions enable "${ext_uuid}" 2>/dev/null; then
+                echo "  ✓ Extension enabled"
+            else
+                echo "  Extension will be enabled after logout/login"
+            fi
         else
             echo "  ⚠ Could not download extension (optional, skipping)"
         fi

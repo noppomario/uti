@@ -54,23 +54,7 @@ sudo dnf install -y \
 
 ## Architecture
 
-For detailed architecture documentation with sequence diagrams, see
-[ARCHITECTURE.md](ARCHITECTURE.md).
-
-```mermaid
-sequenceDiagram
-    participant KB as Keyboard
-    participant D as uti-daemon
-    participant Bus as D-Bus
-    participant App as uti (Tauri)
-    participant Win as Window
-
-    KB->>D: evdev events
-    D->>D: Detect double Ctrl (300ms)
-    D->>Bus: Emit DoubleTap.Triggered
-    Bus->>App: Signal received
-    App->>Win: Toggle visibility
-```
+For architecture documentation with diagrams, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -256,14 +240,13 @@ Each release includes:
 
 - `uti-X.Y.Z-1.x86_64.rpm` - Tauri GUI application
 - `uti-daemon-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
+- `gnome-extension.zip` - GNOME Shell extension (uti for GNOME)
 
 ---
 
 ## Additional Resources
 
 - [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)
-- [Project Memory](./CLAUDE.md)
-- [Code Conventions](./.claude/rules/conventions.md)
-- [Architectural Decisions](./.claude/rules/decisions.md)
-
----
+- [Project Memory](../CLAUDE.md)
+- [Code Conventions](../.claude/rules/conventions.md)
+- [Architectural Decisions](../.claude/rules/decisions.md)

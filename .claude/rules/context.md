@@ -6,7 +6,7 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 **For development environment setup**, see [DEVELOPMENT.md](../../../docs/DEVELOPMENT.md)
 
-**For detailed architecture diagrams**, see [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md)
+**For architecture and platform configurations**, see [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md)
 
 ## Technology Stack
 
@@ -39,52 +39,6 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 - **UUID**: `uti@noppomario.github.io`
 - **Role**: StatusNotifierHost + window positioning
 - **Settings**: GSettings (`org.gnome.shell.extensions.uti`)
-
-## Architecture
-
-```mermaid
-flowchart TB
-    subgraph Input
-        KB[Keyboard]
-    end
-
-    subgraph Daemon
-        EVDEV[evdev monitor]
-        DETECT[Double press detection]
-    end
-
-    subgraph IPC
-        DBUS[(D-Bus)]
-        SNI[StatusNotifierItem]
-    end
-
-    subgraph App["uti (Tauri)"]
-        RUST[Rust backend]
-        REACT[React frontend]
-    end
-
-    subgraph Extension["uti for GNOME"]
-        HOST[StatusNotifierHost]
-        POS[Cursor positioning]
-    end
-
-    subgraph Display
-        WIN[Window]
-        TRAY[Tray Icon]
-    end
-
-    KB --> EVDEV
-    EVDEV --> DETECT
-    DETECT -->|DoubleTap.Triggered| DBUS
-    DBUS --> RUST
-    DBUS --> POS
-    RUST --> REACT
-    RUST -->|register| SNI
-    SNI --> HOST
-    HOST --> TRAY
-    POS -->|move_frame| WIN
-    REACT --> WIN
-```
 
 ## Key Technical Decisions
 

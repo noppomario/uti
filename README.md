@@ -2,8 +2,7 @@
 
 # uti
 
-<img src="app/src-tauri/icons/icon.png" alt="uti icon" width="128"
-  style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+<img src="app/src-tauri/icons/icon.png" alt="uti icon" width="128" style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
 
 [![Release](https://img.shields.io/github/v/release/noppomario/uti)](https://github.com/noppomario/uti/releases)
 [![CI](https://github.com/noppomario/uti/actions/workflows/ci.yml/badge.svg)](https://github.com/noppomario/uti/actions/workflows/ci.yml)
@@ -21,7 +20,7 @@
 
 > 🚀 A modern clipboard manager for Linux with double-Ctrl toggle
 
-Built with Rust backend and modern web frontend
+![uti screenshot](docs/assets/screenshot.png)
 
 </div>
 
@@ -29,96 +28,41 @@ Built with Rust backend and modern web frontend
 
 **Solving the challenges of Wayland environments with modern tooling.**
 
-- 🔒 **Wayland Limitations**: Unlike X11, Wayland restricts global keyboard
-  shortcuts. Launching apps with double Ctrl press cannot be achieved through
-  standard desktop settings.
+- 🔒 **Wayland Limitations**: Wayland restricts global keyboard shortcuts. Launching apps with double Ctrl press cannot be achieved through standard desktop settings. Additionally, Wayland prevents apps from querying cursor position, requiring compositor (GNOME Shell) integration for cursor-relative window positioning.
 
-- 🔍 **No Existing Tools**: No clipboard manager was found that works natively
-  on Wayland and can be triggered by double Ctrl press.
+- 🔍 **No Existing Tools**: No clipboard manager was found that works natively on Wayland and can be triggered by double Ctrl press.
 
-- ⚡ **Daemon Architecture**: A dedicated Rust daemon monitors keyboard input
-  via evdev, enabling flexible shortcuts independent of the desktop environment.
+- ⚡ **Daemon Architecture**: A dedicated Rust daemon monitors keyboard input via evdev, enabling flexible shortcuts independent of the desktop environment.
 
-- 🦀 **Modern Stack**: Built entirely with Rust backend, React 19 frontend,
-  and tooling like Bun, Biome, and Vite for maximum developer experience.
+- 🦀 **Modern Stack**: Built entirely with Rust backend, React 19 frontend, and tooling like Bun, Biome, and Vite for maximum developer experience.
 
-## 📸 Screenshot
-
-![uti screenshot](docs/assets/screenshot.png)
+- 🧩 **GNOME Integration**: Custom extension displays window at cursor position and provides native panel icon—features impossible for regular Wayland apps.
 
 ## ✨ Features
 
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - 🖥️ **System Tray**: Runs in the background with tray icon control
+- 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🚀 **Auto-start**: Optional auto-start on login
 - 🔄 **Self-update**: Update via `uti update` command or tray menu
 
-## 🏗️ Architecture (Linux)
+## 🛠️ Tech Stack
 
-Linux/Wayland has security restrictions that require a multi-component architecture:
+| Layer | Technology |
+| ----- | ---------- |
+| 🦀 Backend | Rust + Tauri 2 |
+| ⚛️ Frontend | React 19 + TypeScript 5.7 |
+| 🎨 Styling | Tailwind CSS v4 |
+| 📦 Bundler | Vite 6 + Bun |
+| 🔧 Linting | Biome (25-100x faster than ESLint) |
+| 🎹 Daemon | Rust + evdev + D-Bus |
 
-```mermaid
-flowchart LR
-    subgraph System
-        KB[⌨️ Keyboard]
-        DBUS[(D-Bus)]
-    end
+## 📋 System Requirements
 
-    subgraph Components
-        DAEMON[🔧 uti-daemon]
-        APP[📋 uti]
-        EXT[🧩 uti for GNOME<br/>optional]
-    end
-
-    subgraph UI
-        TRAY[🔲 Tray Icon]
-        WIN[🪟 Window]
-    end
-
-    KB -->|evdev| DAEMON
-    DAEMON -->|signal| DBUS
-    DBUS -->|Triggered| APP
-    DBUS -->|Triggered| EXT
-    APP -->|StatusNotifierItem| EXT
-    EXT -->|move to cursor| WIN
-    EXT --> TRAY
-    APP --> WIN
-```
-
-| Component | Role | Why needed |
-| --------- | ---- | ---------- |
-| **uti-daemon** | Detects double Ctrl press | Wayland blocks global shortcuts from apps |
-| **uti** | Clipboard manager UI | Main application |
-| **uti for GNOME** | Tray icon + cursor positioning | GNOME needs extension for tray and window positioning |
-
-> **Note**: On macOS/Windows, only the Tauri app would be needed (no daemon, no extension).
-> Linux/Wayland's security model requires this additional complexity.
-
-For detailed sequence diagrams and platform-specific configurations, see
-[Architecture Documentation](docs/ARCHITECTURE.md).
-
-## 📦 What Gets Installed
-
-When you install uti, the following changes are made to your system:
-
-| Component | Location | Description |
-| --------- | -------- | ----------- |
-| **uti** | `/usr/bin/uti` | Main application (RPM package) |
-| **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
-| **User service** | `~/.config/systemd/user/` | Daemon autostart service |
-| **Config** | `~/.config/uti/` | User configuration and clipboard history |
-| **Input group** | `/etc/group` | Your user is added to the `input` group |
-| **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
-
-### ⚠️ About the Input Group
-
-The daemon needs to read keyboard events from `/dev/input/*` devices. This
-requires membership in the **input group**. The installer automatically adds
-your user to this group.
-
-**Security note**: Members of the input group can read all input devices
-(keyboard, mouse). This is necessary for the double-Ctrl detection to work.
+- **OS**: Linux with systemd (Fedora 43+ recommended)
+- **Desktop**: GNOME 45+ on Wayland (recommended), other Wayland/X11 environments (limited)
+- **Architecture**: x86_64
 
 ## 🚀 Quick Start
 
@@ -128,8 +72,35 @@ Install with one command:
 curl -fsSL https://raw.githubusercontent.com/noppomario/uti/main/install.sh | bash
 ```
 
-After installation, **log out and log back in** (required for input group), then
-run `uti`.
+After installation, **log out and log back in** (required for input group), then run `uti`.
+
+### GNOME Users
+
+On GNOME, the installer automatically installs and enables the "uti for GNOME" extension. If it's not enabled (e.g., after a fresh install), run:
+
+```bash
+gnome-extensions enable uti@noppomario.github.io
+```
+
+This extension provides:
+
+- **Panel icon with full menu** (same menu as system tray)
+- **Cursor-relative window positioning** (window appears at cursor location)
+
+The extension displays Tauri's tray icon directly, so no additional extensions (like AppIndicator) are required.
+
+Without the extension, uti still works but the window appears at screen center.
+
+<details>
+<summary>Using AppIndicator instead?</summary>
+
+If you already have AppIndicator extension installed and prefer to use it, disable the extension's tray icon:
+
+```bash
+gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
+```
+
+</details>
 
 ## 📖 Usage
 
@@ -183,53 +154,10 @@ Configuration file: `~/.config/uti/config.json`
 | `showTooltip`           | boolean | `true`  | Show tooltip on hover           |
 | `tooltipDelay`          | number  | `500`   | Tooltip delay in ms             |
 
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-| ----- | ---------- |
-| 🦀 Backend | Rust + Tauri 2 |
-| ⚛️ Frontend | React 19 + TypeScript 5.7 |
-| 🎨 Styling | Tailwind CSS v4 |
-| 📦 Bundler | Vite 6 + Bun |
-| 🔧 Linting | Biome (25-100x faster than ESLint) |
-| 🎹 Daemon | Rust + evdev + D-Bus |
-
-## 📋 System Requirements
-
-- **OS**: Linux (Fedora 43+ recommended)
-- **Desktop**: GNOME (Wayland/X11), KDE, XFCE
-- **Architecture**: x86_64
-
-### GNOME Users
-
-#### uti for GNOME (Required)
-
-On GNOME, enable the extension for full functionality:
-
-```bash
-gnome-extensions enable uti@noppomario.github.io
-```
-
-The extension is automatically installed by the installer but needs to be
-enabled manually. This extension provides:
-
-- **Panel icon with full menu** (same menu as system tray)
-- **Cursor-relative window positioning** (window appears at cursor location)
-
-The extension displays Tauri's tray icon directly, so no additional extensions
-(like AppIndicator) are required.
-
-If you already have AppIndicator extension installed and prefer to use it
-instead, disable the extension's tray icon:
-
-```bash
-gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
-```
+## 🔧 Troubleshooting
 
 <details>
-<summary><strong>🔧 Troubleshooting</strong></summary>
-
-### Daemon Won't Start
+<summary><strong>Daemon Won't Start</strong></summary>
 
 Check if you're in the input group:
 
@@ -250,7 +178,10 @@ systemctl --user status uti-daemon.service
 journalctl --user -u uti-daemon.service -n 50
 ```
 
-### Tray Icon Not Visible (GNOME)
+</details>
+
+<details>
+<summary><strong>Tray Icon Not Visible (GNOME)</strong></summary>
 
 Enable uti for GNOME (see GNOME Users section above).
 
@@ -264,25 +195,55 @@ sudo dnf remove uti uti-daemon
 
 This automatically stops and disables the daemon service.
 
+To remove the GNOME extension (optional):
+
+```bash
+rm -rf ~/.local/share/gnome-shell/extensions/uti@noppomario.github.io
+```
+
 To remove yourself from the input group (optional):
 
 ```bash
 sudo gpasswd -d $USER input
 ```
 
+## ⚠️ Known Limitations
+
+- **Window appears in dock (Wayland)**: On Wayland, the window appears in the dock when visible. This is a Tauri limitation ([#9829](https://github.com/tauri-apps/tauri/issues/9829)).
+- **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway, etc.), window always appears at screen center. Enable uti for GNOME for cursor positioning.
+
+## 🏗️ Architecture
+
+| Component | Role |
+| --------- | ---- |
+| **uti-daemon** | Detects double Ctrl press via evdev |
+| **uti** | Clipboard manager UI (Tauri) |
+| **uti for GNOME** | GNOME Shell extension for tray icon + cursor positioning (optional) |
+
+For details, see [Architecture Documentation](docs/ARCHITECTURE.md).
+
+## 📦 What Gets Installed
+
+When you install uti, the following changes are made to your system:
+
+| Component | Location | Description |
+| --------- | -------- | ----------- |
+| **uti** | `/usr/bin/uti` | Main application (RPM package) |
+| **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
+| **User service** | `~/.config/systemd/user/` | Daemon autostart service |
+| **Config** | `~/.config/uti/` | User configuration and clipboard history |
+| **Input group** | `/etc/group` | Your user is added to the `input` group |
+| **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
+
+### ⚠️ About the Input Group
+
+The daemon needs to read keyboard events from `/dev/input/*` devices. This requires membership in the **input group**. The installer automatically adds your user to this group.
+
+**Security note**: Members of the input group can read all input devices (keyboard, mouse). This is necessary for the double-Ctrl detection to work.
+
 ## 👨‍💻 Development
 
 For development setup, see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
-
-## ⚠️ Known Limitations
-
-- **Window appears in dock (Wayland)**: On Wayland, the window appears in the
-  dock when visible. This is a Tauri limitation
-  ([#9829](https://github.com/tauri-apps/tauri/issues/9829)).
-- **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway,
-  etc.), window always appears at screen center. Wayland does not support
-  cursor-relative positioning. On GNOME, enable uti for GNOME for cursor
-  positioning.
 
 ## 📄 License
 
