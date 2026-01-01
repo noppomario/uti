@@ -5,6 +5,8 @@ Bump version in all 6 locations for uti project.
 Usage:
     python bump_version.py <version>
     python bump_version.py 0.2.0
+
+Used by: .github/workflows/release.yml
 """
 
 import json
@@ -31,7 +33,7 @@ def update_json_version(file_path: Path, version: str) -> None:
     with open(file_path, "w") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
-    print(f"  ✓ {file_path.relative_to(get_project_root())}")
+    print(f"  Updated: {file_path.relative_to(get_project_root())}")
 
 
 def update_cargo_version(file_path: Path, version: str) -> None:
@@ -45,7 +47,7 @@ def update_cargo_version(file_path: Path, version: str) -> None:
         flags=re.MULTILINE,
     )
     file_path.write_text(new_content)
-    print(f"  ✓ {file_path.relative_to(get_project_root())}")
+    print(f"  Updated: {file_path.relative_to(get_project_root())}")
 
 
 def update_rpm_spec_version(file_path: Path, version: str) -> None:
@@ -59,7 +61,7 @@ def update_rpm_spec_version(file_path: Path, version: str) -> None:
         flags=re.MULTILINE,
     )
     file_path.write_text(new_content)
-    print(f"  ✓ {file_path.relative_to(get_project_root())}")
+    print(f"  Updated: {file_path.relative_to(get_project_root())}")
 
 
 def main():
@@ -97,12 +99,7 @@ def main():
     # 6. daemon/uti-daemon.spec
     update_rpm_spec_version(root / "daemon" / "uti-daemon.spec", version)
 
-    print(f"\n✅ All 6 files updated to version {version}")
-    print("\nNext steps:")
-    print(f"  1. bun run ci:local")
-    print(f"  2. git add -A && git commit -m 'chore: bump version to {version}'")
-    print(f"  3. git tag v{version}")
-    print(f"  4. git push origin main --tags")
+    print(f"\nAll 6 files updated to version {version}")
 
 
 if __name__ == "__main__":

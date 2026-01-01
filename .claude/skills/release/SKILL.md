@@ -7,22 +7,35 @@ description: Release workflow for uti project. Use when user says "release", "cr
 
 Create a new release for uti (Tauri app + daemon).
 
-## Workflow
+## Usage
 
-### 1. Create Release Branch
-
-```bash
-git checkout main && git pull origin main
-git checkout -b claude/release-X.Y.Z
-```
-
-### 2. Bump Version
+Run the release workflow with the desired version:
 
 ```bash
-python .claude/skills/release/scripts/bump_version.py <version>
+gh workflow run release.yml -f version=X.Y.Z
 ```
 
-Updates all 6 version locations:
+Example:
+
+```bash
+gh workflow run release.yml -f version=0.0.4
+```
+
+## What It Does
+
+The workflow automatically:
+
+1. Bumps version in all 6 locations
+2. Commits to main branch
+3. Creates and pushes tag
+4. Builds packages (Tauri RPM, daemon RPM, GNOME extension)
+5. Creates GitHub Release with artifacts
+
+## Version Format
+
+`MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)
+
+## Files Updated
 
 - `package.json` (root)
 - `app/package.json`
@@ -31,38 +44,13 @@ Updates all 6 version locations:
 - `daemon/Cargo.toml`
 - `daemon/uti-daemon.spec`
 
-### 3. Commit and Push
+## Alternative: Manual Tag Push
+
+If you prefer manual control, you can still create a tag manually:
 
 ```bash
-git add -A
-git commit -m "chore: bump version to X.Y.Z"
-git push -u origin claude/release-X.Y.Z
-```
-
-### 4. Create PR
-
-```bash
-gh pr create --title "chore: bump version to X.Y.Z" --body "Release X.Y.Z"
-```
-
-Wait for CI checks to pass, then merge the PR.
-
-### 5. Create and Push Tag (after PR merge)
-
-```bash
-git checkout main && git pull origin main
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-GitHub Actions will automatically build RPMs and create a GitHub Release.
-
-## Version Format
-
-`MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)
-
-## Scripts
-
-### bump_version.py
-
-Updates version in all 6 locations. Validates semver format (`X.Y.Z`).
+This triggers only the build and release jobs (skips version bump).
