@@ -77,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: daemon-binary
-          path: target/release/double-ctrl
+          path: target/release/uti-daemon
           retention-days: 7
 
       - name: Upload Tauri bundles

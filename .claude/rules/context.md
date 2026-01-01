@@ -6,6 +6,8 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 **For development environment setup**, see [DEVELOPMENT.md](../../../docs/DEVELOPMENT.md)
 
+**For architecture and platform configurations**, see [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md)
+
 ## Technology Stack
 
 ### Frontend
@@ -21,26 +23,22 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 - **Framework**: Tauri 2
 - **Language**: Rust 2021
 - **IPC**: D-Bus session bus
+- **Tray**: StatusNotifierItem protocol
 - **Application ID**: `io.github.noppomario.uti`
 
-### Daemon
+### Daemon (uti-daemon)
 
 - **Language**: Rust 2021
 - **Input**: evdev (keyboard monitoring)
 - **IPC**: D-Bus (`io.github.noppomario.uti.DoubleTap` interface)
-- **Permissions**: Requires root/input group for `/dev/input/*` access
+- **Permissions**: Requires `input` group for `/dev/input/*` access
 
-## Architecture
+### GNOME Extension (uti for GNOME)
 
-```text
-[double-ctrl daemon]  ← root/input permissions
-  ↓ Monitor Ctrl via evdev
-  ↓ Detect double press within 300ms
-  ↓ Send D-Bus Signal
-[Tauri app]           ← Normal user permissions
-  ↓ Receive D-Bus signal
-  ↓ Toggle window visibility
-```
+- **Language**: JavaScript (GJS)
+- **UUID**: `uti@noppomario.github.io`
+- **Role**: StatusNotifierHost + window positioning
+- **Settings**: GSettings (`org.gnome.shell.extensions.uti`)
 
 ## Key Technical Decisions
 
@@ -63,6 +61,14 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 - Current scale: 6 TypeScript files (~369 lines), 2 components
 - Will refactor when complexity requires better organization
 
+### Why custom GNOME extension instead of AppIndicator?
+
+- **Tray**: Extension acts as StatusNotifierHost, displaying Tauri's tray
+  directly without requiring AppIndicator extension
+- **Positioning**: Wayland doesn't allow apps to query cursor position;
+  GNOME extension can use `global.get_pointer()` and `Meta.Window.move_frame()`
+- **Single dependency**: One extension handles both tray and positioning
+
 ## Repository Structure
 
 ```text
@@ -80,10 +86,17 @@ uti/
 │   │   └── index.css           # Tailwind v4 theme with @theme directive
 │   └── src-tauri/              # Rust backend
 │       └── src/
-│           ├── main.rs         # D-Bus listener + window control + config
-│           └── clipboard_store.rs    # LRU clipboard storage
+│           ├── main.rs         # D-Bus listener + window control + tray
+│           ├── clipboard_store.rs    # LRU clipboard storage
+│           └── updater.rs      # Self-update functionality
 ├── daemon/
-│   └── src/main.rs             # evdev keyboard monitor + D-Bus sender
+│   ├── src/main.rs             # evdev keyboard monitor + D-Bus sender
+│   ├── systemd/                # systemd user service
+│   └── uti-daemon.spec         # RPM spec
+├── gnome-extension/            # GNOME Shell extension
+│   ├── extension.js            # StatusNotifierHost + positioning
+│   ├── metadata.json           # Extension metadata
+│   └── schemas/                # GSettings schema
 └── README.md                   # English documentation
 ```
 
@@ -101,6 +114,7 @@ uti/
 - D-Bus interface: `io.github.noppomario.uti.DoubleTap`
 - D-Bus path: `/io/github/noppomario/uti/DoubleTap`
 - Application ID: `io.github.noppomario.uti`
+- GNOME extension UUID: `uti@noppomario.github.io`
 - GitHub repo: `noppomario/uti`
 
 ### Configuration Management
@@ -112,7 +126,9 @@ uti/
 ```json
 {
   "theme": "dark",
-  "clipboardHistoryLimit": 50
+  "clipboardHistoryLimit": 50,
+  "showTooltip": true,
+  "tooltipDelay": 500
 }
 ```
 
@@ -202,27 +218,27 @@ bun run all:test               # Parallel execution
 ### Current
 
 - Manual installation via `install.sh`
-- systemd service for daemon
-- No packaging yet
+- systemd user service for daemon
+- RPM packages for Fedora
 
 ### Future
 
-- .rpm package for Fedora
 - .deb package for Ubuntu/Debian
 - AUR package for Arch Linux
-- Automated releases via GitHub Actions
+- Flatpak
 
 ## System Tray
 
-**Status**: Implemented
+**Status**: Implemented via StatusNotifierItem protocol
 
-- Tray icon with context menu (Show/Hide, Auto-start, GitHub, Version, Quit)
+- Tray icon with context menu (Show/Hide, Auto-start, Updates, GitHub, Quit)
 - Left-click toggles window visibility
 - Right-click shows menu
-- **Auto-start**: Toggle via tray menu to start app on login
-- **GNOME 43+ requirement**: AppIndicator extension
-  - Install: `sudo dnf install gnome-shell-extension-appindicator`
-  - Enable: `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`
+
+**GNOME support**:
+
+- **uti for GNOME** (recommended): Extension acts as StatusNotifierHost
+- **AppIndicator** (alternative): Third-party extension
 
 ## Known Limitations
 
@@ -230,10 +246,9 @@ bun run all:test               # Parallel execution
 2. Fixed 300ms double-tap interval
 3. Linux-only (Wayland/X11)
 4. Window position/size not persisted
-5. GNOME users require AppIndicator extension for tray icon
-6. Window appears in dock/taskbar on Wayland (Tauri limitation, see
+5. Window appears in dock/taskbar on Wayland (Tauri limitation, see
    [#9829](https://github.com/tauri-apps/tauri/issues/9829))
 
 ## Roadmap
 
-See TODO in README.md for planned features.
+See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for platform support plans.

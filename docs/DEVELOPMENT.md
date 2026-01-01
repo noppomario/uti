@@ -54,15 +54,7 @@ sudo dnf install -y \
 
 ## Architecture
 
-```text
-[double-ctrl daemon]  ← User session service (requires input group)
-  ↓ Monitor Ctrl via evdev
-  ↓ Detect double press within 300ms
-  ↓ Send D-Bus Signal
-[Tauri app]           ← Normal user application
-  ↓ Receive D-Bus
-  ↓ Toggle window visibility
-```
+For architecture documentation with diagrams, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -202,7 +194,7 @@ Update version in all 6 locations:
 | `app/src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
 | `app/src-tauri/Cargo.toml` | `version = "X.Y.Z"` |
 | `daemon/Cargo.toml` | `version = "X.Y.Z"` |
-| `daemon/double-ctrl.spec` | `Version:        X.Y.Z` |
+| `daemon/uti-daemon.spec` | `Version:        X.Y.Z` |
 
 **Note**: All components share the same version number for unified releases.
 
@@ -247,15 +239,14 @@ For testing or manual releases:
 Each release includes:
 
 - `uti-X.Y.Z-1.x86_64.rpm` - Tauri GUI application
-- `double-ctrl-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
+- `uti-daemon-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
+- `gnome-extension.zip` - GNOME Shell extension (uti for GNOME)
 
 ---
 
 ## Additional Resources
 
 - [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)
-- [Project Memory](./CLAUDE.md)
-- [Code Conventions](./.claude/rules/conventions.md)
-- [Architectural Decisions](./.claude/rules/decisions.md)
-
----
+- [Project Memory](../CLAUDE.md)
+- [Code Conventions](../.claude/rules/conventions.md)
+- [Architectural Decisions](../.claude/rules/decisions.md)

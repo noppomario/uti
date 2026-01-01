@@ -1,5 +1,5 @@
 [package]
-name = "double-ctrl"
+name = "uti-daemon"
 version = "0.0.2"
 edition = "2021"
 

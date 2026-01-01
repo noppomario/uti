@@ -51,8 +51,8 @@ fi
 # Build release binary (unless --package-only)
 if [ "$PACKAGE_ONLY" = true ]; then
     echo "Package only mode (using existing binary)..."
-    if [ ! -f "$PROJECT_ROOT/target/release/double-ctrl" ]; then
-        echo "Error: Binary not found at target/release/double-ctrl"
+    if [ ! -f "$PROJECT_ROOT/target/release/uti-daemon" ]; then
+        echo "Error: Binary not found at target/release/uti-daemon"
         echo "Run 'cargo build --release' first or remove --package-only flag"
         exit 1
     fi
@@ -66,16 +66,16 @@ RPMBUILD_DIR="$PROJECT_ROOT/target/rpmbuild"
 mkdir -p "$RPMBUILD_DIR"/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
 
 # Update spec version and copy
-sed "s/^Version:.*/Version:        $VERSION/" "$PROJECT_ROOT/daemon/double-ctrl.spec" \
-    > "$RPMBUILD_DIR/SPECS/double-ctrl.spec"
+sed "s/^Version:.*/Version:        $VERSION/" "$PROJECT_ROOT/daemon/uti-daemon.spec" \
+    > "$RPMBUILD_DIR/SPECS/uti-daemon.spec"
 
 # Copy build files to SOURCES (rpmbuild expects them there or uses absolute paths)
-cp "$PROJECT_ROOT/target/release/double-ctrl" "$RPMBUILD_DIR/SOURCES/"
-cp "$PROJECT_ROOT/daemon/systemd/double-ctrl.service" "$RPMBUILD_DIR/SOURCES/"
+cp "$PROJECT_ROOT/target/release/uti-daemon" "$RPMBUILD_DIR/SOURCES/"
+cp "$PROJECT_ROOT/daemon/systemd/uti-daemon.service" "$RPMBUILD_DIR/SOURCES/"
 
 # Build RPM with source directory override
 echo "Building RPM..."
-rpmbuild -bb "$RPMBUILD_DIR/SPECS/double-ctrl.spec" \
+rpmbuild -bb "$RPMBUILD_DIR/SPECS/uti-daemon.spec" \
     --define "_topdir $RPMBUILD_DIR" \
     --define "_sourcedir $RPMBUILD_DIR/SOURCES" \
     --define "debug_package %{nil}"
@@ -88,4 +88,4 @@ cp "$RPMBUILD_DIR/RPMS/"*/*.rpm "$DIST_DIR/"
 echo ""
 echo "RPM built successfully!"
 echo "Output: $DIST_DIR/"
-ls -la "$DIST_DIR/"*.rpm 2>/dev/null | grep double-ctrl || true
+ls -la "$DIST_DIR/"*.rpm 2>/dev/null | grep uti-daemon || true

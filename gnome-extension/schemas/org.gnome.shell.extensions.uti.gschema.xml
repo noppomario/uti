@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.uti" path="/org/gnome/shell/extensions/uti/">
+    <key name="enable-tray-icon" type="b">
+      <default>true</default>
+      <summary>Enable tray icon</summary>
+      <description>
+        Whether to display the uti tray icon in the panel.
+        Disable this if you have AppIndicator extension installed
+        and prefer to use that instead.
+      </description>
+    </key>
+  </schema>
+</schemalist>

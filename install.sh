@@ -1,5 +1,5 @@
 #!/bin/bash
-# uti installer - Downloads and installs uti and double-ctrl from GitHub Releases
+# uti installer - Downloads and installs uti and uti-daemon from GitHub Releases
 set -e
 
 REPO="noppomario/uti"
@@ -68,7 +68,7 @@ main() {
 
     # Construct download URLs
     local base_url="https://github.com/${REPO}/releases/download/v${version}"
-    local daemon_rpm="double-ctrl-${version}-1.x86_64.rpm"
+    local daemon_rpm="uti-daemon-${version}-1.x86_64.rpm"
     local uti_rpm="uti-${version}-1.x86_64.rpm"
 
     echo "[2/5] Downloading packages..."
@@ -102,24 +102,70 @@ main() {
         echo "  ✓ Already in input group."
     fi
 
-    echo "[5/5] Enabling systemd user service..."
+    echo "[5/6] Enabling systemd user service..."
     systemctl --user daemon-reload
-    systemctl --user enable --now double-ctrl.service
+    systemctl --user enable --now uti-daemon.service
+
+    # ANSI color codes
+    local RED='\033[0;31m'
+    local GREEN='\033[0;32m'
+    local YELLOW='\033[1;33m'
+    local NC='\033[0m' # No Color
+    local BOLD='\033[1m'
+
+    echo ""
+    echo "[6/6] Installing uti for GNOME (if applicable)..."
+    local gnome_installed=false
+    if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || command -v gnome-extensions &>/dev/null; then
+        local ext_uuid="uti@noppomario.github.io"
+        local ext_dir="$HOME/.local/share/gnome-shell/extensions/${ext_uuid}"
+        local ext_url="${base_url}/gnome-extension.zip"
+
+        echo "  Downloading uti for GNOME..."
+        local ext_zip="/tmp/uti-gnome-extension.zip"
+        if curl -L -o "$ext_zip" "$ext_url" 2>/dev/null; then
+            mkdir -p "$ext_dir"
+            unzip -o -q "$ext_zip" -d "$ext_dir"
+            rm -f "$ext_zip"
+            # Compile schemas if glib-compile-schemas is available
+            if command -v glib-compile-schemas &>/dev/null && [ -d "$ext_dir/schemas" ]; then
+                glib-compile-schemas "$ext_dir/schemas" 2>/dev/null || true
+            fi
+            echo "  ✓ Extension installed to $ext_dir"
+            gnome_installed=true
+        else
+            echo "  ⚠ Could not download extension (optional, skipping)"
+        fi
+    else
+        echo "  Skipping (not a GNOME environment)"
+    fi
 
     echo ""
     echo "==========================================="
-    echo " ✓ Installation complete!"
+    echo -e " ${GREEN}✓ Installation complete!${NC}"
     echo "==========================================="
     echo ""
-    echo "To start using uti:"
-    echo "  1. Log out and log back in (if you were just added to input group)"
-    echo "  2. Run 'uti' from the command line or application menu"
+    echo -e "${RED}${BOLD}╔═════════════════════════╗${NC}"
+    echo -e "${RED}${BOLD}║  ⚠ YOU MUST LOG OUT AND LOG BACK IN TO USE UTI  ║${NC}"
+    echo -e "${RED}${BOLD}╚═════════════════════════╝${NC}"
     echo ""
+    echo "After logging back in:"
+    echo "  1. Run 'uti' from the command line or application menu"
+    echo ""
+
+    # GNOME-specific instructions
+    if [ "$gnome_installed" = true ]; then
+        echo -e "${YELLOW}GNOME Users:${NC}"
+        echo "  After logging back in, enable the extension with:"
+        echo "    gnome-extensions enable uti@noppomario.github.io"
+        echo ""
+    fi
+
     echo "Service status:"
-    systemctl --user status double-ctrl.service --no-pager || true
+    systemctl --user status uti-daemon.service --no-pager || true
     echo ""
     echo "To uninstall:"
-    echo "  sudo dnf remove uti double-ctrl"
+    echo "  sudo dnf remove uti uti-daemon"
     echo ""
 }
 
