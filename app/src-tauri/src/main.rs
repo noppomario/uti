@@ -34,6 +34,10 @@ struct Cli {
     #[arg(short = 'v', short_alias = 'V', long = "version", action = clap::ArgAction::Version)]
     version: (),
 
+    /// Start minimized (used by autostart)
+    #[arg(long)]
+    minimized: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -408,11 +412,11 @@ fn main() {
     }
 
     // No subcommand: run GUI
-    run_gui();
+    run_gui(cli.minimized);
 }
 
 /// Run the Tauri GUI application
-fn run_gui() {
+fn run_gui(start_minimized: bool) {
     // Load config to get clipboard history limit
     let config = AppConfig::load();
 
@@ -446,6 +450,11 @@ fn run_gui() {
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
+
+            // Hide window if started with --minimized flag
+            if start_minimized {
+                window.hide().ok();
+            }
 
             // === Tray icon setup ===
             let show_hide_i = MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
