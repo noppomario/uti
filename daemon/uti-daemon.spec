@@ -30,28 +30,6 @@ install -m 644 %{_sourcedir}/uti-daemon.service %{buildroot}%{_userunitdir}/
 if systemctl --user is-enabled uti-daemon.service >/dev/null 2>&1; then
     systemctl --user daemon-reload
     systemctl --user restart uti-daemon.service
-    echo ""
-    echo "==========================================="
-    echo " uti-daemon upgraded and restarted!"
-    echo "==========================================="
-    echo ""
-else
-    echo ""
-    echo "==========================================="
-    echo " uti-daemon installation complete!"
-    echo "==========================================="
-    echo ""
-    echo "IMPORTANT: You must add your user to the 'input' group:"
-    echo ""
-    echo "    sudo usermod -aG input \$USER"
-    echo ""
-    echo "Then log out and log back in for the change to take effect."
-    echo ""
-    echo "After that, enable and start the service:"
-    echo ""
-    echo "    systemctl --user daemon-reload"
-    echo "    systemctl --user enable --now uti-daemon.service"
-    echo ""
 fi
 
 %preun
