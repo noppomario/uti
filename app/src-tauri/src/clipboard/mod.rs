@@ -1,9 +1,18 @@
+//! Clipboard management module
+//!
+//! Provides clipboard history management with LRU eviction
+//! and JSON-based persistence.
+
+mod store;
+
+pub use store::ClipboardStore;
+
+use serde::{Deserialize, Serialize};
+
 /// Clipboard item data structure
 ///
 /// Represents a single clipboard history entry with its text content
 /// and timestamp for LRU ordering.
-use serde::{Deserialize, Serialize};
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ClipboardItem {
     /// The text content of the clipboard item

@@ -1026,6 +1026,80 @@ Bind daemon lifecycle to `graphical-session.target`:
 
 ---
 
+## ADR-019: Launcher feature with system history integration
+
+**Date**: 2026-01-02
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Users wanted quick access to frequently used applications beyond clipboard history.
+Need to launch apps with their recent files (jump lists) like Windows taskbar.
+
+### Decision
+
+Add launcher tab with:
+
+1. **JSON configuration** (`~/.config/uti/launcher.json`) for command definitions
+2. **System history integration** via recently-used.xbel (freedesktop standard)
+3. **VSCode support** via SQLite database parsing
+
+### Rationale
+
+**System API approach**:
+
+- Uses existing freedesktop standard (no custom tracking needed)
+- Works with any GTK app that writes to recently-used.xbel
+- No file watching or daemon required
+
+**JSON configuration**:
+
+- Simple, human-readable format
+- Consistent with existing config.json
+- Flexible history source per command
+
+**Tab-based UI**:
+
+- Preserves existing clipboard functionality
+- Clear separation between features
+- Keyboard navigation (←/→ for tabs, ↑/↓ for items)
+
+### Alternatives Considered
+
+1. **Custom file tracking daemon**
+   - Pro: Works with any app
+   - Con: Complex, resource-intensive
+
+2. **Desktop file parsing (.desktop)**
+   - Pro: Standard app definitions
+   - Con: Doesn't provide recent files
+
+3. **Bookmark-based approach**
+   - Pro: User curated
+   - Con: No automatic recent files
+
+### Consequences
+
+**Positive**:
+
+- Quick app launching with recent files
+- Works with existing GTK ecosystem
+- No additional daemons or services
+
+**Negative**:
+
+- Limited to apps that write to recently-used.xbel
+- VSCode requires custom SQLite parsing
+- History accuracy depends on app behavior
+
+**Reconsider when**:
+
+- Need to support non-GTK apps (KDE, Electron)
+- recently-used.xbel format changes significantly
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

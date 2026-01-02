@@ -1,8 +1,9 @@
-/// Clipboard history storage with LRU eviction
-///
-/// Manages clipboard history persistence to JSON file with configurable
-/// maximum item limit. Uses LRU (Least Recently Used) strategy for eviction.
-use crate::clipboard::ClipboardItem;
+//! Clipboard history storage with LRU eviction
+//!
+//! Manages clipboard history persistence to JSON file with configurable
+//! maximum item limit. Uses LRU (Least Recently Used) strategy for eviction.
+
+use super::ClipboardItem;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

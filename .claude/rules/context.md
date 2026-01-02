@@ -58,8 +58,9 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 ### Why NOT complex folder structure?
 
 - YAGNI principle - don't add complexity until needed
-- Current scale: 6 TypeScript files (~369 lines), 2 components
-- Will refactor when complexity requires better organization
+- Current scale: 21 TypeScript files (~2,900 lines), 6 components, 3 hooks
+- Already organized with `components/` and `hooks/` directories
+- Will add feature-based structure when 4+ distinct features exist
 
 ### Why custom GNOME extension instead of AppIndicator?
 
@@ -76,18 +77,31 @@ uti/
 ├── .vscode/                    # VSCode configuration
 ├── app/                        # Tauri frontend
 │   ├── src/
-│   │   ├── components/
-│   │   │   └── ClipboardHistory.tsx  # Clipboard history list with keyboard nav
-│   │   ├── hooks/
-│   │   │   └── useClipboard.ts       # Clipboard monitoring hook
+│   │   ├── components/         # React components
+│   │   │   ├── ClipboardHistory.tsx  # Clipboard history list
+│   │   │   ├── Launcher.tsx    # Launcher command list
+│   │   │   ├── JumpList.tsx    # Recent files list
+│   │   │   ├── TabBar.tsx      # Tab navigation
+│   │   │   └── ListItem.tsx    # Shared list item component
+│   │   ├── hooks/              # Custom React hooks
+│   │   │   ├── useClipboard.ts # Clipboard monitoring
+│   │   │   ├── useLauncher.ts  # Launcher config loading
+│   │   │   └── useListKeyboardNavigation.ts  # Keyboard nav
 │   │   ├── App.tsx             # Main component
-│   │   ├── main.tsx            # Entry point + theme initialization
+│   │   ├── main.tsx            # Entry point + theme init
 │   │   ├── config.ts           # Configuration loader
-│   │   └── index.css           # Tailwind v4 theme with @theme directive
+│   │   └── index.css           # Tailwind v4 theme
 │   └── src-tauri/              # Rust backend
 │       └── src/
 │           ├── main.rs         # D-Bus listener + window control + tray
-│           ├── clipboard_store.rs    # LRU clipboard storage
+│           ├── lib.rs          # Library exports
+│           ├── clipboard/      # Clipboard module
+│           │   ├── mod.rs      # ClipboardItem definition
+│           │   └── store.rs    # LRU clipboard storage
+│           ├── launcher/       # Launcher module
+│           │   ├── mod.rs      # LauncherConfig, HistorySource
+│           │   ├── store.rs    # Config file loading
+│           │   └── recent_files.rs  # XBEL/VSCode history
 │           └── updater.rs      # Self-update functionality
 ├── daemon/
 │   ├── src/main.rs             # evdev keyboard monitor + D-Bus sender

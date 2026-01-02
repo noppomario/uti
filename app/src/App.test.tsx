@@ -35,16 +35,19 @@ describe('App', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the application title', async () => {
+  it('renders the tab bar with clipboard and launcher tabs', async () => {
     // Arrange & Act
     await act(async () => {
       render(<App />);
     });
 
     // Assert
-    const title = screen.getByText('Clipboard History');
-    expect(title).toBeDefined();
-    expect(title.tagName).toBe('H1');
+    const clipboardTab = screen.getByRole('tab', { name: /clipboard/i });
+    const launcherTab = screen.getByRole('tab', { name: /launcher/i });
+    expect(clipboardTab).toBeDefined();
+    expect(launcherTab).toBeDefined();
+    // Clipboard tab should be active by default
+    expect(clipboardTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('renders empty clipboard history state', async () => {

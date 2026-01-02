@@ -5,7 +5,10 @@
  * Users can select items with mouse click or keyboard (ArrowUp/Down + Enter).
  * Shows tooltip at bottom after hovering for a short delay.
  */
+import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useListKeyboardNavigation } from '../hooks/useListKeyboardNavigation';
+import { ListItem } from './ListItem';
 
 export interface ClipboardItem {
   text: string;
@@ -21,6 +24,8 @@ export interface ClipboardHistoryProps {
   showTooltip?: boolean;
   /** Delay before showing tooltip in ms (default: 500) */
   tooltipDelay?: number;
+  /** Called when user wants to switch to next tab */
+  onSwitchToNextTab?: () => void;
 }
 
 /**
@@ -39,23 +44,24 @@ export function ClipboardHistory({
   onSelect,
   showTooltip = true,
   tooltipDelay = 500,
+  onSwitchToNextTab,
 }: ClipboardHistoryProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [tooltipIndex, setTooltipIndex] = useState<number | null>(null);
-  const listRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset selection when items array changes (referential equality)
+  const { selectedIndex, containerRef, handleKeyDown } = useListKeyboardNavigation(items, {
+    onSelect: item => onSelect(item.text),
+    onRight: onSwitchToNextTab,
+    wrapAround: false,
+  });
+
+  // Reset hover state when items change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: items change requires reset
   useEffect(() => {
-    setSelectedIndex(0);
     setHoveredIndex(null);
     setTooltipIndex(null);
-    // Auto-focus the list when items are loaded
-    if (items.length > 0 && listRef.current) {
-      listRef.current.focus();
-    }
   }, [items]);
 
   // Scroll selected item into view when selectedIndex changes
@@ -91,25 +97,6 @@ export function ClipboardHistory({
     };
   }, [hoveredIndex, showTooltip, tooltipDelay]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setSelectedIndex(prev => Math.min(prev + 1, items.length - 1));
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setSelectedIndex(prev => Math.max(prev - 1, 0));
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (items[selectedIndex]) {
-          onSelect(items[selectedIndex].text);
-        }
-        break;
-    }
-  };
-
   const setItemRef = useCallback(
     (index: number) => (el: HTMLButtonElement | null) => {
       itemRefs.current[index] = el;
@@ -120,14 +107,25 @@ export function ClipboardHistory({
   const tooltipText = tooltipIndex !== null ? items[tooltipIndex]?.text : null;
 
   if (items.length === 0) {
-    return <div className="p-4 text-center text-app-text-muted">No clipboard history</div>;
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: Keyboard navigation requires handler
+      <div
+        ref={containerRef as React.RefObject<HTMLDivElement | null>}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard navigation requires focus
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        className="p-4 text-center text-app-text-muted text-xs focus:outline-none"
+      >
+        No clipboard history
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col h-full">
       {/* Scrollable list */}
       <ul
-        ref={listRef}
+        ref={containerRef as React.RefObject<HTMLUListElement | null>}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard navigation requires focus
         tabIndex={0}
         onKeyDown={handleKeyDown}
@@ -135,26 +133,17 @@ export function ClipboardHistory({
       >
         {items.map((item, index) => (
           <li key={`${item.timestamp}-${index}`}>
-            <button
-              ref={setItemRef(index)}
-              type="button"
-              data-clipboard-item
-              data-selected={index === selectedIndex}
+            <ListItem
+              selected={index === selectedIndex}
+              index={index}
               onClick={() => onSelect(item.text)}
               onMouseEnter={() => setHoveredIndex(index)}
               onMouseLeave={() => setHoveredIndex(null)}
-              className={`
-                w-full cursor-pointer rounded px-2 py-1 text-left text-xs
-                truncate
-                ${
-                  index === selectedIndex
-                    ? 'bg-app-item-selected text-app-text-on-selected'
-                    : 'bg-app-item text-app-text hover:bg-app-item-hover'
-                }
-              `}
+              buttonRef={setItemRef(index)}
+              dataAttributes={{ 'data-clipboard-item': true }}
             >
-              {index + 1}:&nbsp;&nbsp;&nbsp;&nbsp;{item.text}
-            </button>
+              {item.text}
+            </ListItem>
           </li>
         ))}
       </ul>

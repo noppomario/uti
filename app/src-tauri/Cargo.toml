@@ -29,6 +29,9 @@ open = "5.3.3"
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json"] }
 semver = "1"
+quick-xml = { version = "0.37", features = ["serialize"] }
+percent-encoding = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

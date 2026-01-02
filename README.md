@@ -18,45 +18,24 @@
 [![Biome](https://img.shields.io/badge/Biome-60A5FA?logo=biome&logoColor=white)](https://biomejs.dev/)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-> 🚀 A modern clipboard manager for Linux with double-Ctrl toggle
-
-![uti screenshot](docs/assets/screenshot.png)
+> A modern clipboard manager and app launcher for Linux with double-Ctrl toggle
 
 </div>
-
-## 🎯 Why uti?
-
-**Solving the challenges of Wayland environments with modern tooling.**
-
-- 🔒 **Wayland Limitations**: Wayland restricts global keyboard shortcuts. Launching apps with double Ctrl press cannot be achieved through standard desktop settings. Additionally, Wayland prevents apps from querying global cursor position or setting their own window position, requiring compositor (GNOME Shell) integration for cursor-relative window positioning.
-
-- 🔍 **No Existing Tools**: No clipboard manager was found that works natively on Wayland and can be triggered by double Ctrl press.
-
-- ⚡ **Daemon Architecture**: A dedicated Rust daemon monitors keyboard input via evdev, enabling flexible shortcuts independent of the desktop environment.
-
-- 🦀 **Modern Stack**: Built entirely with Rust backend, React 19 frontend, and tooling like Bun, Biome, and Vite for maximum developer experience.
-
-- 🧩 **GNOME Integration**: Custom extension displays window at cursor position and provides native panel icon—features impossible for regular Wayland apps.
 
 ## ✨ Features
 
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
+- 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
 - 🖥️ **System Tray**: Runs in the background with tray icon control
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
-- 🚀 **Auto-start**: Optional auto-start on login
-- 🔄 **Self-update**: Update via `uti update` command or tray menu
+- 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
 
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-| ----- | ---------- |
-| 🦀 Backend | Rust + Tauri 2 |
-| ⚛️ Frontend | React 19 + TypeScript 5.7 |
-| 🎨 Styling | Tailwind CSS v4 |
-| 📦 Bundler | Vite 6 + Bun |
-| 🔧 Linting | Biome (25-100x faster than ESLint) |
-| 🎹 Daemon | Rust + evdev + D-Bus |
+<p align="center">
+  <img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="32%">
+  <img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="32%">
+  <img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="32%">
+</p>
 
 ## 📋 System Requirements
 
@@ -104,13 +83,39 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 </details>
 
+## 🎯 Why uti?
+
+**Solving the challenges of Wayland environments with modern tooling.**
+
+- 🔒 **Wayland Limitations**: Wayland restricts global keyboard shortcuts. Launching apps with double Ctrl press cannot be achieved through standard desktop settings. Additionally, Wayland prevents apps from querying global cursor position or setting their own window position, requiring compositor (GNOME Shell) integration for cursor-relative window positioning.
+
+- 🔍 **No Existing Tools**: No clipboard manager was found that works natively on Wayland and can be triggered by double Ctrl press.
+
+- ⚡ **Daemon Architecture**: A dedicated Rust daemon monitors keyboard input via evdev, enabling flexible shortcuts independent of the desktop environment.
+
+- 🦀 **Modern Stack**: Built entirely with Rust backend, React 19 frontend, and tooling like Bun, Biome, and Vite for maximum developer experience.
+
+- 🧩 **GNOME Integration**: Custom extension displays window at cursor position and provides native panel icon—features impossible for regular Wayland apps.
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+| ----- | ---------- |
+| 🦀 Backend | Rust + Tauri 2 |
+| ⚛️ Frontend | React 19 + TypeScript 5.7 |
+| 🎨 Styling | Tailwind CSS v4 |
+| 📦 Bundler | Vite 6 + Bun |
+| 🔧 Linting | Biome (25-100x faster than ESLint) |
+| 🎹 Daemon | Rust + evdev + D-Bus |
+
 ## 📖 Usage
 
 ### Basic Operation
 
 1. Press **Ctrl twice quickly** to toggle window visibility
-2. Click on clipboard items to copy them back
-3. Use arrow keys to navigate, Enter to select
+2. Use **←/→** to switch between Clipboard and Launcher tabs
+3. Use **↑/↓** to navigate items, **Enter** to select
+4. In Launcher tab, press **→** to expand jump list (recent files)
 
 ### System Tray
 
@@ -121,6 +126,8 @@ Right-click the tray icon for options:
 - **Check for Updates...**: Check for new versions
 - **GitHub**: Open project page
 - **Quit**: Exit application
+
+<img src="docs/assets/screenshot_4.png" alt="System tray menu" width="280">
 
 ### Updating
 
@@ -155,6 +162,31 @@ Configuration file: `~/.config/uti/config.json`
 | `clipboardHistoryLimit` | number  | `50`    | Max clipboard items to store    |
 | `showTooltip`           | boolean | `true`  | Show tooltip on hover           |
 | `tooltipDelay`          | number  | `500`   | Tooltip delay in ms             |
+
+### Launcher Configuration
+
+Launcher commands: `~/.config/uti/launcher.json`
+
+```json
+{
+  "commands": [
+    {
+      "id": "nautilus",
+      "name": "Files",
+      "command": "nautilus",
+      "historySource": { "type": "recently-used", "appName": "org.gnome.Nautilus" }
+    },
+    {
+      "id": "vscode",
+      "name": "VSCode",
+      "command": "code",
+      "historySource": { "type": "vscode", "path": "~/.config/Code/User/globalStorage/state.vscdb" }
+    }
+  ]
+}
+```
+
+For detailed configuration options, see [Launcher Configuration Guide](docs/launcher-config.md).
 
 ## 🔧 Troubleshooting
 
@@ -213,13 +245,14 @@ sudo gpasswd -d $USER input
 
 - **Window appears in dock (Wayland)**: On Wayland, the window appears in the dock when visible. This is a Tauri limitation ([#9829](https://github.com/tauri-apps/tauri/issues/9829)).
 - **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway, etc.), window always appears at screen center. Enable uti for GNOME for cursor positioning.
+- **Jump list app support**: Only apps that write to `recently-used.xbel` (GTK/GNOME apps) and VSCode are supported. KDE apps and most Electron apps are not supported.
 
 ## 🏗️ Architecture
 
 | Component | Role |
 | --------- | ---- |
 | **uti-daemon** | Detects double Ctrl press via evdev |
-| **uti** | Clipboard manager UI (Tauri) |
+| **uti** | Clipboard manager + App launcher UI (Tauri) |
 | **uti for GNOME** | GNOME Shell extension for tray icon + cursor positioning (optional) |
 
 For details, see [Architecture Documentation](docs/ARCHITECTURE.md).
@@ -233,7 +266,7 @@ When you install uti, the following changes are made to your system:
 | **uti** | `/usr/bin/uti` | Main application (RPM package) |
 | **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
 | **User service** | `~/.config/systemd/user/` | Daemon autostart service |
-| **Config** | `~/.config/uti/` | User configuration and clipboard history |
+| **Config** | `~/.config/uti/` | User configuration, clipboard history, launcher config |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
 | **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
 
