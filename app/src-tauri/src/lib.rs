@@ -1,6 +1,7 @@
-/// Clipboard management library for uti
+/// uti - Desktop utility library
 ///
-/// This library provides clipboard history management with LRU eviction
-/// and JSON-based persistence.
+/// This library provides:
+/// - Clipboard history management with LRU eviction
+/// - Launcher command configuration and recent files
 pub mod clipboard;
-pub mod clipboard_store;
+pub mod launcher;

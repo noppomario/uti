@@ -4,7 +4,7 @@ This document describes the architecture of uti across different platforms and c
 
 ## Overview
 
-uti is a clipboard manager that is invoked by pressing Ctrl twice quickly. Due to platform security restrictions (especially on Wayland), a multi-component architecture is required on Linux.
+uti is a clipboard manager and app launcher that is invoked by pressing Ctrl twice quickly. Due to platform security restrictions (especially on Wayland), a multi-component architecture is required on Linux.
 
 ```mermaid
 flowchart LR
@@ -54,7 +54,7 @@ Rust daemon that monitors keyboard input and detects double Ctrl press.
 
 ### uti (Tauri App)
 
-Main application with clipboard history UI.
+Main application with clipboard history and app launcher UI.
 
 | Property | Value |
 | -------- | ----- |
@@ -62,7 +62,14 @@ Main application with clipboard history UI.
 | Backend | Rust + Tauri 2 |
 | IPC | D-Bus (receive), StatusNotifierItem (tray) |
 | Config | `~/.config/uti/config.json` |
+| Launcher | `~/.config/uti/launcher.json` |
 | Data | `~/.config/uti/clipboard.json` |
+
+**Launcher Features:**
+
+- Configurable application commands with keyboard navigation
+- Jump lists showing recent files from system history (recently-used.xbel)
+- VSCode recent files support via SQLite database
 
 ### uti for GNOME
 
@@ -150,5 +157,6 @@ The extension acts as a StatusNotifierHost, watching for this name and proxying 
 | `/usr/bin/uti-daemon` | Keyboard daemon |
 | `~/.config/systemd/user/uti-daemon.service` | Daemon service |
 | `~/.config/uti/config.json` | User configuration |
+| `~/.config/uti/launcher.json` | Launcher commands |
 | `~/.config/uti/clipboard.json` | Clipboard history |
 | `~/.local/share/gnome-shell/extensions/uti@noppomario.github.io/` | GNOME extension |

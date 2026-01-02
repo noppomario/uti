@@ -6,12 +6,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod clipboard;
-mod clipboard_store;
+mod launcher;
 mod updater;
 
 use clap::{Parser, Subcommand};
-use clipboard::ClipboardItem;
-use clipboard_store::ClipboardStore;
+use clipboard::{ClipboardItem, ClipboardStore};
+use launcher::{LauncherConfig, RecentFile};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -242,6 +242,106 @@ async fn paste_item(text: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Gets recent files from recently-used.xbel
+///
+/// # Arguments
+///
+/// * `app_name` - Application name to filter by (optional, e.g., "org.gnome.Nautilus")
+///   - Required when using system XBEL (xbel_path is None)
+///   - Optional when using per-app XBEL (xbel_path is Some)
+/// * `xbel_path` - Optional custom path to XBEL file (supports ~ expansion)
+///
+/// # Returns
+///
+/// Vector of recent files, sorted by timestamp (newest first), limited to 10 items.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// // Use system recently-used.xbel with app filter
+/// const files = await invoke('get_recent_files', { appName: 'org.gnome.Nautilus' });
+/// // Use custom XBEL path with app filter
+/// const files = await invoke('get_recent_files', {
+///   appName: 'gnome-text-editor',
+///   xbelPath: '~/.local/share/org.gnome.TextEditor/recently-used.xbel'
+/// });
+/// // Use custom XBEL path without filter (all entries)
+/// const files = await invoke('get_recent_files', {
+///   xbelPath: '~/.local/share/org.gnome.TextEditor/recently-used.xbel'
+/// });
+/// ```
+#[tauri::command]
+fn get_recent_files(app_name: Option<String>, xbel_path: Option<String>) -> Vec<RecentFile> {
+    launcher::recent_files::get_recent_files_from_xbel(app_name.as_deref(), xbel_path.as_deref())
+}
+
+/// Gets recent files from VSCode state.vscdb SQLite database
+///
+/// # Arguments
+///
+/// * `storage_path` - Path to state.vscdb (supports ~ expansion)
+///
+/// # Returns
+///
+/// Vector of recent files, limited to 10 items.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const files = await invoke('get_vscode_recent_files', {
+///   storagePath: '~/.config/Code/User/globalStorage/state.vscdb'
+/// });
+/// ```
+#[tauri::command]
+fn get_vscode_recent_files(storage_path: String) -> Vec<RecentFile> {
+    launcher::recent_files::get_recent_files_from_vscode(&storage_path)
+}
+
+/// Executes a command with optional arguments
+///
+/// # Arguments
+///
+/// * `command` - The command to execute (e.g., "nautilus", "code")
+/// * `args` - Arguments to pass to the command (e.g., ["/path/to/file"])
+///
+/// # Returns
+///
+/// Returns Ok(()) if the command was spawned successfully, Err with message otherwise.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// await invoke('execute_command', { command: 'nautilus', args: ['/home/user'] });
+/// ```
+#[tauri::command]
+fn execute_command(command: String, args: Vec<String>) -> Result<(), String> {
+    std::process::Command::new(&command)
+        .args(&args)
+        .spawn()
+        .map_err(|e| format!("Failed to execute {}: {}", command, e))?;
+    Ok(())
+}
+
+/// Gets the launcher configuration
+///
+/// Returns the launcher configuration from `~/.config/uti/launcher.json`.
+/// If the file doesn't exist, returns default configuration.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const config = await invoke('get_launcher_config');
+/// console.log(config.commands);
+/// ```
+#[tauri::command]
+fn get_launcher_config() -> LauncherConfig {
+    launcher::load_launcher_config()
+}
+
 /// Toggles the window visibility state
 ///
 /// If the window is currently visible, it will be hidden. If hidden, it will be shown
@@ -446,7 +546,11 @@ fn run_gui(start_minimized: bool) {
             get_clipboard_history,
             add_clipboard_item,
             paste_item,
-            read_config
+            read_config,
+            get_recent_files,
+            get_vscode_recent_files,
+            execute_command,
+            get_launcher_config
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
