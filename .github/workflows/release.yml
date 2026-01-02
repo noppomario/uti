@@ -207,6 +207,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Notify release success
+        if: success()
+        run: |
+          curl -s \
+            -H "Title: uti ${{ github.ref_name }} released" \
+            -H "Priority: default" \
+            -H "Tags: white_check_mark,rocket" \
+            -d "Release ${{ github.ref_name }} has been published successfully.
+          https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" \
+            "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"
+
       - name: Summary
         run: |
           echo "## Release ${{ github.ref_name }} created" >> $GITHUB_STEP_SUMMARY
