@@ -1100,6 +1100,27 @@ Add launcher tab with:
 
 ---
 
+## ADR-020: markdownlint configuration rationale
+
+**Date**: 2026-01-03
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Document the rationale for each rule in `.markdownlint.json`.
+
+### Configuration and Rationale
+
+| Rule  | Setting                   | Reason                                        |
+| ----- | ------------------------- | --------------------------------------------- |
+| MD013 | `false`                   | Line breaks reduce readability; editors wrap  |
+| MD024 | `siblings_only: true`     | ADR template repeats same headings            |
+| MD033 | `allowed_elements: [...]` | README needs HTML for styling                 |
+| MD041 | `false`                   | README starts with div (badges)               |
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

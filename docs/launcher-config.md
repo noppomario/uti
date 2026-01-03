@@ -26,13 +26,13 @@ This document explains how to configure `~/.config/uti/launcher.json`.
 
 ## Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | Yes | Unique identifier for the command |
-| `name` | Yes | Display name shown in the launcher |
-| `command` | Yes | Executable name or path |
-| `args` | No | Array of command-line arguments (default: `[]`) |
-| `historySource` | No | Configuration for jump list (recent files) |
+| Field           | Required | Description                                      |
+| --------------- | -------- | ------------------------------------------------ |
+| `id`            | Yes      | Unique identifier for the command                |
+| `name`          | Yes      | Display name shown in the launcher               |
+| `command`       | Yes      | Executable name or path                          |
+| `args`          | No       | Array of command-line arguments (default: `[]`)  |
+| `historySource` | No       | Configuration for jump list (recent files)       |
 
 ## History Source Types
 
@@ -97,12 +97,12 @@ Reads recent files from VSCode's SQLite database.
 
 Common paths:
 
-| VSCode Version | Path |
-|----------------|------|
-| VSCode | `~/.config/Code/User/globalStorage/state.vscdb` |
-| VSCode Insiders | `~/.config/Code - Insiders/User/globalStorage/state.vscdb` |
-| VSCodium | `~/.config/VSCodium/User/globalStorage/state.vscdb` |
-| Flatpak VSCode | `~/.var/app/com.visualstudio.code/config/Code/User/globalStorage/state.vscdb` |
+| VSCode Version  | Path                                                                           |
+| --------------- | ------------------------------------------------------------------------------ |
+| VSCode          | `~/.config/Code/User/globalStorage/state.vscdb`                                |
+| VSCode Insiders | `~/.config/Code - Insiders/User/globalStorage/state.vscdb`                     |
+| VSCodium        | `~/.config/VSCodium/User/globalStorage/state.vscdb`                            |
+| Flatpak VSCode  | `~/.var/app/com.visualstudio.code/config/Code/User/globalStorage/state.vscdb`  |
 
 ### 4. No History Source
 
@@ -157,10 +157,10 @@ from `args` to let the app decide how to open the file.
 
 Jump lists (recent files) are supported for:
 
-| Type | Apps | Notes |
-|------|------|-------|
-| **GTK/GNOME apps** | Nautilus, gnome-text-editor, Firefox, etc. | Writes to `~/.local/share/recently-used.xbel` |
-| **VSCode** | Code, Code Insiders, VSCodium | Uses SQLite database |
+| Type               | Apps                                        | Notes                                          |
+| ------------------ | ------------------------------------------- | ---------------------------------------------- |
+| **GTK/GNOME apps** | Nautilus, gnome-text-editor, Firefox, etc.  | Writes to `~/.local/share/recently-used.xbel`  |
+| **VSCode**         | Code, Code Insiders, VSCodium               | Uses SQLite database                           |
 
 **Not supported:**
 

@@ -69,7 +69,7 @@ Module-level docs:
 
 ### General
 
-- Max line width: **100 characters**
+- Max line width: **100 characters** (code only; Markdown is unlimited)
 - Line endings: **LF** (Unix-style)
 - Encoding: **UTF-8**
 - Final newline: **Required**
