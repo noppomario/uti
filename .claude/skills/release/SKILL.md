@@ -7,6 +7,9 @@ description: Release workflow for uti project. Use when user says "release", "cr
 
 Create a new release for uti (Tauri app + daemon).
 
+**Important**: Release is created from `develop` branch, not `main`.
+Ensure all features for the release are merged to `develop` first.
+
 ## Usage
 
 Run the release workflow with the desired version:
