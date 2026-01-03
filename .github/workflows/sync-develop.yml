@@ -12,19 +12,33 @@ jobs:
     if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
-      - name: Checkout develop
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: main
           token: ${{ secrets.RELEASE_TOKEN }}
           fetch-depth: 0
 
-      - name: Merge main into develop
+      - name: Create sync PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
+          RELEASE_VERSION="${{ github.event.pull_request.head.ref }}"
+          SYNC_BRANCH="sync/main-after-${RELEASE_VERSION}"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git merge origin/main --no-edit -m "chore: sync main after release ${{ github.event.pull_request.head.ref }}"
-          git push origin develop
+
+          git checkout -b "$SYNC_BRANCH"
+          git push origin "$SYNC_BRANCH"
+
+          PR_URL=$(gh pr create \
+            --title "chore: sync main after ${RELEASE_VERSION}" \
+            --body "Automated sync from main to develop after release." \
+            --head "$SYNC_BRANCH" \
+            --base develop)
+
+          gh pr merge --auto --merge "$PR_URL"
