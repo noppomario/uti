@@ -44,22 +44,46 @@ ARGUMENTS: Issue URL passed from skill invocation
 
 After user approves the plan:
 
-1. Post **full plan content** to Issue (not a summary):
+1. Post **full plan content** to Issue:
 
    ```bash
-   # Read the plan file and post as-is
+   # MUST read the actual plan file and post its COMPLETE content
    gh issue comment {url} --body "## Implementation Plan
 
    $(cat {plan_file_path})"
    ```
 
-   **IMPORTANT**: Post the complete plan file content, not a summary.
-   This preserves all decisions and prevents information loss.
+   **CRITICAL REQUIREMENTS** (MUST follow ALL):
+
+   - **NEVER summarize** - Post the EXACT content of the plan file
+   - **Use `cat` command** - Read the plan file path shown in system messages
+   - **Include everything** - Code snippets, tables, test items, phases, sources
+   - **No paraphrasing** - Copy the plan content verbatim
+
+   If you summarize instead of posting the full content, you are violating this
+   skill's requirements.
 
 2. Update project status to "In Progress" using the commands in
    [gh-project-api.md](references/gh-project-api.md)
 
-### Phase 4: Implementation
+3. **MANDATORY CHECKPOINT - STOP AND WAIT**:
+
+   After posting the plan to the Issue, you MUST:
+
+   - Inform the user that the plan has been posted
+   - Provide the Issue comment URL
+   - Ask the user to review the posted plan
+   - **STOP and wait for explicit approval** (e.g., "OK", "proceed", "continue")
+
+   **DO NOT proceed to Phase 4 until the user explicitly confirms.**
+
+   Example message:
+
+   > Plan posted to Issue: {comment_url}
+   >
+   > Please review the posted plan. Say "OK" to proceed with implementation.
+
+### Phase 4: Implementation (User Approval Required)
 
 1. Follow the plan to implement changes
 2. Periodically check remaining tasks

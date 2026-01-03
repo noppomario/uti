@@ -1,8 +1,12 @@
-/// <reference types="vitest" />
+/// <reference types="vitest/config" />
 
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -16,6 +20,12 @@ export default defineConfig({
     target: 'esnext',
     minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        dialog: resolve(__dirname, 'dialog.html'),
+      },
+    },
   },
   test: {
     globals: true,

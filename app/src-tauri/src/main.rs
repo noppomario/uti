@@ -18,11 +18,23 @@ use std::sync::Mutex;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, State, WebviewWindow,
+    Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use zbus::Connection;
+
+/// Payload for update dialog window
+#[derive(Clone)]
+struct UpdateDialogPayload {
+    title: String,
+    message: String,
+    kind: String, // "info" | "error"
+}
+
+/// URL-encode a string for use in query parameters
+fn urlencoding(s: &str) -> String {
+    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
+}
 
 /// uti - Double Ctrl hotkey desktop tool
 #[derive(Parser)]
@@ -539,7 +551,6 @@ fn run_gui(start_minimized: bool) {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(store))
         .invoke_handler(tauri::generate_handler![
             toggle_window,
@@ -645,35 +656,65 @@ fn run_gui(start_minimized: bool) {
                         let current_version = env!("CARGO_PKG_VERSION").to_string();
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            match updater::check_for_updates(&current_version).await {
-                                Ok(result) => {
-                                    if result.update_available {
-                                        app_handle
-                                            .dialog()
-                                            .message(format!(
-                                                "Update available: {} → {}\n\nRun 'uti update' in terminal to install.",
+                            let payload =
+                                match updater::check_for_updates(&current_version).await {
+                                    Ok(result) => {
+                                        if result.update_available {
+                                            UpdateDialogPayload {
+                                                title: "Update Available".to_string(),
+                                                message: format!(
+                                                "Update available: {} -> {}\n\nRun 'uti update' in terminal to install.",
                                                 result.current_version, result.latest_version
-                                            ))
-                                            .kind(MessageDialogKind::Info)
-                                            .title("Update Available")
-                                            .show(|_| {});
-                                    } else {
-                                        app_handle
-                                            .dialog()
-                                            .message("You are running the latest version.")
-                                            .kind(MessageDialogKind::Info)
-                                            .title("No Update")
-                                            .show(|_| {});
+                                            ),
+                                                kind: "info".to_string(),
+                                            }
+                                        } else {
+                                            UpdateDialogPayload {
+                                                title: "No Update".to_string(),
+                                                message: "You are running the latest version."
+                                                    .to_string(),
+                                                kind: "info".to_string(),
+                                            }
+                                        }
                                     }
-                                }
-                                Err(e) => {
-                                    app_handle
-                                        .dialog()
-                                        .message(format!("{}", e))
-                                        .kind(MessageDialogKind::Error)
-                                        .title("Update Check Failed")
-                                        .show(|_| {});
-                                }
+                                    Err(e) => UpdateDialogPayload {
+                                        title: "Update Check Failed".to_string(),
+                                        message: format!("{}", e),
+                                        kind: "error".to_string(),
+                                    },
+                                };
+
+                            // Close existing dialog window if any
+                            if let Some(existing) = app_handle.get_webview_window("dialog") {
+                                let _ = existing.close();
+                            }
+
+                            // Create new dialog window with URL parameters
+                            let url = format!(
+                                "dialog.html?title={}&message={}&kind={}",
+                                urlencoding(&payload.title),
+                                urlencoding(&payload.message),
+                                urlencoding(&payload.kind)
+                            );
+
+                            if let Ok(dialog_window) = WebviewWindowBuilder::new(
+                                &app_handle,
+                                "dialog",
+                                WebviewUrl::App(url.into()),
+                            )
+                            .title("uti")
+                            .inner_size(320.0, 200.0)
+                            .resizable(false)
+                            .decorations(false)
+                            .transparent(true)
+                            .center()
+                            .visible(true)
+                            .focused(true)
+                            .build()
+                            {
+                                println!("Dialog window created: {:?}", dialog_window.label());
+                            } else {
+                                eprintln!("Failed to create dialog window");
                             }
                         });
                     }
