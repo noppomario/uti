@@ -2,14 +2,20 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { ClipboardHistory, type ClipboardItem } from './components/ClipboardHistory';
 import type { RecentFile } from './components/JumpList';
 import { Launcher, type LauncherItem } from './components/Launcher';
 import { TabBar, type TabType } from './components/TabBar';
-import { type AppConfig, defaultConfig, getConfig } from './config';
 import { useClipboard } from './hooks/useClipboard';
 import { useLauncher } from './hooks/useLauncher';
+
+/** Inline styles using CSS variables for theme-based sizing */
+const headerStyles: React.CSSProperties = {
+  padding: 'var(--size-padding-y) var(--size-padding-x)',
+  boxShadow: 'var(--shadow-header)',
+};
 
 /**
  * Main application component
@@ -20,7 +26,6 @@ import { useLauncher } from './hooks/useLauncher';
  */
 function App() {
   const [history, setHistory] = useState<ClipboardItem[]>([]);
-  const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [activeTab, setActiveTab] = useState<TabType>('clipboard');
   const [expandedItemId, setExpandedItemId] = useState<string | undefined>();
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
@@ -62,9 +67,8 @@ function App() {
     }
   }, []);
 
-  // Load config and clipboard history on initial mount
+  // Load clipboard history on initial mount
   useEffect(() => {
-    getConfig().then(setConfig);
     loadHistory();
   }, [loadHistory]);
 
@@ -247,23 +251,18 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-app-bg flex flex-col">
-      <div className="border-b border-app-header-border px-2 py-1 bg-app-header">
-        <div className="flex items-center justify-between">
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-          <span className="text-xs text-app-text-muted" title="Dark mode indicator">
-            <span className="hidden dark:inline">🌙</span>
-            <span className="inline dark:hidden">☀️</span>
-          </span>
-        </div>
+    <div className="h-screen bg-app-bg flex flex-col rounded-lg overflow-hidden">
+      <div
+        className="relative z-10 border-b border-app-header-border bg-app-header"
+        style={headerStyles}
+      >
+        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
       <div className="flex-1 min-h-0">
         {activeTab === 'clipboard' && (
           <ClipboardHistory
             items={history}
             onSelect={handleClipboardSelect}
-            showTooltip={config.showTooltip}
-            tooltipDelay={config.tooltipDelay}
             onSwitchToNextTab={() => switchTab('right')}
           />
         )}

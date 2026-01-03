@@ -139,16 +139,18 @@ uti/
 
 ```json
 {
-  "theme": "dark",
-  "clipboardHistoryLimit": 50,
-  "showTooltip": true,
-  "tooltipDelay": 500
+  "theme": {
+    "color": "dark",
+    "size": "normal"
+  },
+  "clipboardHistoryLimit": 50
 }
 ```
 
 **Validation**:
 
-- `theme`: "light" or "dark" (default: "dark")
+- `theme.color`: "midnight", "dark", or "light" (default: "dark")
+- `theme.size`: "minimal", "normal", or "wide" (default: "normal")
 - `clipboardHistoryLimit`: Must be > 0 (default: 50)
 
 **Auto-migration**: On startup, `clipboard.json` max_items syncs with

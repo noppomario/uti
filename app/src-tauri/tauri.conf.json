@@ -30,6 +30,8 @@
         "resizable": false,
         "fullscreen": false,
         "decorations": false,
+        "transparent": true,
+        "shadow": true,
         "center": true,
         "visible": false,
         "skipTaskbar": true,
@@ -55,6 +57,7 @@
             "core:window:allow-is-visible",
             "core:window:allow-cursor-position",
             "core:window:allow-set-position",
+            "core:window:allow-set-size",
             "clipboard-manager:allow-read-text",
             "clipboard-manager:allow-write-text"
           ]

@@ -53,7 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/noppomario/uti/main/install.sh | ba
 
 After installation, **log out and log back in** (required for input group), then run `uti`.
 
-### GNOME Users
+<details>
+<summary><strong>GNOME Users</strong></summary>
 
 On GNOME, the installer automatically installs the "uti for GNOME" extension. After logging back in, enable it:
 
@@ -71,6 +72,8 @@ This extension provides:
 The extension displays Tauri's tray icon directly, so no additional extensions (like AppIndicator) are required.
 
 Without the extension, uti still works but the window appears at screen center.
+
+</details>
 
 <details>
 <summary>Using AppIndicator instead?</summary>
@@ -149,19 +152,19 @@ Configuration file: `~/.config/uti/config.json`
 
 ```json
 {
-  "theme": "dark",
-  "clipboardHistoryLimit": 50,
-  "showTooltip": true,
-  "tooltipDelay": 500
+  "theme": {
+    "color": "dark",
+    "size": "normal"
+  },
+  "clipboardHistoryLimit": 50
 }
 ```
 
-| Option                  | Type    | Default | Description                     |
-| ----------------------- | ------- | ------- | ------------------------------- |
-| `theme`                 | string  | `dark`  | UI theme: `dark` or `light`     |
-| `clipboardHistoryLimit` | number  | `50`    | Max clipboard items to store    |
-| `showTooltip`           | boolean | `true`  | Show tooltip on hover           |
-| `tooltipDelay`          | number  | `500`   | Tooltip delay in ms             |
+| Option                  | Type   | Default                            | Description                  |
+| ----------------------- | ------ | ---------------------------------- | ---------------------------- |
+| `theme.color`           | string | `dark`                             | `midnight`, `dark`, `light`  |
+| `theme.size`            | string | `normal`                           | `minimal`, `normal`, `wide`  |
+| `clipboardHistoryLimit` | number | `50`                               | Max clipboard items to store |
 
 ### Launcher Configuration
 

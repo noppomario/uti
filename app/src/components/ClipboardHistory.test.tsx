@@ -4,7 +4,7 @@
  * Displays clipboard history with keyboard navigation support.
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ClipboardHistory } from './ClipboardHistory';
 
@@ -191,128 +191,11 @@ describe('ClipboardHistory', () => {
     });
   });
 
-  it('should not show tooltip without hover', () => {
-    const onSelect = vi.fn();
-    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
-
-    // No tooltip by default
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
-  });
-
-  it('should show tooltip after delay on mouse hover', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
-
-    // Hover over second item
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-
-    // Tooltip should not show immediately
-    expect(container.querySelector('[data-tooltip]')).toBeNull();
-
-    // Advance timer past delay
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip?.textContent).toBe('Item 2');
-
-    vi.useRealTimers();
-  });
-
-  it('should not show tooltip if mouse leaves before delay', () => {
-    vi.useFakeTimers();
+  it('should have title attribute for tooltip', () => {
     const onSelect = vi.fn();
     const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
     const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-
-    // Leave before delay
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    fireEvent.mouseLeave(secondItem);
-
-    // Advance past original delay
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
-
-    vi.useRealTimers();
-  });
-
-  it('should hide tooltip on mouse leave', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
-
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    // Tooltip is visible
-    expect(container.querySelector('[data-tooltip]')).not.toBeNull();
-
-    // Leave
-    fireEvent.mouseLeave(secondItem);
-
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
-
-    vi.useRealTimers();
-  });
-
-  it('should not show tooltip when showTooltip is false', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(
-      <ClipboardHistory items={mockItems} onSelect={onSelect} showTooltip={false} />
-    );
-
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
-
-    vi.useRealTimers();
-  });
-
-  it('should use custom tooltipDelay', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(
-      <ClipboardHistory items={mockItems} onSelect={onSelect} tooltipDelay={1000} />
-    );
-
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-
-    // Should not show after 500ms (default)
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-    expect(container.querySelector('[data-tooltip]')).toBeNull();
-
-    // Should show after 1000ms (custom delay)
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip?.textContent).toBe('Item 2');
-
-    vi.useRealTimers();
+    expect(secondItem.getAttribute('title')).toBe('Item 2');
   });
 });
