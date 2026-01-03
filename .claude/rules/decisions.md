@@ -1190,6 +1190,53 @@ Adopt a simplified Git-flow with:
 
 ---
 
+## ADR-022: PR-based sync-develop workflow
+
+**Date**: 2026-01-03
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+sync-develop.yml failed during v0.0.10 release because develop branch has
+protection rules requiring CI checks. Direct push was rejected.
+
+### Decision
+
+Change sync-develop.yml to create a PR instead of pushing directly:
+
+1. Create sync branch from main
+2. Create PR to develop with auto-merge enabled
+3. PR goes through normal CI and merges automatically
+
+### Rationale
+
+**Branch protection compatibility**:
+
+- PRs go through required CI checks
+- Auto-merge handles the merge after CI passes
+- No need to bypass protection rules
+
+**Consistency**:
+
+- All changes to develop go through PRs
+- Audit trail for sync operations
+
+### Consequences
+
+**Positive**:
+
+- Works with branch protection rules
+- CI validates sync changes
+- Clear PR history
+
+**Negative**:
+
+- Slightly more complex workflow
+- Creates additional sync branches (cleaned up by --delete-branch)
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
