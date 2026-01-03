@@ -48,8 +48,10 @@ jobs:
             exit 1
           fi
 
-      - name: Create release branch
+      - name: Create release branch from develop
         run: |
+          git fetch origin develop
+          git checkout origin/develop
           git checkout -b release/v${{ inputs.version }}
 
       - name: Bump version
