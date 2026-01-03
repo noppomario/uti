@@ -2,38 +2,59 @@
 
 Commands for managing GitHub Projects via `gh` CLI.
 
-## Get Project Info from Issue
+## Get Project Item ID (GraphQL)
+
+The `gh issue view --json projectItems` does NOT return item_id or project_id.
+Use GraphQL API instead:
 
 ```bash
-gh issue view {issue_url} --json projectItems
+gh api graphql -f query='
+{
+  repository(owner: "{owner}", name: "{repo}") {
+    issue(number: {issue_number}) {
+      projectItems(first: 1) {
+        nodes {
+          id
+          project {
+            id
+            number
+          }
+        }
+      }
+    }
+  }
+}'
 ```
 
 Response structure:
 
 ```json
 {
-  "projectItems": [
-    {
-      "id": "PVTI_...",
-      "project": {
-        "id": "PVT_...",
-        "number": 1,
-        "title": "Project Name"
-      },
-      "status": {
-        "name": "Todo",
-        "optionId": "f75ad846"
+  "data": {
+    "repository": {
+      "issue": {
+        "projectItems": {
+          "nodes": [
+            {
+              "id": "PVTI_...",
+              "project": {
+                "id": "PVT_...",
+                "number": 1
+              }
+            }
+          ]
+        }
       }
     }
-  ]
+  }
 }
 ```
 
 Extract:
 
-- `item_id`: projectItems[0].id
-- `project_id`: projectItems[0].project.id
-- `project_number`: projectItems[0].project.number
+- `item_id`: data.repository.issue.projectItems.nodes[0].id
+- `project_id`: data.repository.issue.projectItems.nodes[0].project.id
+- `project_number`: data.repository.issue.projectItems.nodes[0].project.number
 
 ## Get Project Fields
 
@@ -78,24 +99,51 @@ gh project item-edit \
 
 ## Complete Example: Set Status to "In Progress"
 
+### Step 1: Get project item ID via GraphQL
+
 ```bash
-# 1. Get project info from issue
-PROJECT_INFO=$(gh issue view {issue_url} --json projectItems)
-ITEM_ID=$(echo $PROJECT_INFO | jq -r '.projectItems[0].id')
-PROJECT_ID=$(echo $PROJECT_INFO | jq -r '.projectItems[0].project.id')
-PROJECT_NUM=$(echo $PROJECT_INFO | jq -r '.projectItems[0].project.number')
+gh api graphql -f query='
+{
+  repository(owner: "{owner}", name: "{repo}") {
+    issue(number: {issue_number}) {
+      projectItems(first: 1) {
+        nodes {
+          id
+          project { id number }
+        }
+      }
+    }
+  }
+}'
+```
 
-# 2. Get field info
-FIELDS=$(gh project field-list $PROJECT_NUM --owner {owner} --format json)
-STATUS_FIELD_ID=$(echo $FIELDS | jq -r '.fields[] | select(.name=="Status") | .id')
-IN_PROGRESS_ID=$(echo $FIELDS | jq -r '.fields[] | select(.name=="Status") | .options[] | select(.name=="In Progress") | .id')
+Extract from response:
 
-# 3. Update status
+- `ITEM_ID`: `.data.repository.issue.projectItems.nodes[0].id`
+- `PROJECT_ID`: `.data.repository.issue.projectItems.nodes[0].project.id`
+- `PROJECT_NUM`: `.data.repository.issue.projectItems.nodes[0].project.number`
+
+### Step 2: Get field info
+
+```bash
+gh project field-list {PROJECT_NUM} --owner {owner} --format json \
+  | jq '.fields[] | select(.name=="Status")'
+```
+
+Extract:
+
+- `STATUS_FIELD_ID`: `.id`
+- `IN_PROGRESS_ID`: `.options[] | select(.name=="In Progress") | .id`
+- `DONE_ID`: `.options[] | select(.name=="Done") | .id`
+
+### Step 3: Update status
+
+```bash
 gh project item-edit \
-  --id $ITEM_ID \
-  --field-id $STATUS_FIELD_ID \
-  --project-id $PROJECT_ID \
-  --single-select-option-id $IN_PROGRESS_ID
+  --id {ITEM_ID} \
+  --field-id {STATUS_FIELD_ID} \
+  --project-id {PROJECT_ID} \
+  --single-select-option-id {OPTION_ID}
 ```
 
 ## Permission Requirements

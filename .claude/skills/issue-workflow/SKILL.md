@@ -44,13 +44,17 @@ ARGUMENTS: Issue URL passed from skill invocation
 
 After user approves the plan:
 
-1. Post plan to Issue:
+1. Post **full plan content** to Issue (not a summary):
 
    ```bash
+   # Read the plan file and post as-is
    gh issue comment {url} --body "## Implementation Plan
 
-   [Approved plan content here]"
+   $(cat {plan_file_path})"
    ```
+
+   **IMPORTANT**: Post the complete plan file content, not a summary.
+   This preserves all decisions and prevents information loss.
 
 2. Update project status to "In Progress" using the commands in
    [gh-project-api.md](references/gh-project-api.md)
@@ -61,7 +65,7 @@ After user approves the plan:
 2. Periodically check remaining tasks
 3. Track any deviations from original plan
 
-### Phase 5: Completion
+### Phase 5: PR Creation
 
 1. Post completion summary to Issue:
 
@@ -90,7 +94,19 @@ After user approves the plan:
    gh issue comment {url} --body "PR created: {pr_url}"
    ```
 
-5. Update project status to "Done" (see [gh-project-api.md](references/gh-project-api.md))
+5. **STOP HERE** - Wait for user to review, approve, and merge the PR
+
+### Phase 6: Post-Merge Completion (User-Initiated)
+
+**Trigger**: User says "PR merged" or "complete the issue"
+
+1. Verify PR is merged: `gh pr view {pr_number} --json state,mergedAt`
+2. Update project status to "Done" (see [gh-project-api.md](references/gh-project-api.md))
+3. Post final comment to Issue (optional):
+
+   ```bash
+   gh issue comment {url} --body "✅ PR merged and issue completed."
+   ```
 
 ## URL Parsing
 
@@ -113,3 +129,22 @@ number = URL segment after "issues"
 - Use conversation language for Issue comments
 - PR body must include `Closes owner/repo#number` for auto-linking
 - Project status auto-closes Issue when set to "Done"
+- **Never update status to "Done" before PR is merged**
+- Phase 6 requires explicit user confirmation to proceed
+
+## Recommended Permission Settings
+
+Add to `.claude/settings.local.json` to require approval for status updates:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh project list:*)",
+      "Bash(gh project field-list:*)"
+    ]
+  }
+}
+```
+
+This allows project info queries but requires approval for `gh project item-edit`.
