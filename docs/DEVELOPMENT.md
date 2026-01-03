@@ -198,41 +198,61 @@ Update version in all 6 locations:
 
 **Note**: All components share the same version number for unified releases.
 
+### Branch Strategy
+
+```mermaid
+%%{init: { 'gitGraph': {'mainBranchName': 'main'}} }%%
+gitGraph
+    commit id: "v0.1.0" tag: "v0.1.0"
+    branch develop
+    checkout develop
+    commit id: "feature A"
+    branch claude/feature-b
+    checkout claude/feature-b
+    commit id: "work on B"
+    checkout develop
+    merge claude/feature-b id: "PR merge"
+    commit id: "feature A+B"
+    branch release/v0.2.0
+    checkout release/v0.2.0
+    commit id: "bump version"
+    checkout main
+    merge release/v0.2.0 id: "release" tag: "v0.2.0"
+    checkout develop
+    merge main id: "sync back"
+```
+
+- `main`: Stable releases only (protected)
+- `develop`: Latest development (feature PRs merge here)
+- `claude/*`: Feature branches
+
 ### Creating a Release
 
-1. Ensure all tests pass:
+1. Ensure `develop` has all features for release
+2. Run the release workflow:
 
    ```bash
-   bun run ci:local
+   gh workflow run release.yml -f version=X.Y.Z
    ```
 
-2. Commit version changes:
+3. GitHub Actions will automatically:
+   - Create release branch from `develop`
+   - Bump version in all locations
+   - Create PR to `main` with auto-merge
+   - Create tag when PR merges
+   - Build and publish release artifacts
+   - Sync `main` back to `develop`
 
-   ```bash
-   git add -A
-   git commit -m "chore: bump version to X.Y.Z"
-   ```
+### Manual Tag Push (Alternative)
 
-3. Create and push a version tag:
+For manual control, you can still create a tag directly:
 
-   ```bash
-   git tag vX.Y.Z
-   git push origin main --tags
-   ```
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
 
-4. GitHub Actions will automatically:
-   - Build daemon and app RPMs
-   - Create a GitHub Release
-   - Upload RPM packages as release assets
-
-### Manual Release (workflow_dispatch)
-
-For testing or manual releases:
-
-1. Go to GitHub Actions
-2. Select "Release" workflow
-3. Click "Run workflow"
-4. Enter version number (e.g., `0.2.0`)
+This triggers only the build and release jobs (skips version bump).
 
 ### Release Artifacts
 

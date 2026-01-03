@@ -129,10 +129,10 @@ After user approves the plan:
    > Please review. Say "OK" to create PR.
 
 3. Create branch, commit, and push changes
-4. Create PR with Issue link:
+4. Create PR with Issue link (target `develop` branch):
 
    ```bash
-   gh pr create --title "feat: ..." --body "...
+   gh pr create --base develop --title "feat: ..." --body "...
 
    Closes owner/repo#123"
    ```
