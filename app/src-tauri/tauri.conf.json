@@ -1,6 +1,6 @@
 {
   "productName": "uti",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "identifier": "io.github.noppomario.uti",
   "build": {
     "beforeDevCommand": "bun run dev",
