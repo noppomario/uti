@@ -63,6 +63,10 @@ After user approves the plan:
    If you summarize instead of posting the full content, you are violating this
    skill's requirements.
 
+   **IMPORTANT**: Use the **conversation language** for Issue comments.
+   If the conversation is in Japanese, write in Japanese.
+   If the conversation is in English, write in English.
+
 2. Update project status to "In Progress" using the commands in
    [gh-project-api.md](references/gh-project-api.md)
 
@@ -103,8 +107,29 @@ After user approves the plan:
    [What was actually implemented]"
    ```
 
-2. Create branch, commit, and push changes
-3. Create PR with Issue link:
+   **IMPORTANT**: Use the **conversation language** for Issue comments.
+   If the conversation is in Japanese, write in Japanese.
+   If the conversation is in English, write in English.
+
+2. **MANDATORY CHECKPOINT - STOP AND WAIT**:
+
+   After posting the completion summary, you MUST:
+
+   - Inform the user that the summary has been posted
+   - Provide the Issue comment URL
+   - Ask the user to review the summary
+   - **STOP and wait for explicit approval** before creating PR
+
+   **DO NOT create a PR until the user explicitly confirms.**
+
+   Example message:
+
+   > Completion summary posted to Issue: {comment_url}
+   >
+   > Please review. Say "OK" to create PR.
+
+3. Create branch, commit, and push changes
+4. Create PR with Issue link:
 
    ```bash
    gh pr create --title "feat: ..." --body "...
@@ -112,13 +137,13 @@ After user approves the plan:
    Closes owner/repo#123"
    ```
 
-4. Post PR info to Issue:
+5. Post PR info to Issue:
 
    ```bash
    gh issue comment {url} --body "PR created: {pr_url}"
    ```
 
-5. **STOP HERE** - Wait for user to review, approve, and merge the PR
+6. **STOP HERE** - Wait for user to review, approve, and merge the PR
 
 ### Phase 6: Post-Merge Completion (User-Initiated)
 
