@@ -53,7 +53,8 @@ cd daemon && sudo cargo run    # Run daemon
 - ✅ Use **TSDoc** for TypeScript, **Rust doc comments** for Rust
 - ✅ Format on save is enabled
 - ✅ No personal information in commits
-- ✅ Work on `claude/*` branches (main branch is protected, no direct commits)
+- ✅ Work on `claude/*` branches, create PRs to `develop` (not `main`)
+- ✅ `main` is for stable releases only, `develop` is for latest features
 - ✅ Commit messages in English, follow conventional commits
 - ✅ **Run `bun run ci:local` before committing** (includes tests)
 

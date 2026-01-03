@@ -1121,6 +1121,75 @@ Document the rationale for each rule in `.markdownlint.json`.
 
 ---
 
+## ADR-021: Adopt develop branch workflow (Git-flow simplified)
+
+**Date**: 2026-01-03
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Features merged to main immediately updated README, but releases happened later.
+This caused README to describe features not yet available in the latest release.
+
+### Decision
+
+Adopt a simplified Git-flow with:
+
+- `main`: Stable releases only
+- `develop`: Latest development
+- `claude/*`: Feature branches (PR to develop)
+- `release/vX.Y.Z`: Release preparation (PR to main)
+
+### Rationale
+
+**Separation of concerns**:
+
+- README on main matches latest release
+- Users downloading release get accurate documentation
+- Developers can preview upcoming features on develop
+
+**Minimal workflow change**:
+
+- Only PR target changes (develop instead of main)
+- Release workflow already handles version bumping
+- Auto-sync after release keeps develop up-to-date
+
+### Alternatives Considered
+
+1. **Separate docs branch**
+   - Pro: Minimal change
+   - Con: Complex, docs can desync from code
+
+2. **Version-specific READMEs**
+   - Pro: Detailed per-version docs
+   - Con: Maintenance burden
+
+3. **Release notes only (no README changes)**
+   - Pro: Simple
+   - Con: README becomes stale
+
+### Consequences
+
+**Positive**:
+
+- README always matches latest release
+- Clear separation: develop = latest, main = stable
+- Existing workflow mostly unchanged
+
+**Negative**:
+
+- One extra branch to maintain
+- Must remember to PR to develop, not main
+- Sync workflow adds complexity
+
+**Reconsider when**:
+
+- Team size grows (may need more branches)
+- Release frequency changes significantly
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
