@@ -23,7 +23,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        dialog: resolve(__dirname, 'dialog.html'),
+        'update-dialog': resolve(__dirname, 'update-dialog.html'),
       },
     },
   },

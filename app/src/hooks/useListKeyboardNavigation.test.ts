@@ -45,7 +45,7 @@ describe('useListKeyboardNavigation', () => {
       expect(result.current.selectedIndex).toBe(1);
     });
 
-    it('wraps around to first item by default', () => {
+    it('stays at last item by default', () => {
       const { result } = renderHook(() => useListKeyboardNavigation(mockItems));
 
       // Move to last item
@@ -61,12 +61,12 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(result.current.selectedIndex).toBe(0);
+      expect(result.current.selectedIndex).toBe(2);
     });
 
-    it('does not wrap when wrapAround is false', () => {
+    it('wraps around when wrapAround is true', () => {
       const { result } = renderHook(() =>
-        useListKeyboardNavigation(mockItems, { wrapAround: false })
+        useListKeyboardNavigation(mockItems, { wrapAround: true })
       );
 
       // Move to last item
@@ -82,7 +82,7 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(result.current.selectedIndex).toBe(2);
+      expect(result.current.selectedIndex).toBe(0);
     });
 
     it('does nothing with empty items', () => {
@@ -118,7 +118,7 @@ describe('useListKeyboardNavigation', () => {
       expect(result.current.selectedIndex).toBe(0);
     });
 
-    it('wraps around to last item by default', () => {
+    it('stays at first item by default', () => {
       const { result } = renderHook(() => useListKeyboardNavigation(mockItems));
 
       act(() => {
@@ -128,7 +128,7 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(result.current.selectedIndex).toBe(2);
+      expect(result.current.selectedIndex).toBe(0);
     });
   });
 

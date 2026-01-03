@@ -2,6 +2,7 @@
  * JumpList component
  *
  * Displays recent files for a launcher command with keyboard navigation.
+ * Uses CSS variables for sizing to support theme-based scaling.
  */
 
 import type React from 'react';
@@ -29,6 +30,17 @@ interface JumpListProps {
   onClose: () => void;
 }
 
+/** Inline styles using CSS variables for theme-based sizing */
+const listStyles: React.CSSProperties = {
+  gap: 'var(--size-gap)',
+  padding: 'var(--size-gap)',
+};
+
+const emptyStyles: React.CSSProperties = {
+  fontSize: 'var(--size-font-base)',
+  padding: 'calc(var(--size-padding-x) * 2)',
+};
+
 /**
  * JumpList component displaying recent files with keyboard navigation
  *
@@ -50,7 +62,8 @@ export function JumpList({ files, onSelect, onClose }: JumpListProps) {
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard navigation requires focus
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className="p-4 text-center text-app-text-muted text-xs focus:outline-none"
+        className="text-center text-app-text-muted focus:outline-none"
+        style={emptyStyles}
       >
         No recent files
       </div>
@@ -63,7 +76,8 @@ export function JumpList({ files, onSelect, onClose }: JumpListProps) {
       // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard navigation requires focus
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      className="flex-1 flex flex-col gap-0.5 p-1 focus:outline-none overflow-y-auto min-h-0"
+      className="flex-1 flex flex-col focus:outline-none overflow-y-auto min-h-0"
+      style={listStyles}
     >
       {files.map((file, index) => (
         <li key={file.path}>

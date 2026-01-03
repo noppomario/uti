@@ -18,7 +18,7 @@ export interface UseListKeyboardNavigationOptions<T> {
   onRight?: (item: T, index: number) => void;
   /** Called when Escape is pressed */
   onEscape?: () => void;
-  /** Whether navigation wraps around at ends (default: true) */
+  /** Whether navigation wraps around at ends (default: false) */
   wrapAround?: boolean;
 }
 
@@ -55,7 +55,7 @@ export function useListKeyboardNavigation<T>(
   items: T[],
   options: UseListKeyboardNavigationOptions<T> = {}
 ): UseListKeyboardNavigationResult {
-  const { onSelect, onLeft, onRight, onEscape, wrapAround = true } = options;
+  const { onSelect, onLeft, onRight, onEscape, wrapAround = false } = options;
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const containerRef = useRef<HTMLElement | null>(null);

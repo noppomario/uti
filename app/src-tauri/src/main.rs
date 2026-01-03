@@ -64,6 +64,69 @@ enum Commands {
     },
 }
 
+/// Theme configuration
+///
+/// Defines color and size theme settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeConfig {
+    /// Color theme: 'midnight', 'dark', or 'light'
+    #[serde(default = "default_color")]
+    pub color: String,
+
+    /// Size theme: 'minimal', 'normal', or 'wide'
+    #[serde(default = "default_size")]
+    pub size: String,
+
+    /// Custom accent color (hex format, e.g., '#3584e4')
+    #[serde(
+        default,
+        rename = "accentColor",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub accent_color: Option<String>,
+}
+
+fn default_color() -> String {
+    "dark".to_string()
+}
+
+fn default_size() -> String {
+    "normal".to_string()
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            color: default_color(),
+            size: default_size(),
+            accent_color: None,
+        }
+    }
+}
+
+impl ThemeConfig {
+    /// Validate theme values
+    fn validate(&mut self) {
+        // Validate color
+        if !matches!(self.color.as_str(), "midnight" | "dark" | "light") {
+            eprintln!(
+                "Invalid color theme '{}', falling back to 'dark'",
+                self.color
+            );
+            self.color = "dark".to_string();
+        }
+
+        // Validate size
+        if !matches!(self.size.as_str(), "minimal" | "normal" | "wide") {
+            eprintln!(
+                "Invalid size theme '{}', falling back to 'normal'",
+                self.size
+            );
+            self.size = "normal".to_string();
+        }
+    }
+}
+
 /// Application configuration
 ///
 /// This struct represents the user's configuration for the uti application.
@@ -71,46 +134,24 @@ enum Commands {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
-    /// Theme mode: 'light' or 'dark'
-    #[serde(default = "default_theme")]
-    pub theme: String,
+    /// Theme configuration
+    #[serde(default)]
+    pub theme: ThemeConfig,
 
     /// Maximum number of clipboard items to store
     #[serde(default = "default_clipboard_limit")]
     pub clipboard_history_limit: usize,
-
-    /// Whether to show tooltip on hover
-    #[serde(default = "default_show_tooltip")]
-    pub show_tooltip: bool,
-
-    /// Delay before showing tooltip (milliseconds)
-    #[serde(default = "default_tooltip_delay")]
-    pub tooltip_delay: u32,
-}
-
-fn default_theme() -> String {
-    "dark".to_string()
 }
 
 fn default_clipboard_limit() -> usize {
     50
 }
 
-fn default_show_tooltip() -> bool {
-    true
-}
-
-fn default_tooltip_delay() -> u32 {
-    500
-}
-
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            theme: default_theme(),
+            theme: ThemeConfig::default(),
             clipboard_history_limit: default_clipboard_limit(),
-            show_tooltip: default_show_tooltip(),
-            tooltip_delay: default_tooltip_delay(),
         }
     }
 }
@@ -127,14 +168,9 @@ impl AppConfig {
     }
 
     /// Validate configuration values
-    ///
-    /// Ensures theme is one of: 'dark' or 'light'
     fn validate(&mut self) {
         // Validate theme
-        if !matches!(self.theme.as_str(), "dark" | "light") {
-            eprintln!("Invalid theme '{}', falling back to 'dark'", self.theme);
-            self.theme = "dark".to_string();
-        }
+        self.theme.validate();
 
         // Validate clipboard_history_limit
         if self.clipboard_history_limit == 0 {
@@ -179,7 +215,8 @@ impl AppConfig {
 /// ```typescript
 /// import { invoke } from '@tauri-apps/api/core';
 /// const config = await invoke('read_config');
-/// console.log(config.theme); // 'dark' | 'light'
+/// console.log(config.theme.color); // 'midnight' | 'dark' | 'light'
+/// console.log(config.theme.size);  // 'minimal' | 'normal' | 'wide'
 /// ```
 #[tauri::command]
 fn read_config() -> AppConfig {
@@ -352,6 +389,28 @@ fn execute_command(command: String, args: Vec<String>) -> Result<(), String> {
 #[tauri::command]
 fn get_launcher_config() -> LauncherConfig {
     launcher::load_launcher_config()
+}
+
+/// Apply window size based on size theme
+///
+/// Sets the window dimensions based on the configured size theme.
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance
+/// * `size` - The size theme name: "minimal", "normal", or "wide"
+fn apply_window_size(window: &WebviewWindow, size: &str) {
+    let (width, height) = match size {
+        "normal" => (500.0, 700.0),
+        "wide" => (750.0, 800.0),
+        _ => (250.0, 600.0), // minimal (default)
+    };
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
+        eprintln!("Failed to set window size: {}", e);
+    } else {
+        println!("Window size set to {}x{} ({})", width, height, size);
+    }
 }
 
 /// Toggles the window visibility state
@@ -566,6 +625,10 @@ fn run_gui(start_minimized: bool) {
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
 
+            // Apply window size based on theme configuration
+            let config = AppConfig::load();
+            apply_window_size(&window, &config.theme.size);
+
             // Hide window if started with --minimized flag
             if start_minimized {
                 window.hide().ok();
@@ -691,19 +754,19 @@ fn run_gui(start_minimized: bool) {
 
                             // Create new dialog window with URL parameters
                             let url = format!(
-                                "dialog.html?title={}&message={}&kind={}",
+                                "update-dialog.html?title={}&message={}&kind={}",
                                 urlencoding(&payload.title),
                                 urlencoding(&payload.message),
                                 urlencoding(&payload.kind)
                             );
 
-                            if let Ok(dialog_window) = WebviewWindowBuilder::new(
+                            match WebviewWindowBuilder::new(
                                 &app_handle,
                                 "dialog",
                                 WebviewUrl::App(url.into()),
                             )
                             .title("uti")
-                            .inner_size(320.0, 200.0)
+                            .inner_size(420.0, 200.0)
                             .resizable(false)
                             .decorations(false)
                             .transparent(true)
@@ -712,9 +775,12 @@ fn run_gui(start_minimized: bool) {
                             .focused(true)
                             .build()
                             {
-                                println!("Dialog window created: {:?}", dialog_window.label());
-                            } else {
-                                eprintln!("Failed to create dialog window");
+                                Ok(dialog_window) => {
+                                    println!("Dialog window created: {:?}", dialog_window.label());
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to create dialog window: {:?}", e);
+                                }
                             }
                         });
                     }

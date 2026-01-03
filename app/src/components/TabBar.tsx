@@ -13,6 +13,17 @@ interface TabBarProps {
   onTabChange: (tab: TabType) => void;
 }
 
+/** Inline styles using CSS variables for theme-based sizing */
+const tabStyles: React.CSSProperties = {
+  fontSize: 'var(--size-font-base)',
+  padding: 'var(--size-padding-y) var(--size-padding-x)',
+  borderRadius: 'var(--size-radius)',
+};
+
+const containerStyles: React.CSSProperties = {
+  gap: 'var(--size-gap)',
+};
+
 /**
  * Tab bar component for switching between Clipboard and Launcher views
  *
@@ -26,7 +37,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   ];
 
   return (
-    <div role="tablist" className="flex gap-1">
+    <div role="tablist" className="flex" style={containerStyles}>
       {tabs.map(tab => (
         <button
           key={tab.id}
@@ -34,11 +45,12 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
           role="tab"
           aria-selected={activeTab === tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`px-2 py-0.5 text-xs rounded transition-colors ${
+          className={`transition-colors ${
             activeTab === tab.id
-              ? 'font-semibold text-app-text bg-app-item'
+              ? 'font-semibold text-app-text'
               : 'text-app-text-muted hover:text-app-text'
           }`}
+          style={tabStyles}
         >
           {tab.label}
         </button>

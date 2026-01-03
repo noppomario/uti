@@ -2,8 +2,10 @@
  * Launcher component
  *
  * Displays a list of launcher commands with keyboard navigation.
+ * Uses CSS variables for sizing to support theme-based scaling.
  */
 
+import { FolderOpen } from 'lucide-react';
 import type React from 'react';
 import { useCallback } from 'react';
 import { useListKeyboardNavigation } from '../hooks/useListKeyboardNavigation';
@@ -51,6 +53,17 @@ interface LauncherProps {
   /** Called when user wants to switch to previous tab */
   onSwitchToPrevTab?: () => void;
 }
+
+/** Inline styles using CSS variables for theme-based sizing */
+const listStyles: React.CSSProperties = {
+  gap: 'var(--size-gap)',
+  padding: 'var(--size-gap)',
+};
+
+const emptyStyles: React.CSSProperties = {
+  fontSize: 'var(--size-font-base)',
+  padding: 'calc(var(--size-padding-x) * 2)',
+};
 
 /**
  * Launcher component displaying commands with keyboard navigation
@@ -124,6 +137,19 @@ export function Launcher({
     containerRef.current?.focus();
   }, [onCollapse, containerRef]);
 
+  /**
+   * Handle click on empty space (not on items) to close jump list
+   */
+  const handleListClick = useCallback(
+    (e: React.MouseEvent<HTMLUListElement>) => {
+      // Only close if clicking directly on the ul (empty space), not on items
+      if (e.target === e.currentTarget && onCollapse) {
+        onCollapse();
+      }
+    },
+    [onCollapse]
+  );
+
   if (items.length === 0) {
     return (
       // biome-ignore lint/a11y/noStaticElementInteractions: Keyboard navigation requires handler
@@ -132,7 +158,8 @@ export function Launcher({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard navigation requires focus
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className="p-4 text-center text-app-text-muted text-xs focus:outline-none"
+        className="text-center text-app-text-muted focus:outline-none"
+        style={emptyStyles}
       >
         No launcher commands configured
       </div>
@@ -146,7 +173,9 @@ export function Launcher({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard navigation requires focus
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className={`flex-1 flex flex-col gap-0.5 p-1 focus:outline-none overflow-y-auto min-h-0 ${expandedItem ? 'w-1/2 border-r border-app-header-border' : 'w-full'}`}
+        onClick={handleListClick}
+        className={`flex-1 flex flex-col focus:outline-none overflow-y-auto min-h-0 ${expandedItem ? 'w-1/2 border-r border-app-header-border' : 'w-full'}`}
+        style={listStyles}
       >
         {items.map((item, index) => (
           <li key={item.id}>
@@ -154,7 +183,7 @@ export function Launcher({
               selected={index === selectedIndex}
               index={index}
               onClick={() => onSelect(item)}
-              suffix={item.historySource ? '>' : undefined}
+              suffix={item.historySource ? <FolderOpen size={14} /> : undefined}
               onSuffixClick={
                 item.historySource
                   ? () => {

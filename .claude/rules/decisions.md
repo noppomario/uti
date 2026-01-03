@@ -508,7 +508,8 @@ Users need to customize settings without recompiling.
 
 Use `~/.config/uti/config.json` for persistent user configuration with:
 
-- `theme`: "light" or "dark"
+- `theme.color`: "midnight", "dark", or "light"
+- `theme.size`: "minimal", "normal", or "wide"
 - `clipboardHistoryLimit`: Number of items to store
 
 ### Rationale
@@ -567,7 +568,7 @@ Use `~/.config/uti/config.json` for persistent user configuration with:
 ## ADR-012: Centralize theme management with Tailwind CSS v4 @theme
 
 **Date**: 2025-12-30
-**Status**: Accepted
+**Status**: Accepted (Updated 2026-01-04)
 **Decision Makers**: Project team
 
 ### Context
@@ -579,15 +580,34 @@ Tailwind CSS v4 introduced CSS-first configuration with `@theme` directive.
 
 Use Tailwind v4 `@theme` directive with CSS variables in `index.css`:
 
+**Color themes** (3 options):
+
+| Name     | Description        | Base Color          |
+| -------- | ------------------ | ------------------- |
+| Midnight | Slate-based dark   | slate-900 (#0f172a) |
+| Dark     | Adwaita-inspired   | neutral (#1c1c1c)   |
+| Light    | Default light      | white (#ffffff)     |
+
+**Size themes** (3 options):
+
+| Name    | Window | Font  | Padding |
+| ------- | ------ | ----- | ------- |
+| Minimal | 250px  | 12px  | 4px     |
+| Normal  | 500px  | 14px  | 8px     |
+| Wide    | 750px  | 16px  | 12px    |
+
 ```css
 @theme {
   --color-app-bg: #ffffff;
-  --color-app-item: #f1f5f9;
+  --size-font-base: 0.75rem;
 }
 
-.dark {
-  --color-app-bg: #0f172a;
-  --color-app-item: #334155;
+.theme-dark {
+  --color-app-bg: #1c1c1c;
+}
+
+.size-normal {
+  --size-font-base: 0.875rem;
 }
 ```
 
@@ -613,6 +633,11 @@ Components use semantic tokens: `bg-app-bg`, `text-app-text`
 - Easier to understand component intent
 - Can change underlying colors without touching components
 
+**Separate color and size**:
+
+- Users can mix any color with any size
+- 9 combinations possible (3 colors × 3 sizes)
+
 ### Alternatives Considered
 
 1. **Tailwind v3 style (tailwind.config.js)**
@@ -633,7 +658,8 @@ Components use semantic tokens: `bg-app-bg`, `text-app-text`
 
 - Theme changes in one file
 - Follows Tailwind v4 conventions
-- Dark mode via simple `.dark` class toggle
+- Color/size themes via class toggle (`.theme-{color}`, `.size-{size}`)
+- Flexible combinations for user preference
 
 **Negative**:
 

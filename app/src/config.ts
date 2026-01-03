@@ -7,19 +7,43 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+/**
+ * Color theme options
+ */
+export type ColorTheme = 'midnight' | 'dark' | 'light';
+
+/**
+ * Size theme options
+ */
+export type SizeTheme = 'minimal' | 'normal' | 'wide';
+
+/**
+ * Theme configuration
+ */
+export interface ThemeConfig {
+  /** Color theme: 'midnight', 'dark', or 'light' */
+  color: ColorTheme;
+  /** Size theme: 'minimal', 'normal', or 'wide' */
+  size: SizeTheme;
+  /** Custom accent color (hex format, e.g., '#3584e4'). If not set, uses theme default. */
+  accentColor?: string;
+}
+
 export interface AppConfig {
-  /** Theme mode: 'light' or 'dark' */
-  theme: 'light' | 'dark';
+  /** Theme configuration */
+  theme: ThemeConfig;
 
   /** Maximum number of clipboard items to store */
   clipboardHistoryLimit: number;
-
-  /** Whether to show tooltip on hover */
-  showTooltip: boolean;
-
-  /** Delay before showing tooltip (milliseconds) */
-  tooltipDelay: number;
 }
+
+/**
+ * Default theme configuration
+ */
+export const defaultTheme: ThemeConfig = {
+  color: 'dark',
+  size: 'normal',
+};
 
 /**
  * Default application configuration
@@ -27,11 +51,16 @@ export interface AppConfig {
  * Used as fallback if config file cannot be loaded.
  */
 export const defaultConfig: AppConfig = {
-  theme: 'dark',
+  theme: defaultTheme,
   clipboardHistoryLimit: 50,
-  showTooltip: true,
-  tooltipDelay: 500,
 };
+
+/**
+ * Check if color theme is a dark variant
+ */
+export function isDarkTheme(color: ColorTheme): boolean {
+  return color === 'midnight' || color === 'dark';
+}
 
 /**
  * Get current application configuration
@@ -44,7 +73,8 @@ export const defaultConfig: AppConfig = {
  * @example
  * ```typescript
  * const config = await getConfig();
- * console.log(config.theme); // 'dark' | 'light'
+ * console.log(config.theme.color); // 'midnight' | 'dark' | 'light'
+ * console.log(config.theme.size);  // 'minimal' | 'normal' | 'wide'
  * ```
  */
 export async function getConfig(): Promise<AppConfig> {
