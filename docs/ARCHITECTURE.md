@@ -27,7 +27,7 @@ flowchart LR
 - **systemd** for daemon service management
 - User in `input` group for keyboard access
 
-**Optional**: "uti for GNOME" extension enables tray icon and cursor positioning on **GNOME/Wayland**. Without it, window appears at screen center.
+**Optional**: "uti for GNOME" extension enables tray icon, cursor positioning, and always-on-top control on **GNOME/Wayland**. Without it, window appears at screen center and pin button only disables auto-hide.
 
 ---
 
@@ -50,7 +50,9 @@ Rust daemon that monitors keyboard input and detects double Ctrl press.
 - Name: `io.github.noppomario.uti`
 - Interface: `io.github.noppomario.uti.DoubleTap`
 - Path: `/io/github/noppomario/uti/DoubleTap`
-- Signal: `Triggered()` - emitted on double Ctrl press
+- Signals:
+  - `Triggered()` - emitted on double Ctrl press
+  - `SetAlwaysOnTop(enabled: bool)` - emitted by uti app when pin state changes
 
 ### uti (Tauri App)
 
@@ -77,6 +79,7 @@ GNOME Shell extension that provides:
 
 1. **Tray icon display** - Acts as StatusNotifierHost to show Tauri's tray
 2. **Cursor positioning** - Moves window to cursor location on toggle
+3. **Always-on-top control** - Handles `SetAlwaysOnTop` signal to set window layer via `Meta.Window.make_above()` (Mutter ignores app-level always-on-top requests on Wayland)
 
 | Property | Value |
 | -------- | ----- |
@@ -94,10 +97,12 @@ The recommended configuration for GNOME desktop.
 
 ```mermaid
 sequenceDiagram
-    participant Daemon as uti-daemon
+    box rgb(74, 158, 255) uti components
+        participant Daemon as uti-daemon
+        participant App as uti
+        participant Ext as GNOME Extension
+    end
     participant DBus as D-Bus
-    participant App as uti
-    participant Ext as GNOME Extension
     participant Mutter
 
     Daemon->>DBus: Emit DoubleTap.Triggered
@@ -114,9 +119,11 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant App as uti
+    box rgb(74, 158, 255) uti components
+        participant App as uti
+        participant Ext as GNOME Extension
+    end
     participant DBus as D-Bus
-    participant Ext as GNOME Extension
 
     App->>DBus: Register StatusNotifierItem
     Ext->>DBus: Watch for SNI names
@@ -125,17 +132,46 @@ sequenceDiagram
     Ext->>Ext: Display in GNOME Panel
 ```
 
+### Pin State Toggle Sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    box rgb(74, 158, 255) uti components
+        participant App as uti
+        participant Ext as GNOME Extension
+    end
+    participant DBus as D-Bus
+    participant Mutter
+
+    User->>App: Click pin button
+    App->>App: Store pin state
+    App->>DBus: Emit SetAlwaysOnTop(true)
+    DBus->>Ext: Signal received
+    Ext->>Mutter: make_above()
+```
+
 ---
 
 ## D-Bus Interfaces
 
-### DoubleTap Interface (Daemon → App)
+### DoubleTap Interface
+
+Shared interface for daemon-to-app and app-to-extension communication:
 
 ```xml
 <interface name="io.github.noppomario.uti.DoubleTap">
   <signal name="Triggered"/>
+  <signal name="SetAlwaysOnTop">
+    <arg name="enabled" type="b"/>
+  </signal>
 </interface>
 ```
+
+| Signal | Sender | Receiver | Purpose |
+| ------ | ------ | -------- | ------- |
+| `Triggered` | uti-daemon | uti, GNOME Extension | Double Ctrl press detected |
+| `SetAlwaysOnTop` | uti | GNOME Extension | Pin state changed |
 
 ### StatusNotifierItem (App → Extension)
 

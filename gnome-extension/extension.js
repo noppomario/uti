@@ -566,6 +566,8 @@ export default class UtiExtension extends Extension {
     _connectToDbus() {
         try {
             this._dbusConnection = Gio.bus_get_sync(Gio.BusType.SESSION, null);
+
+            // Listen for Triggered signal (double Ctrl press)
             this._signalSubscriptionId = this._dbusConnection.signal_subscribe(
                 DAEMON_BUS_NAME,
                 DAEMON_INTERFACE,
@@ -575,6 +577,20 @@ export default class UtiExtension extends Extension {
                 Gio.DBusSignalFlags.NONE,
                 this._onTriggered.bind(this)
             );
+
+            // Listen for SetAlwaysOnTop signal (pin button toggle)
+            // This handles always-on-top on GNOME/Wayland where Tauri's
+            // set_always_on_top() is ignored by Mutter
+            this._alwaysOnTopSubscriptionId = this._dbusConnection.signal_subscribe(
+                null, // Accept from any sender (the Tauri app)
+                DAEMON_INTERFACE,
+                'SetAlwaysOnTop',
+                DAEMON_OBJECT_PATH,
+                null,
+                Gio.DBusSignalFlags.NONE,
+                this._onSetAlwaysOnTop.bind(this)
+            );
+
             console.log('[uti] D-Bus connected');
         } catch (e) {
             console.error(`[uti] D-Bus failed: ${e.message}`);
@@ -586,7 +602,33 @@ export default class UtiExtension extends Extension {
             this._dbusConnection.signal_unsubscribe(this._signalSubscriptionId);
             this._signalSubscriptionId = null;
         }
+        if (this._alwaysOnTopSubscriptionId && this._dbusConnection) {
+            this._dbusConnection.signal_unsubscribe(this._alwaysOnTopSubscriptionId);
+            this._alwaysOnTopSubscriptionId = null;
+        }
         this._dbusConnection = null;
+    }
+
+    /**
+     * Handle SetAlwaysOnTop signal from uti app
+     * Uses Meta.Window.make_above() to set window layer on GNOME/Mutter
+     */
+    _onSetAlwaysOnTop(_conn, _sender, _path, _iface, _signal, params) {
+        const [enabled] = params.deep_unpack();
+        console.log(`[uti] SetAlwaysOnTop signal received: ${enabled}`);
+
+        const window = this._findUtiWindow();
+        if (window) {
+            if (enabled) {
+                window.make_above();
+                console.log('[uti] Window set to always-on-top');
+            } else {
+                window.unmake_above();
+                console.log('[uti] Window removed from always-on-top');
+            }
+        } else {
+            console.log('[uti] Window not found for SetAlwaysOnTop');
+        }
     }
 
     _onTriggered() {

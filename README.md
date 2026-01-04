@@ -28,6 +28,7 @@
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
+- 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **System Tray**: Runs in the background with tray icon control
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
@@ -124,6 +125,8 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 6. **Type to search**: Filter clipboard history or search system applications
 7. **Escape** clears search and returns focus to the list
 8. In Launcher tab, press **→** to expand jump list (recent files)
+9. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
+   - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
 ### System Tray
 
@@ -261,7 +264,7 @@ sudo gpasswd -d $USER input
 | --------- | ---- |
 | **uti-daemon** | Detects double Ctrl press via evdev |
 | **uti** | Clipboard manager + App launcher UI (Tauri) |
-| **uti for GNOME** | GNOME Shell extension for tray icon + cursor positioning (optional) |
+| **uti for GNOME** | GNOME Shell extension for tray icon, cursor positioning, and always-on-top control (optional) |
 
 For details, see [Architecture Documentation](docs/ARCHITECTURE.md).
 

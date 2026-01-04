@@ -37,7 +37,7 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 - **Language**: JavaScript (GJS)
 - **UUID**: `uti@noppomario.github.io`
-- **Role**: StatusNotifierHost + window positioning
+- **Role**: StatusNotifierHost + window positioning + always-on-top control
 - **Settings**: GSettings (`org.gnome.shell.extensions.uti`)
 
 ## Key Technical Decisions
@@ -108,7 +108,7 @@ uti/
 │   ├── systemd/                # systemd user service
 │   └── uti-daemon.spec         # RPM spec
 ├── gnome-extension/            # GNOME Shell extension
-│   ├── extension.js            # StatusNotifierHost + positioning
+│   ├── extension.js            # StatusNotifierHost + positioning + always-on-top
 │   ├── metadata.json           # Extension metadata
 │   └── schemas/                # GSettings schema
 └── README.md                   # English documentation
@@ -264,6 +264,8 @@ bun run all:test               # Parallel execution
 4. Window position/size not persisted
 5. Window appears in dock/taskbar on Wayland (Tauri limitation, see
    [#9829](https://github.com/tauri-apps/tauri/issues/9829))
+6. Always-on-top (pin) requires "uti for GNOME" extension on GNOME/Wayland
+   (without extension, pin only disables auto-hide)
 
 ## Roadmap
 
