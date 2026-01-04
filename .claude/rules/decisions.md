@@ -1263,6 +1263,73 @@ Change sync-develop.yml to create a PR instead of pushing directly:
 
 ---
 
+## ADR-023: Window pinning with GNOME extension for always-on-top
+
+**Date**: 2026-01-04
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Window pinning feature requested to keep window visible during frequent
+clipboard access. On Wayland/GNOME, `set_always_on_top()` is ignored by Mutter.
+
+### Decision
+
+Two-phase implementation:
+
+1. **Phase 1.5**: Pin state disables auto-hide and ignores double Ctrl toggle
+2. **Phase 2**: D-Bus signal `SetAlwaysOnTop(bool)` to GNOME extension, which
+   calls `Meta.Window.make_above()`
+
+### Rationale
+
+**Wayland security model**:
+
+- Mutter ignores app-level always-on-top requests
+- Only compositor (GNOME Shell) can control window stacking
+- Extension is the only way to access `Meta.Window.make_above()`
+
+**Leveraging existing infrastructure**:
+
+- GNOME extension already exists for tray and positioning
+- D-Bus signal pattern already established
+- No new dependencies
+
+### Alternatives Considered
+
+1. **GTK always-on-top APIs**
+   - Pro: No extension needed
+   - Con: Doesn't work on Wayland/Mutter
+
+2. **org.gnome.Shell.Eval D-Bus**
+   - Pro: No extension changes
+   - Con: Disabled for security (GNOME 3.38+)
+
+3. **Pin = auto-hide disable only**
+   - Pro: Simpler, works everywhere
+   - Con: Window can be covered by other windows
+
+### Consequences
+
+**Positive**:
+
+- Full pinning functionality on GNOME/Wayland
+- Consistent with existing architecture
+- Graceful degradation (auto-hide still works without extension)
+
+**Negative**:
+
+- GNOME-specific (KDE/Sway need separate implementation)
+- Requires extension reload after update
+
+**Reconsider when**:
+
+- Wayland standardizes always-on-top protocol
+- KDE/Sway support needed
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

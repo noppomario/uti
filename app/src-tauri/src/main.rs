@@ -14,7 +14,8 @@ use clipboard::{ClipboardItem, ClipboardStore};
 use launcher::{LauncherConfig, RecentFile};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -123,6 +124,21 @@ impl ThemeConfig {
                 self.size
             );
             self.size = "normal".to_string();
+        }
+    }
+}
+
+/// Application state for window pin functionality
+///
+/// Tracks whether the window is pinned (always-on-top with auto-hide disabled).
+struct PinState {
+    is_pinned: Arc<AtomicBool>,
+}
+
+impl PinState {
+    fn new() -> Self {
+        Self {
+            is_pinned: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -430,7 +446,13 @@ fn apply_window_size(window: &WebviewWindow, size: &str) {
 /// invoke('toggle_window');
 /// ```
 #[tauri::command]
-fn toggle_window(window: WebviewWindow) {
+fn toggle_window(window: WebviewWindow, pin_state: State<'_, PinState>) {
+    // Ignore toggle when window is pinned to prevent unexpected behavior
+    if pin_state.is_pinned.load(Ordering::SeqCst) {
+        println!("Window is pinned, toggle_window ignored");
+        return;
+    }
+
     let is_visible = window.is_visible().unwrap_or(false);
     println!("Current window state: visible={}", is_visible);
 
@@ -459,6 +481,52 @@ fn toggle_window(window: WebviewWindow) {
         let _ = window.set_focus();
         println!("Window shown");
     }
+}
+
+/// Set window pinned state (always-on-top with auto-hide disabled)
+///
+/// On GNOME/Wayland, Tauri's `set_always_on_top()` is ignored by Mutter.
+/// This command also emits a D-Bus signal for the GNOME extension to handle
+/// window layer changes via `Meta.Window.make_above()`.
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance
+/// * `pin_state` - Application state for pin functionality
+/// * `pinned` - Whether to pin the window
+///
+/// # Returns
+///
+/// Ok if successful, Err with error message if failed
+#[tauri::command]
+async fn set_pinned(
+    window: WebviewWindow,
+    pin_state: State<'_, PinState>,
+    pinned: bool,
+) -> Result<(), String> {
+    pin_state.is_pinned.store(pinned, Ordering::SeqCst);
+
+    // Emit D-Bus signal for GNOME extension to handle always-on-top
+    // The extension listens for this signal and calls window.make_above()
+    if let Ok(conn) = zbus::Connection::session().await {
+        let _ = conn
+            .emit_signal(
+                None::<()>,
+                "/io/github/noppomario/uti/DoubleTap",
+                "io.github.noppomario.uti.DoubleTap",
+                "SetAlwaysOnTop",
+                &(pinned,),
+            )
+            .await;
+        println!("D-Bus SetAlwaysOnTop signal emitted: {}", pinned);
+    }
+
+    // Also call Tauri API (works on non-GNOME environments)
+    window
+        .set_always_on_top(pinned)
+        .map_err(|e| e.to_string())?;
+    println!("Window pinned: {}", pinned);
+    Ok(())
 }
 
 /// Search for desktop applications matching the query
@@ -632,8 +700,10 @@ fn run_gui(start_minimized: bool) {
         ))
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Mutex::new(store))
+        .manage(PinState::new())
         .invoke_handler(tauri::generate_handler![
             toggle_window,
+            set_pinned,
             get_clipboard_history,
             add_clipboard_item,
             paste_item,
@@ -836,11 +906,12 @@ fn run_gui(start_minimized: bool) {
                 })
                 .build(app)?;
 
-            // Auto-hide window when it loses focus
+            // Auto-hide window when it loses focus (unless pinned)
             let window_for_blur = window.clone();
+            let is_pinned = app.state::<PinState>().is_pinned.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(focused) = event {
-                    if !focused {
+                    if !focused && !is_pinned.load(Ordering::SeqCst) {
                         let _ = window_for_blur.hide();
                         println!("Window lost focus, hiding");
                     }

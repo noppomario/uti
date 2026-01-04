@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardHistory, type ClipboardItem } from './components/ClipboardHistory';
 import type { RecentFile } from './components/JumpList';
 import { Launcher, type LauncherItem } from './components/Launcher';
+import { PinButton } from './components/PinButton';
 import { SearchBar } from './components/SearchBar';
 import { TabBar, type TabType } from './components/TabBar';
 import { useClipboard } from './hooks/useClipboard';
@@ -41,6 +42,7 @@ function App() {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [searchQueries, setSearchQueries] = useState({ clipboard: '', launcher: '' });
   const [desktopApps, setDesktopApps] = useState<DesktopApp[]>([]);
+  const [isPinned, setIsPinned] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listContainerRef = useRef<HTMLElement>(null);
 
@@ -129,6 +131,19 @@ function App() {
       console.error('Failed to load clipboard history:', err);
     }
   }, []);
+
+  /**
+   * Toggles window pinned state (always-on-top with auto-hide disabled)
+   */
+  const handlePinToggle = useCallback(async () => {
+    const newPinned = !isPinned;
+    try {
+      await invoke('set_pinned', { pinned: newPinned });
+      setIsPinned(newPinned);
+    } catch (err) {
+      console.error('Failed to set pinned state:', err);
+    }
+  }, [isPinned]);
 
   // Load clipboard history on initial mount
   useEffect(() => {
@@ -396,7 +411,10 @@ function App() {
         className="relative z-10 border-b border-app-header-border bg-app-header"
         style={headerStyles}
       >
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <div className="flex items-center justify-between">
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <PinButton isPinned={isPinned} onToggle={handlePinToggle} />
+        </div>
         <div style={{ marginTop: 'var(--size-gap)' }}>
           <SearchBar
             value={searchQueries[activeTab]}
