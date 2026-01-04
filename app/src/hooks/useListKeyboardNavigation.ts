@@ -18,8 +18,12 @@ export interface UseListKeyboardNavigationOptions<T> {
   onRight?: (item: T, index: number) => void;
   /** Called when Escape is pressed */
   onEscape?: () => void;
+  /** Called when ArrowUp is pressed at first item (to move focus to search bar) */
+  onUpAtTop?: () => void;
   /** Whether navigation wraps around at ends (default: false) */
   wrapAround?: boolean;
+  /** External container ref for focus management (if not provided, internal ref is created) */
+  containerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export interface UseListKeyboardNavigationResult {
@@ -55,17 +59,38 @@ export function useListKeyboardNavigation<T>(
   items: T[],
   options: UseListKeyboardNavigationOptions<T> = {}
 ): UseListKeyboardNavigationResult {
-  const { onSelect, onLeft, onRight, onEscape, wrapAround = false } = options;
+  const {
+    onSelect,
+    onLeft,
+    onRight,
+    onEscape,
+    onUpAtTop,
+    wrapAround = false,
+    containerRef: externalContainerRef,
+  } = options;
 
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const containerRef = useRef<HTMLElement | null>(null);
+  const internalContainerRef = useRef<HTMLElement | null>(null);
+  const containerRef = externalContainerRef ?? internalContainerRef;
 
-  // Reset selection and focus when items change
-  // biome-ignore lint/correctness/useExhaustiveDependencies: items change requires reset and focus
+  // Focus container on initial mount, but don't steal focus from search input
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only run on mount
+  useEffect(() => {
+    // Use requestAnimationFrame to ensure DOM is fully rendered before focusing
+    const frameId = requestAnimationFrame(() => {
+      // Don't steal focus if an input element is currently focused (e.g., search bar)
+      const isInputFocused = document.activeElement?.tagName === 'INPUT';
+      if (!isInputFocused) {
+        containerRef.current?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+
+  // Reset selection when items change (don't re-focus to avoid stealing focus from search input)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: items change requires reset
   useEffect(() => {
     setSelectedIndex(0);
-    // Focus container when items are available
-    containerRef.current?.focus();
   }, [items]);
 
   const handleKeyDown = useCallback(
@@ -82,11 +107,23 @@ export function useListKeyboardNavigation<T>(
           break;
 
         case 'ArrowUp':
-          if (itemCount === 0) return;
           e.preventDefault();
-          setSelectedIndex(prev =>
-            wrapAround ? (prev - 1 + itemCount) % itemCount : Math.max(prev - 1, 0)
-          );
+          // Allow navigation to search bar even when list is empty
+          if (itemCount === 0) {
+            if (onUpAtTop) {
+              onUpAtTop();
+            }
+            return;
+          }
+          setSelectedIndex(prev => {
+            if (prev === 0) {
+              if (onUpAtTop) {
+                onUpAtTop();
+              }
+              return wrapAround ? itemCount - 1 : 0;
+            }
+            return prev - 1;
+          });
           break;
 
         case 'ArrowLeft':
@@ -121,7 +158,7 @@ export function useListKeyboardNavigation<T>(
           break;
       }
     },
-    [items, selectedIndex, onSelect, onLeft, onRight, onEscape, wrapAround]
+    [items, selectedIndex, onSelect, onLeft, onRight, onEscape, onUpAtTop, wrapAround]
   );
 
   return {

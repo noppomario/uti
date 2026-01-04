@@ -121,6 +121,28 @@ describe('Launcher', () => {
     expect(selected?.textContent).toContain('1:');
   });
 
+  it('calls onUpAtTop when ArrowUp is pressed at first item', () => {
+    const handleUpAtTop = vi.fn();
+    const { container } = render(
+      <Launcher items={mockItems} onSelect={() => {}} onUpAtTop={handleUpAtTop} />
+    );
+    const list = container.querySelector('ul') as Element;
+
+    fireEvent.keyDown(list, { key: 'ArrowUp' });
+
+    expect(handleUpAtTop).toHaveBeenCalled();
+  });
+
+  it('calls onUpAtTop when ArrowUp is pressed with empty items', () => {
+    const handleUpAtTop = vi.fn();
+    render(<Launcher items={[]} onSelect={() => {}} onUpAtTop={handleUpAtTop} />);
+
+    const emptyState = screen.getByText(/no launcher commands/i);
+    fireEvent.keyDown(emptyState, { key: 'ArrowUp' });
+
+    expect(handleUpAtTop).toHaveBeenCalled();
+  });
+
   it('selects item with Enter key', () => {
     const handleSelect = vi.fn();
     const { container } = render(<Launcher items={mockItems} onSelect={handleSelect} />);

@@ -130,6 +130,61 @@ describe('useListKeyboardNavigation', () => {
 
       expect(result.current.selectedIndex).toBe(0);
     });
+
+    it('calls onUpAtTop when at first item', () => {
+      const handleUpAtTop = vi.fn();
+      const { result } = renderHook(() =>
+        useListKeyboardNavigation(mockItems, { onUpAtTop: handleUpAtTop })
+      );
+
+      // At first item (index 0)
+      act(() => {
+        result.current.handleKeyDown({
+          key: 'ArrowUp',
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(handleUpAtTop).toHaveBeenCalled();
+    });
+
+    it('does not call onUpAtTop when not at first item', () => {
+      const handleUpAtTop = vi.fn();
+      const { result } = renderHook(() =>
+        useListKeyboardNavigation(mockItems, { onUpAtTop: handleUpAtTop })
+      );
+
+      // Move to index 1
+      act(() => {
+        result.current.setSelectedIndex(1);
+      });
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: 'ArrowUp',
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(handleUpAtTop).not.toHaveBeenCalled();
+      expect(result.current.selectedIndex).toBe(0);
+    });
+
+    it('calls onUpAtTop with empty items to allow navigation to search bar', () => {
+      const handleUpAtTop = vi.fn();
+      const { result } = renderHook(() =>
+        useListKeyboardNavigation([], { onUpAtTop: handleUpAtTop })
+      );
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: 'ArrowUp',
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(handleUpAtTop).toHaveBeenCalled();
+    });
   });
 
   describe('Enter', () => {
