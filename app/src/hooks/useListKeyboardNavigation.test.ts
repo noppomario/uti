@@ -170,7 +170,7 @@ describe('useListKeyboardNavigation', () => {
       expect(result.current.selectedIndex).toBe(0);
     });
 
-    it('does not call onUpAtTop with empty items', () => {
+    it('calls onUpAtTop with empty items to allow navigation to search bar', () => {
       const handleUpAtTop = vi.fn();
       const { result } = renderHook(() =>
         useListKeyboardNavigation([], { onUpAtTop: handleUpAtTop })
@@ -183,7 +183,7 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(handleUpAtTop).not.toHaveBeenCalled();
+      expect(handleUpAtTop).toHaveBeenCalled();
     });
   });
 

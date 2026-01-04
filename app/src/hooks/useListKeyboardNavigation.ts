@@ -107,8 +107,14 @@ export function useListKeyboardNavigation<T>(
           break;
 
         case 'ArrowUp':
-          if (itemCount === 0) return;
           e.preventDefault();
+          // Allow navigation to search bar even when list is empty
+          if (itemCount === 0) {
+            if (onUpAtTop) {
+              onUpAtTop();
+            }
+            return;
+          }
           setSelectedIndex(prev => {
             if (prev === 0) {
               if (onUpAtTop) {

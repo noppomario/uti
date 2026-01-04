@@ -61,13 +61,33 @@ export function ClipboardHistory({
   const internalContainerRef = useRef<HTMLElement | null>(null);
   const containerRef = listContainerRef ?? internalContainerRef;
 
-  const { selectedIndex, handleKeyDown } = useListKeyboardNavigation(items, {
+  const { selectedIndex, handleKeyDown: baseHandleKeyDown } = useListKeyboardNavigation(items, {
     onSelect: item => onSelect(item.text),
     onRight: onSwitchToNextTab,
     onUpAtTop,
     wrapAround: false,
     containerRef,
   });
+
+  /**
+   * Extended keyboard handler with number key support
+   */
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Number key selection (1-9)
+      if (e.key >= '1' && e.key <= '9') {
+        const index = Number.parseInt(e.key, 10) - 1;
+        if (index < items.length) {
+          e.preventDefault();
+          onSelect(items[index].text);
+          return;
+        }
+      }
+      // Fall through to base handler
+      baseHandleKeyDown(e);
+    },
+    [items, onSelect, baseHandleKeyDown]
+  );
 
   // Scroll selected item into view when selectedIndex changes
   useEffect(() => {

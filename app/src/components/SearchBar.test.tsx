@@ -106,14 +106,14 @@ describe('SearchBar', () => {
   it('should show clear button when value is not empty', () => {
     render(<SearchBar {...defaultProps} value="test" />);
 
-    const clearButton = screen.getByRole('button', { name: 'Clear search' });
+    const clearButton = screen.getByRole('button', { name: 'Clear search (Esc)' });
     expect(clearButton).toBeDefined();
   });
 
   it('should not show clear button when value is empty', () => {
     render(<SearchBar {...defaultProps} value="" />);
 
-    const clearButton = screen.queryByRole('button', { name: 'Clear search' });
+    const clearButton = screen.queryByRole('button', { name: 'Clear search (Esc)' });
     expect(clearButton).toBeNull();
   });
 
@@ -121,7 +121,7 @@ describe('SearchBar', () => {
     const onChange = vi.fn();
     render(<SearchBar {...defaultProps} value="test" onChange={onChange} />);
 
-    const clearButton = screen.getByRole('button', { name: 'Clear search' });
+    const clearButton = screen.getByRole('button', { name: 'Clear search (Esc)' });
     fireEvent.click(clearButton);
 
     expect(onChange).toHaveBeenCalledWith('');

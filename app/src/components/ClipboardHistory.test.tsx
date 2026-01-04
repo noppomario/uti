@@ -198,4 +198,42 @@ describe('ClipboardHistory', () => {
     const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
     expect(secondItem.getAttribute('title')).toBe('Item 2');
   });
+
+  describe('number key selection', () => {
+    it('should select item with number key 1-9', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      fireEvent.keyDown(list, { key: '2' });
+
+      expect(onSelect).toHaveBeenCalledWith('Item 2');
+    });
+
+    it('should not select item if number exceeds item count', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      fireEvent.keyDown(list, { key: '9' });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('should select first item with key 1', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      fireEvent.keyDown(list, { key: '1' });
+
+      expect(onSelect).toHaveBeenCalledWith('Item 1');
+    });
+  });
 });

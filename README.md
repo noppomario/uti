@@ -27,6 +27,7 @@
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
+- 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 🖥️ **System Tray**: Runs in the background with tray icon control
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
@@ -118,7 +119,11 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 1. Press **Ctrl twice quickly** to toggle window visibility
 2. Use **←/→** to switch between Clipboard and Launcher tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
-4. In Launcher tab, press **→** to expand jump list (recent files)
+4. Press **1-9** to quickly select an item by its number
+5. Press **Ctrl+F** to focus the search bar
+6. **Type to search**: Filter clipboard history or search system applications
+7. **Escape** clears search and returns focus to the list
+8. In Launcher tab, press **→** to expand jump list (recent files)
 
 ### System Tray
 

@@ -193,6 +193,21 @@ function App() {
     };
   }, []);
 
+  // Global keyboard shortcut: Ctrl+F to focus search bar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   /**
    * Handles clipboard item selection
    *
@@ -305,7 +320,10 @@ function App() {
    * Focuses the search input (called from list via onUpAtTop)
    */
   const focusSearchInput = useCallback(() => {
-    searchInputRef.current?.focus();
+    // Use requestAnimationFrame to ensure DOM is ready after any state updates
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
   }, []);
 
   /**
@@ -313,22 +331,21 @@ function App() {
    */
   const handleSearchEscape = useCallback(() => {
     setSearchQueries(prev => ({ ...prev, [activeTab]: '' }));
-    listContainerRef.current?.focus();
+    // Focus after React re-renders with cleared search
+    requestAnimationFrame(() => {
+      listContainerRef.current?.focus();
+    });
   }, [activeTab]);
 
   /**
    * Moves focus from search bar to list (called from SearchBar via onArrowDown)
-   * Only focuses if there are items to display
    */
   const focusList = useCallback(() => {
-    const hasItems =
-      activeTab === 'clipboard'
-        ? filteredHistory.length > 0
-        : (launcherDisplayItems?.length ?? 0) > 0;
-    if (hasItems) {
+    // Use requestAnimationFrame to ensure DOM is ready after any state updates
+    requestAnimationFrame(() => {
       listContainerRef.current?.focus();
-    }
-  }, [activeTab, filteredHistory.length, launcherDisplayItems?.length]);
+    });
+  }, []);
 
   /**
    * Selects the first item in the list (called from SearchBar via onEnter)
