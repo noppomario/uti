@@ -22,6 +22,10 @@ export interface ClipboardHistoryProps {
   onSelect: (text: string) => void;
   /** Called when user wants to switch to next tab */
   onSwitchToNextTab?: () => void;
+  /** Called when ArrowUp is pressed at first item (to focus search bar) */
+  onUpAtTop?: () => void;
+  /** Ref for the list container (for focus management) */
+  listContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
 /** Inline styles using CSS variables for theme-based sizing */
@@ -46,13 +50,23 @@ const emptyStyles: React.CSSProperties = {
  * />
  * ```
  */
-export function ClipboardHistory({ items, onSelect, onSwitchToNextTab }: ClipboardHistoryProps) {
+export function ClipboardHistory({
+  items,
+  onSelect,
+  onSwitchToNextTab,
+  onUpAtTop,
+  listContainerRef,
+}: ClipboardHistoryProps) {
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const internalContainerRef = useRef<HTMLElement | null>(null);
+  const containerRef = listContainerRef ?? internalContainerRef;
 
-  const { selectedIndex, containerRef, handleKeyDown } = useListKeyboardNavigation(items, {
+  const { selectedIndex, handleKeyDown } = useListKeyboardNavigation(items, {
     onSelect: item => onSelect(item.text),
     onRight: onSwitchToNextTab,
+    onUpAtTop,
     wrapAround: false,
+    containerRef,
   });
 
   // Scroll selected item into view when selectedIndex changes

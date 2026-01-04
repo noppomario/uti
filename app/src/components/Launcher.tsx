@@ -7,7 +7,7 @@
 
 import { FolderOpen } from 'lucide-react';
 import type React from 'react';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useListKeyboardNavigation } from '../hooks/useListKeyboardNavigation';
 import { JumpList, type RecentFile } from './JumpList';
 import { ListItem } from './ListItem';
@@ -52,6 +52,10 @@ interface LauncherProps {
   onSelectWithFile?: (item: LauncherItem, filePath: string) => void;
   /** Called when user wants to switch to previous tab */
   onSwitchToPrevTab?: () => void;
+  /** Called when ArrowUp is pressed at first item (to focus search bar) */
+  onUpAtTop?: () => void;
+  /** Ref for the list container (for focus management) */
+  listContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
 /** Inline styles using CSS variables for theme-based sizing */
@@ -80,18 +84,20 @@ export function Launcher({
   onCollapse,
   onSelectWithFile,
   onSwitchToPrevTab,
+  onUpAtTop,
+  listContainerRef,
 }: LauncherProps) {
   // Find the expanded item
   const expandedItem = expandedItemId ? items.find(item => item.id === expandedItemId) : null;
+  const internalContainerRef = useRef<HTMLElement | null>(null);
+  const containerRef = listContainerRef ?? internalContainerRef;
 
-  const {
-    selectedIndex,
-    containerRef,
-    handleKeyDown: baseHandleKeyDown,
-  } = useListKeyboardNavigation(items, {
+  const { selectedIndex, handleKeyDown: baseHandleKeyDown } = useListKeyboardNavigation(items, {
     onSelect: item => onSelect(item),
     onLeft: onSwitchToPrevTab,
     onRight: item => onExpand?.(item),
+    onUpAtTop,
+    containerRef,
   });
 
   /**

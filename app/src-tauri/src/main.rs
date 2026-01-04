@@ -461,6 +461,27 @@ fn toggle_window(window: WebviewWindow) {
     }
 }
 
+/// Search for desktop applications matching the query
+///
+/// # Arguments
+///
+/// * `query` - Search query string to match against application names
+///
+/// # Returns
+///
+/// A list of matching desktop applications, sorted by relevance
+///
+/// # Example
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const apps = await invoke('search_desktop_files', { query: 'firefox' });
+/// ```
+#[tauri::command]
+fn search_desktop_files(query: String) -> Vec<launcher::DesktopApp> {
+    launcher::search_desktop_files(&query)
+}
+
 /// Listens for D-Bus signals from the daemon and forwards them to the frontend
 ///
 /// This function connects to the D-Bus session bus, subscribes to the DoubleTap
@@ -620,7 +641,8 @@ fn run_gui(start_minimized: bool) {
             get_recent_files,
             get_vscode_recent_files,
             execute_command,
-            get_launcher_config
+            get_launcher_config,
+            search_desktop_files
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
