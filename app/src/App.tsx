@@ -520,10 +520,11 @@ function App() {
   return (
     <div className="h-screen bg-app-bg flex flex-col rounded-lg overflow-hidden">
       <div
+        data-tauri-drag-region
         className="relative z-10 border-b border-app-header-border bg-app-header"
         style={headerStyles}
       >
-        <div className="flex items-center justify-between">
+        <div data-tauri-drag-region className="flex items-center justify-between">
           <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
           <PinButton isPinned={isPinned} onToggle={handlePinToggle} />
         </div>
