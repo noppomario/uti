@@ -65,7 +65,15 @@ Main application with clipboard history and app launcher UI.
 | IPC | D-Bus (receive), StatusNotifierItem (tray) |
 | Config | `~/.config/uti/config.json` |
 | Launcher | `~/.config/uti/launcher.json` |
-| Data | `~/.config/uti/clipboard.json` |
+| Clipboard | `~/.config/uti/clipboard.json` |
+| Snippets | `~/.config/uti/snippets.json` |
+
+**Snippets Feature:**
+
+- Pin clipboard items via star icon for quick access
+- Items immediately appear in Snippets tab
+- Pinned items removed from Clipboard on window close
+- Manual editing via JSON file supported
 
 **Launcher Features:**
 
@@ -195,4 +203,5 @@ The extension acts as a StatusNotifierHost, watching for this name and proxying 
 | `~/.config/uti/config.json` | User configuration |
 | `~/.config/uti/launcher.json` | Launcher commands |
 | `~/.config/uti/clipboard.json` | Clipboard history |
+| `~/.config/uti/snippets.json` | Pinned snippets |
 | `~/.local/share/gnome-shell/extensions/uti@noppomario.github.io/` | GNOME extension |

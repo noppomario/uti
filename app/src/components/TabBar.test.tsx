@@ -1,7 +1,7 @@
 /**
  * Tests for TabBar component
  *
- * Displays tabs for switching between Clipboard and Launcher views.
+ * Displays tabs for switching between Clipboard, Snippets, and Launcher views.
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -9,10 +9,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { TabBar } from './TabBar';
 
 describe('TabBar', () => {
-  it('renders clipboard and launcher tabs', () => {
+  it('renders all three tabs', () => {
     render(<TabBar activeTab="clipboard" onTabChange={() => {}} />);
 
     expect(screen.getByRole('tab', { name: /clipboard/i })).toBeDefined();
+    expect(screen.getByRole('tab', { name: /snippets/i })).toBeDefined();
     expect(screen.getByRole('tab', { name: /launcher/i })).toBeDefined();
   });
 
@@ -20,9 +21,23 @@ describe('TabBar', () => {
     render(<TabBar activeTab="clipboard" onTabChange={() => {}} />);
 
     const clipboardTab = screen.getByRole('tab', { name: /clipboard/i });
+    const snippetsTab = screen.getByRole('tab', { name: /snippets/i });
     const launcherTab = screen.getByRole('tab', { name: /launcher/i });
 
     expect(clipboardTab.getAttribute('aria-selected')).toBe('true');
+    expect(snippetsTab.getAttribute('aria-selected')).toBe('false');
+    expect(launcherTab.getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('marks snippets tab as active when activeTab is snippets', () => {
+    render(<TabBar activeTab="snippets" onTabChange={() => {}} />);
+
+    const clipboardTab = screen.getByRole('tab', { name: /clipboard/i });
+    const snippetsTab = screen.getByRole('tab', { name: /snippets/i });
+    const launcherTab = screen.getByRole('tab', { name: /launcher/i });
+
+    expect(clipboardTab.getAttribute('aria-selected')).toBe('false');
+    expect(snippetsTab.getAttribute('aria-selected')).toBe('true');
     expect(launcherTab.getAttribute('aria-selected')).toBe('false');
   });
 
@@ -30,9 +45,11 @@ describe('TabBar', () => {
     render(<TabBar activeTab="launcher" onTabChange={() => {}} />);
 
     const clipboardTab = screen.getByRole('tab', { name: /clipboard/i });
+    const snippetsTab = screen.getByRole('tab', { name: /snippets/i });
     const launcherTab = screen.getByRole('tab', { name: /launcher/i });
 
     expect(clipboardTab.getAttribute('aria-selected')).toBe('false');
+    expect(snippetsTab.getAttribute('aria-selected')).toBe('false');
     expect(launcherTab.getAttribute('aria-selected')).toBe('true');
   });
 
@@ -43,6 +60,15 @@ describe('TabBar', () => {
     fireEvent.click(screen.getByRole('tab', { name: /clipboard/i }));
 
     expect(handleTabChange).toHaveBeenCalledWith('clipboard');
+  });
+
+  it('calls onTabChange with snippets when snippets tab is clicked', () => {
+    const handleTabChange = vi.fn();
+    render(<TabBar activeTab="clipboard" onTabChange={handleTabChange} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /snippets/i }));
+
+    expect(handleTabChange).toHaveBeenCalledWith('snippets');
   });
 
   it('calls onTabChange with launcher when launcher tab is clicked', () => {
