@@ -7,12 +7,14 @@
 
 mod clipboard;
 mod launcher;
+mod snippets;
 mod updater;
 
 use clap::{Parser, Subcommand};
 use clipboard::{ClipboardItem, ClipboardStore};
 use launcher::{LauncherConfig, RecentFile};
 use serde::{Deserialize, Serialize};
+use snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -407,6 +409,81 @@ fn get_launcher_config() -> LauncherConfig {
     launcher::load_launcher_config()
 }
 
+/// Gets all snippets
+///
+/// Returns the list of saved snippets from `~/.config/uti/snippets.json`.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const snippets = await invoke('get_snippets');
+/// ```
+#[tauri::command]
+fn get_snippets(store: State<Mutex<SnippetsStore>>) -> Vec<SnippetItem> {
+    let store = store.lock().unwrap();
+    store.items.clone()
+}
+
+/// Adds a new snippet (used when pinning from clipboard)
+///
+/// Creates a new snippet with auto-generated UUID and saves it to disk.
+///
+/// # Arguments
+///
+/// * `value` - The text content of the snippet
+/// * `label` - Optional display label
+///
+/// # Returns
+///
+/// The newly created snippet item
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const snippet = await invoke('add_snippet', { value: 'Hello', label: null });
+/// ```
+#[tauri::command]
+fn add_snippet(
+    value: String,
+    label: Option<String>,
+    store: State<Mutex<SnippetsStore>>,
+) -> SnippetItem {
+    let mut store = store.lock().unwrap();
+    let item = SnippetItem::new(value, label);
+    store.items.push(item.clone());
+
+    if let Err(e) = save_snippets(&store) {
+        eprintln!("Failed to save snippets: {}", e);
+    }
+    item
+}
+
+/// Removes a clipboard item by index (used when pinning to snippets)
+///
+/// # Arguments
+///
+/// * `index` - The index of the item to remove
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// await invoke('remove_clipboard_item', { index: 0 });
+/// ```
+#[tauri::command]
+fn remove_clipboard_item(index: usize, store: State<Mutex<ClipboardStore>>) {
+    let mut store = store.lock().unwrap();
+    if index < store.items.len() {
+        store.items.remove(index);
+        let path = ClipboardStore::get_storage_path();
+        if let Err(e) = store.save(&path) {
+            eprintln!("Failed to save clipboard store: {}", e);
+        }
+    }
+}
+
 /// Apply window size based on size theme
 ///
 /// Sets the window dimensions based on the configured size theme.
@@ -700,18 +777,22 @@ fn run_gui(start_minimized: bool) {
         ))
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Mutex::new(store))
+        .manage(Mutex::new(load_snippets()))
         .manage(PinState::new())
         .invoke_handler(tauri::generate_handler![
             toggle_window,
             set_pinned,
             get_clipboard_history,
             add_clipboard_item,
+            remove_clipboard_item,
             paste_item,
             read_config,
             get_recent_files,
             get_vscode_recent_files,
             execute_command,
             get_launcher_config,
+            get_snippets,
+            add_snippet,
             search_desktop_files
         ])
         .setup(move |app| {

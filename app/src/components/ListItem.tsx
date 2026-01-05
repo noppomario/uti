@@ -20,6 +20,10 @@ export interface ListItemProps {
   suffix?: React.ReactNode;
   /** Called when the suffix is clicked (if provided, suffix becomes clickable) */
   onSuffixClick?: () => void;
+  /** Aria label for the suffix button (default: "Expand") */
+  suffixAriaLabel?: string;
+  /** Additional class name for the suffix button */
+  suffixClassName?: string;
   /** Called when the item is clicked */
   onClick: () => void;
   /** Called when mouse enters the item */
@@ -62,6 +66,8 @@ export function ListItem({
   showIndex = true,
   suffix,
   onSuffixClick,
+  suffixAriaLabel = 'Expand',
+  suffixClassName = '',
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -102,9 +108,9 @@ export function ListItem({
         <button
           type="button"
           tabIndex={-1}
-          aria-label="Expand"
+          aria-label={suffixAriaLabel}
           onClick={onSuffixClick}
-          className="w-1/2 flex justify-end items-center cursor-pointer bg-transparent border-none hover:opacity-70 transition-opacity"
+          className={`w-1/2 flex justify-end items-center cursor-pointer bg-transparent border-none hover:opacity-70 transition-opacity pr-2 ${suffixClassName}`}
           style={{ fontSize: 'inherit' }}
         >
           {suffix}
@@ -131,7 +137,7 @@ export function ListItem({
         {showIndex && <>{index + 1}:&nbsp;&nbsp;&nbsp;&nbsp;</>}
         {children}
       </span>
-      {suffix}
+      {suffix && <span className="mr-2 shrink-0 flex items-center">{suffix}</span>}
     </button>
   );
 }

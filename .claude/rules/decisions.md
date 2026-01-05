@@ -1330,6 +1330,84 @@ Two-phase implementation:
 
 ---
 
+## ADR-024: Snippets feature with delayed pin mechanism
+
+**Date**: 2026-01-05
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Users requested ability to save frequently used clipboard items permanently.
+The feature should integrate with existing tab-based UI and clipboard workflow.
+
+### Decision
+
+Add Snippets tab with delayed pin mechanism:
+
+1. **Tab placement**: Clipboard → Snippets → Launcher
+2. **Storage**: `~/.config/uti/snippets.json` with UUID-based IDs
+3. **Pin mechanism**: Delayed move (mark in clipboard → move on window close)
+4. **UI**: Same list/search pattern as Clipboard and Launcher
+
+### Rationale
+
+**Delayed pin vs immediate move**:
+
+- Immediate move breaks user flow (item disappears mid-work)
+- Delayed move allows accumulating multiple pins before processing
+- Visual feedback (pin icon) confirms user intent
+- Consistent with "work session" mental model
+
+**Separate storage file**:
+
+- Snippets are user-curated, persist across clipboard clears
+- Different lifecycle than transient clipboard history
+- Easier backup/migration of permanent items
+
+**Tab ordering**:
+
+- Clipboard is primary use case (default tab)
+- Snippets are clipboard-related (placed next to clipboard)
+- Launcher is distinct feature (rightmost)
+
+### Alternatives Considered
+
+1. **Immediate move on pin click**
+   - Pro: Simpler implementation
+   - Con: Disruptive UX, item disappears immediately
+
+2. **Star/favorite within clipboard**
+   - Pro: Single list, simpler UI
+   - Con: Mixes transient and permanent items, confusing
+
+3. **Context menu for pin**
+   - Pro: Cleaner item UI
+   - Con: Hidden functionality, extra click required
+
+### Consequences
+
+**Positive**:
+
+- Non-disruptive pin workflow
+- Clear separation of transient vs permanent items
+- Consistent UI pattern across all tabs
+- Keyboard navigation works uniformly
+
+**Negative**:
+
+- Delayed move may confuse users expecting immediate action
+- Pin state is lost if app crashes before window close
+- Index-based removal requires descending order processing
+
+**Reconsider when**:
+
+- Users request immediate move option
+- Need for snippet categories/folders
+- Sync across devices requested
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

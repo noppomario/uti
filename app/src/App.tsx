@@ -9,6 +9,7 @@ import type { RecentFile } from './components/JumpList';
 import { Launcher, type LauncherItem } from './components/Launcher';
 import { PinButton } from './components/PinButton';
 import { SearchBar } from './components/SearchBar';
+import { type SnippetItem, Snippets } from './components/Snippets';
 import { TabBar, type TabType } from './components/TabBar';
 import { useClipboard } from './hooks/useClipboard';
 import { useLauncher } from './hooks/useLauncher';
@@ -37,10 +38,16 @@ const headerStyles: React.CSSProperties = {
  */
 function App() {
   const [history, setHistory] = useState<ClipboardItem[]>([]);
+  const [snippets, setSnippets] = useState<SnippetItem[]>([]);
+  const [pendingPins, setPendingPins] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState<TabType>('clipboard');
   const [expandedItemId, setExpandedItemId] = useState<string | undefined>();
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
-  const [searchQueries, setSearchQueries] = useState({ clipboard: '', launcher: '' });
+  const [searchQueries, setSearchQueries] = useState({
+    clipboard: '',
+    snippets: '',
+    launcher: '',
+  });
   const [desktopApps, setDesktopApps] = useState<DesktopApp[]>([]);
   const [isPinned, setIsPinned] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +62,16 @@ function App() {
     if (!query) return history;
     return history.filter(item => item.text.toLowerCase().includes(query));
   }, [history, searchQueries.clipboard]);
+
+  // Filter snippets based on search query
+  const filteredSnippets = useMemo(() => {
+    const query = searchQueries.snippets.toLowerCase();
+    if (!query) return snippets;
+    return snippets.filter(item => {
+      const displayText = item.label?.trim() || item.value;
+      return displayText.toLowerCase().includes(query) || item.value.toLowerCase().includes(query);
+    });
+  }, [snippets, searchQueries.snippets]);
 
   // Load launcher configuration
   const { commands: launcherItems } = useLauncher();
@@ -104,7 +121,7 @@ function App() {
    */
   const switchTab = useCallback(
     (direction: 'left' | 'right') => {
-      const tabs: TabType[] = ['clipboard', 'launcher'];
+      const tabs: TabType[] = ['clipboard', 'snippets', 'launcher'];
       const currentIndex = tabs.indexOf(activeTab);
       const newIndex =
         direction === 'right'
@@ -133,6 +150,72 @@ function App() {
   }, []);
 
   /**
+   * Loads snippets from backend
+   */
+  const loadSnippets = useCallback(async () => {
+    try {
+      const items = await invoke<SnippetItem[]>('get_snippets');
+      setSnippets(items);
+    } catch (err) {
+      console.error('Failed to load snippets:', err);
+    }
+  }, []);
+
+  /**
+   * Toggles pin state and adds to snippets immediately when pinned
+   */
+  const handleTogglePin = useCallback(
+    async (index: number) => {
+      const item = history[index];
+      if (!item) return;
+
+      const isCurrentlyPinned = pendingPins.has(index);
+
+      if (isCurrentlyPinned) {
+        // Unpin: just remove from pending set
+        setPendingPins(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(index);
+          return newSet;
+        });
+      } else {
+        // Pin: add to pending set and add to snippets immediately
+        setPendingPins(prev => new Set(prev).add(index));
+        try {
+          await invoke('add_snippet', { value: item.text, label: null });
+          console.log('Added to snippets:', item.text.substring(0, 50));
+          await loadSnippets();
+        } catch (err) {
+          console.error('Failed to add to snippets:', err);
+        }
+      }
+    },
+    [history, pendingPins, loadSnippets]
+  );
+
+  /**
+   * Removes pinned items from clipboard history
+   * Called when window loses focus
+   */
+  const processPendingPins = useCallback(async () => {
+    if (pendingPins.size === 0) return;
+
+    // Sort indices in descending order to avoid index shifting during removal
+    const sortedIndices = Array.from(pendingPins).sort((a, b) => b - a);
+
+    for (const index of sortedIndices) {
+      try {
+        await invoke('remove_clipboard_item', { index });
+      } catch (err) {
+        console.error('Failed to remove clipboard item:', err);
+      }
+    }
+
+    setPendingPins(new Set());
+    await loadHistory();
+  }, [pendingPins, loadHistory]);
+
+  /**
    * Toggles window pinned state (always-on-top with auto-hide disabled)
    */
   const handlePinToggle = useCallback(async () => {
@@ -145,25 +228,30 @@ function App() {
     }
   }, [isPinned]);
 
-  // Load clipboard history on initial mount
+  // Load clipboard history and snippets on initial mount
   useEffect(() => {
     loadHistory();
-  }, [loadHistory]);
+    loadSnippets();
+  }, [loadHistory, loadSnippets]);
 
-  // Listen for window focus to reload history
+  // Listen for window focus/blur to reload history and process pending pins
   useEffect(() => {
     const appWindow = getCurrentWindow();
     const unlisten = appWindow.onFocusChanged(({ payload: focused }) => {
       if (focused) {
-        console.log('Window focused, reloading clipboard history');
+        console.log('Window focused, reloading data');
         loadHistory();
+        loadSnippets();
+      } else {
+        console.log('Window blurred, processing pending pins');
+        processPendingPins();
       }
     });
 
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [loadHistory]);
+  }, [loadHistory, loadSnippets, processPendingPins]);
 
   // Listen for double Ctrl press to toggle window
   useEffect(() => {
@@ -238,6 +326,24 @@ function App() {
       await invoke('toggle_window');
     } catch (err) {
       console.error('Failed to paste item:', err);
+    }
+  }, []);
+
+  /**
+   * Handles snippet item selection
+   *
+   * @param value - The selected snippet value
+   */
+  const handleSnippetSelect = useCallback(async (value: string) => {
+    try {
+      // Write to system clipboard
+      await writeText(value);
+      console.log('Snippet copied:', value);
+
+      // Hide window after selection
+      await invoke('toggle_window');
+    } catch (err) {
+      console.error('Failed to copy snippet:', err);
     }
   }, []);
 
@@ -370,6 +476,10 @@ function App() {
       if (filteredHistory.length > 0) {
         handleClipboardSelect(filteredHistory[0].text);
       }
+    } else if (activeTab === 'snippets') {
+      if (filteredSnippets.length > 0) {
+        handleSnippetSelect(filteredSnippets[0].value);
+      }
     } else {
       if (launcherDisplayItems && launcherDisplayItems.length > 0) {
         handleLauncherSelect(launcherDisplayItems[0]);
@@ -378,8 +488,10 @@ function App() {
   }, [
     activeTab,
     filteredHistory,
+    filteredSnippets,
     launcherDisplayItems,
     handleClipboardSelect,
+    handleSnippetSelect,
     handleLauncherSelect,
   ]);
 
@@ -425,7 +537,13 @@ function App() {
             onArrowRight={() => switchTab('right')}
             onEnter={handleSearchEnter}
             inputRef={searchInputRef}
-            placeholder={activeTab === 'clipboard' ? 'Search history...' : 'Search apps...'}
+            placeholder={
+              activeTab === 'clipboard'
+                ? 'Search history...'
+                : activeTab === 'snippets'
+                  ? 'Search snippets...'
+                  : 'Search apps...'
+            }
           />
         </div>
       </div>
@@ -435,6 +553,18 @@ function App() {
             items={filteredHistory}
             onSelect={handleClipboardSelect}
             onSwitchToNextTab={() => switchTab('right')}
+            onUpAtTop={focusSearchInput}
+            listContainerRef={listContainerRef}
+            pendingPins={pendingPins}
+            onTogglePin={handleTogglePin}
+          />
+        )}
+        {activeTab === 'snippets' && (
+          <Snippets
+            items={filteredSnippets}
+            onSelect={handleSnippetSelect}
+            onSwitchToNextTab={() => switchTab('right')}
+            onSwitchToPrevTab={() => switchTab('left')}
             onUpAtTop={focusSearchInput}
             listContainerRef={listContainerRef}
           />

@@ -79,6 +79,7 @@ uti/
 │   ├── src/
 │   │   ├── components/         # React components
 │   │   │   ├── ClipboardHistory.tsx  # Clipboard history list
+│   │   │   ├── Snippets.tsx    # Pinned snippets list
 │   │   │   ├── Launcher.tsx    # Launcher command list
 │   │   │   ├── JumpList.tsx    # Recent files list
 │   │   │   ├── TabBar.tsx      # Tab navigation
@@ -98,6 +99,9 @@ uti/
 │           ├── clipboard/      # Clipboard module
 │           │   ├── mod.rs      # ClipboardItem definition
 │           │   └── store.rs    # LRU clipboard storage
+│           ├── snippets/       # Snippets module
+│           │   ├── mod.rs      # SnippetItem definition
+│           │   └── store.rs    # JSON file storage
 │           ├── launcher/       # Launcher module
 │           │   ├── mod.rs      # LauncherConfig, HistorySource
 │           │   ├── store.rs    # Config file loading
@@ -160,6 +164,20 @@ uti/
 
 - Rust: `AppConfig::load()` at startup
 - TypeScript: `getConfig()` async function
+
+**Snippets storage file**: `~/.config/uti/snippets.json`
+
+```json
+{
+  "items": [
+    { "id": "my-email", "label": "Email", "value": "user@example.com" }
+  ]
+}
+```
+
+- `id`: Unique identifier (any string; auto-generated UUID when added via UI)
+- `label`: Optional display name (shows value if empty/null)
+- `value`: The actual text to copy to clipboard
 
 ## Development Environment
 

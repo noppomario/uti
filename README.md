@@ -26,6 +26,7 @@
 
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
+- ⭐ **Snippets**: Pin frequently used text for quick access (star icon in clipboard history)
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
@@ -118,15 +119,18 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 ### Basic Operation
 
 1. Press **Ctrl twice quickly** to toggle window visibility
-2. Use **←/→** to switch between Clipboard and Launcher tabs
+2. Use **←/→** to switch between Clipboard, Snippets, and Launcher tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
 4. Press **1-9** to quickly select an item by its number
 5. Press **Ctrl+F** to focus the search bar
-6. **Type to search**: Filter clipboard history or search system applications
+6. **Type to search**: Filter items or search system applications
 7. **Escape** clears search and returns focus to the list
-8. In Launcher tab, press **→** to expand jump list (recent files)
-9. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
-   - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
+8. In Clipboard tab, press **S** or click **⭐** (star icon) to pin item to Snippets
+   - Item is immediately added to Snippets tab
+   - Item is removed from Clipboard when the window closes
+9. In Launcher tab, press **→** to expand jump list (recent files)
+10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
+    - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
 ### System Tray
 
@@ -173,6 +177,24 @@ Configuration file: `~/.config/uti/config.json`
 | `theme.color`           | string | `dark`                             | `midnight`, `dark`, `light`  |
 | `theme.size`            | string | `normal`                           | `minimal`, `normal`, `wide`  |
 | `clipboardHistoryLimit` | number | `50`                               | Max clipboard items to store |
+
+### Snippets Data
+
+Snippets are stored in `~/.config/uti/snippets.json`:
+
+```json
+{
+  "items": [
+    { "id": "my-email", "label": "My Email", "value": "user@example.com" }
+  ]
+}
+```
+
+- `id`: Unique identifier (any string; auto-generated UUID when added via UI)
+- `label`: Optional display name (shows `value` if omitted)
+- `value`: The actual text to copy
+
+To add snippets manually, edit this file with any unique `id` string.
 
 ### Launcher Configuration
 
@@ -277,7 +299,7 @@ When you install uti, the following changes are made to your system:
 | **uti** | `/usr/bin/uti` | Main application (RPM package) |
 | **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
 | **User service** | `~/.config/systemd/user/` | Daemon autostart service |
-| **Config** | `~/.config/uti/` | User configuration, clipboard history, launcher config |
+| **Config** | `~/.config/uti/` | User configuration, clipboard history, snippets, launcher config |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
 | **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
 

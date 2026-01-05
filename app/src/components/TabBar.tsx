@@ -1,7 +1,7 @@
 /**
  * Tab types supported by the application
  */
-export type TabType = 'clipboard' | 'launcher';
+export type TabType = 'clipboard' | 'snippets' | 'launcher';
 
 /**
  * Props for the TabBar component
@@ -33,6 +33,7 @@ const containerStyles: React.CSSProperties = {
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   const tabs: { id: TabType; label: string }[] = [
     { id: 'clipboard', label: 'Clipboard' },
+    { id: 'snippets', label: 'Snippets' },
     { id: 'launcher', label: 'Launcher' },
   ];
 

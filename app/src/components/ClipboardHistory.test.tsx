@@ -199,6 +199,164 @@ describe('ClipboardHistory', () => {
     expect(secondItem.getAttribute('title')).toBe('Item 2');
   });
 
+  describe('star button (pin to snippets)', () => {
+    it('should show star button when onTogglePin is provided', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      expect(starButtons.length).toBe(3);
+    });
+
+    it('should not show star button when onTogglePin is not provided', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      expect(starButtons.length).toBe(0);
+    });
+
+    it('should show pinned state when item is in pendingPins', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set([1])} // Second item is pinned
+        />
+      );
+
+      const pinnedButtons = container.querySelectorAll('[aria-label="Unpin from snippets"]');
+      expect(pinnedButtons.length).toBe(1);
+      expect(pinnedButtons[0]?.className).toContain('text-app-accent');
+    });
+
+    it('should call onTogglePin with index when star button is clicked', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      fireEvent.click(starButtons[1]); // Click second item's star button
+
+      expect(onTogglePin).toHaveBeenCalledWith(1);
+      expect(onTogglePin).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not trigger onSelect when star button is clicked', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      fireEvent.click(starButtons[0]);
+
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onTogglePin).toHaveBeenCalledWith(0);
+    });
+
+    it('should toggle star with S key on selected item', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      // Press S on first item (selected by default)
+      fireEvent.keyDown(list, { key: 's' });
+
+      expect(onTogglePin).toHaveBeenCalledWith(0);
+      expect(onTogglePin).toHaveBeenCalledTimes(1);
+    });
+
+    it('should toggle star with uppercase S key', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      // Navigate to second item then press S
+      fireEvent.keyDown(list, { key: 'ArrowDown' });
+      fireEvent.keyDown(list, { key: 'S' });
+
+      expect(onTogglePin).toHaveBeenCalledWith(1);
+    });
+
+    it('should not call onTogglePin with S key when onTogglePin is not provided', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      // Should not throw and should fall through to other handlers
+      fireEvent.keyDown(list, { key: 's' });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('should not call onTogglePin with S key when items are empty', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={[]}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const emptyDiv = container.querySelector('div');
+      if (!emptyDiv) throw new Error('Empty state div not found');
+
+      fireEvent.keyDown(emptyDiv, { key: 's' });
+
+      expect(onTogglePin).not.toHaveBeenCalled();
+    });
+  });
+
   describe('number key selection', () => {
     it('should select item with number key 1-9', () => {
       const onSelect = vi.fn();
