@@ -170,6 +170,14 @@ async fn monitor_device(
                 }
             }
             Err(e) => {
+                // ENODEV (errno 19): Device disconnected (sleep/resume or unplug)
+                if e.raw_os_error() == Some(19) {
+                    error!(
+                        "[{}] Device disconnected (ENODEV), exiting monitor task",
+                        device_name
+                    );
+                    return Err(e.into());
+                }
                 error!("[{}] Error fetching events: {}", device_name, e);
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
@@ -339,5 +347,37 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_enodev_error_detection() {
+        // ENODEV is errno 19 on Linux
+        const ENODEV: i32 = 19;
+
+        // Create an error with ENODEV errno
+        let error = std::io::Error::from_raw_os_error(ENODEV);
+
+        // Verify we can detect ENODEV via raw_os_error
+        assert_eq!(
+            error.raw_os_error(),
+            Some(19),
+            "ENODEV should have raw_os_error of 19"
+        );
+
+        // Note: ENODEV maps to Uncategorized (not Other) in modern Rust,
+        // which is why we must use raw_os_error() for detection
+    }
+
+    #[test]
+    fn test_enodev_vs_other_errors() {
+        // Test that we can distinguish ENODEV from other errors
+        let enodev = std::io::Error::from_raw_os_error(19); // ENODEV
+        let enoent = std::io::Error::from_raw_os_error(2); // ENOENT (No such file)
+        let eacces = std::io::Error::from_raw_os_error(13); // EACCES (Permission denied)
+
+        // Only ENODEV should match our check
+        assert!(enodev.raw_os_error() == Some(19));
+        assert!(enoent.raw_os_error() != Some(19));
+        assert!(eacces.raw_os_error() != Some(19));
     }
 }

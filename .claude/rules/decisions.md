@@ -1408,6 +1408,80 @@ Add Snippets tab with delayed pin mechanism:
 
 ---
 
+## ADR-025: ENODEV handling for sleep/resume recovery
+
+**Date**: 2026-01-06
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After system sleep/resume, the daemon continues running but fails to receive
+keyboard events. The kernel reinitializes USB devices during resume, which
+invalidates the evdev file descriptors held by the daemon. The daemon enters
+an infinite error loop logging `No such device (os error 19)` without recovery.
+
+Related: ADR-018 solved a similar issue for re-login (stale D-Bus connection)
+using `BindsTo=graphical-session.target`. However, sleep/resume does not
+terminate the graphical session, so the daemon is not restarted.
+
+### Decision
+
+Detect ENODEV errors and exit the monitor task, allowing systemd to restart
+the daemon with fresh file descriptors:
+
+1. Check `e.raw_os_error() == Some(19)` in the error handler
+2. Return error to exit the task (triggers daemon exit)
+3. Add `RestartSec=1s` to systemd service for restart backoff
+
+### Rationale
+
+**Consistency with ADR-018 pattern**:
+
+- Both issues involve stale resources (D-Bus vs evdev)
+- Both solved by daemon restart for clean state
+- Minimal code change, maximum reliability
+
+**Why not device reconnection in-process**:
+
+- More complex state management
+- Risk of resource leaks
+- systemd restart is proven reliable
+
+### Alternatives Considered
+
+1. **Retry with exponential backoff**
+   - Pro: No daemon restart
+   - Con: Never recovers if device path changes
+
+2. **inotify/udev device monitoring**
+   - Pro: Handles any hotplug event
+   - Con: High complexity, overkill for sleep/resume
+
+3. **Bind to sleep.target**
+   - Pro: Explicit sleep handling
+   - Con: Doesn't cover USB disconnect scenarios
+
+### Consequences
+
+**Positive**:
+
+- Automatic recovery after sleep/resume
+- No log spam on device disconnect
+- Works for any ENODEV scenario (sleep, USB unplug)
+
+**Negative**:
+
+- Brief interruption during daemon restart (~1s)
+- All keyboards reconnect together
+
+**Reconsider when**:
+
+- Need sub-second recovery time
+- Need per-device reconnection without full restart
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
