@@ -86,7 +86,7 @@ export function Prompt({ onSubmit, onSwitchToNextTab }: PromptProps) {
         onChange={e => setText(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type text and press Ctrl+Enter to paste..."
-        className="flex-1 w-full resize-none bg-app-surface text-app-text placeholder-app-text-muted border border-app-border rounded focus:outline-none focus:ring-1 focus:ring-app-accent-info p-2"
+        className="flex-1 w-full resize-none bg-app-item text-app-text placeholder-app-text-muted rounded outline-none focus:ring-1 focus:ring-app-accent-info p-2"
         style={{
           fontSize: 'var(--size-font-base)',
         }}
