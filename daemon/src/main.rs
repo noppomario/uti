@@ -229,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let last_ctrl_release = Arc::new(Mutex::new(None));
 
     // Spawn a monitoring task for each keyboard device
-    let mut tasks = vec![];
+    let mut tasks = tokio::task::JoinSet::new();
 
     for path in keyboards {
         let device_name = if let Ok(dev) = Device::open(&path) {
@@ -241,23 +241,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let last_release_clone = Arc::clone(&last_ctrl_release);
         let conn_clone = Arc::clone(&conn);
 
-        let task = tokio::spawn(async move {
+        tasks.spawn(async move {
             if let Err(e) =
                 monitor_device(path, device_name.clone(), last_release_clone, conn_clone).await
             {
                 error!("[{}] Monitoring task failed: {}", device_name, e);
             }
         });
-
-        tasks.push(task);
     }
 
-    // Wait for all tasks to complete (they run indefinitely)
-    for task in tasks {
-        let _ = task.await;
+    // Exit when any task completes (device disconnect triggers systemd restart)
+    if let Some(result) = tasks.join_next().await {
+        match result {
+            Ok(()) => info!("A monitoring task exited, shutting down for restart"),
+            Err(e) => error!("A monitoring task panicked: {}", e),
+        }
     }
 
-    Ok(())
+    // Return error to trigger systemd restart
+    Err("Device monitoring stopped, daemon exiting for restart".into())
 }
 
 #[cfg(test)]
