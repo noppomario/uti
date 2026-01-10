@@ -78,6 +78,7 @@ uti/
 ├── app/                        # Tauri frontend
 │   ├── src/
 │   │   ├── components/         # React components
+│   │   │   ├── Prompt.tsx      # Prompt input with auto-paste
 │   │   │   ├── ClipboardHistory.tsx  # Clipboard history list
 │   │   │   ├── Snippets.tsx    # Pinned snippets list
 │   │   │   ├── Launcher.tsx    # Launcher command list
@@ -108,7 +109,10 @@ uti/
 │           │   └── recent_files.rs  # XBEL/VSCode history
 │           └── updater.rs      # Self-update functionality
 ├── daemon/
-│   ├── src/main.rs             # evdev keyboard monitor + D-Bus sender
+│   ├── src/
+│   │   ├── main.rs             # evdev keyboard monitor + D-Bus sender/receiver
+│   │   └── uinput.rs           # Virtual keyboard for auto-paste
+│   ├── udev/                   # udev rules for uinput access
 │   ├── systemd/                # systemd user service
 │   └── uti-daemon.spec         # RPM spec
 ├── gnome-extension/            # GNOME Shell extension

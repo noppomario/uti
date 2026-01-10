@@ -26,6 +26,27 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use zbus::Connection;
 
+// Window size constants for each theme
+mod window_size {
+    /// Minimal theme: compact width
+    pub const MINIMAL: (f64, f64) = (250.0, 600.0);
+    /// Normal theme: balanced size
+    pub const NORMAL: (f64, f64) = (500.0, 700.0);
+    /// Wide theme: expanded width
+    pub const WIDE: (f64, f64) = (750.0, 800.0);
+    /// Prompt mode: horizontal layout for text input
+    pub const PROMPT: (f64, f64) = (600.0, 250.0);
+
+    /// Get window size by theme name
+    pub fn by_theme(theme: &str) -> (f64, f64) {
+        match theme {
+            "normal" => NORMAL,
+            "wide" => WIDE,
+            _ => MINIMAL,
+        }
+    }
+}
+
 /// Payload for update dialog window
 #[derive(Clone)]
 struct UpdateDialogPayload {
@@ -493,16 +514,76 @@ fn remove_clipboard_item(index: usize, store: State<Mutex<ClipboardStore>>) {
 /// * `window` - The Tauri window instance
 /// * `size` - The size theme name: "minimal", "normal", or "wide"
 fn apply_window_size(window: &WebviewWindow, size: &str) {
-    let (width, height) = match size {
-        "normal" => (500.0, 700.0),
-        "wide" => (750.0, 800.0),
-        _ => (250.0, 600.0), // minimal (default)
-    };
+    let (width, height) = window_size::by_theme(size);
 
     if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
         eprintln!("Failed to set window size: {}", e);
     } else {
         println!("Window size set to {}x{} ({})", width, height, size);
+    }
+}
+
+/// Sets window mode for different tab layouts
+///
+/// Switches between "prompt" mode (horizontal layout) and "default" mode
+/// (uses configured theme size).
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance
+/// * `mode` - The window mode: "prompt" or "default"
+#[tauri::command]
+fn set_window_mode(window: WebviewWindow, mode: String) {
+    let (width, height) = match mode.as_str() {
+        "prompt" => window_size::PROMPT,
+        _ => {
+            // Use configured theme size for default mode
+            let config = AppConfig::load();
+            window_size::by_theme(&config.theme.size)
+        }
+    };
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
+        eprintln!("Failed to set window mode: {}", e);
+    } else {
+        println!("Window mode set to {} ({}x{})", mode, width, height);
+    }
+}
+
+/// Emits a TypeText D-Bus signal to trigger auto-paste via daemon
+///
+/// The daemon receives this signal and simulates Ctrl+V to paste
+/// the content from the clipboard.
+///
+/// # Examples
+///
+/// This function is invoked from the frontend:
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// invoke('type_text');
+/// ```
+#[tauri::command]
+async fn type_text() {
+    match Connection::session().await {
+        Ok(conn) => {
+            if let Err(e) = conn
+                .emit_signal(
+                    None::<()>,
+                    "/io/github/noppomario/uti/DoubleTap",
+                    "io.github.noppomario.uti.DoubleTap",
+                    "TypeText",
+                    &(),
+                )
+                .await
+            {
+                eprintln!("Failed to emit TypeText signal: {}", e);
+            } else {
+                println!("TypeText signal emitted");
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to D-Bus: {}", e);
+        }
     }
 }
 
@@ -558,6 +639,28 @@ fn toggle_window(window: WebviewWindow, pin_state: State<'_, PinState>) {
         let _ = window.set_focus();
         println!("Window shown");
     }
+}
+
+/// Force hide window for paste operation (ignores PIN state)
+///
+/// Unlike `toggle_window`, this command always hides the window regardless
+/// of whether it's pinned. Used by Prompt tab to ensure focus returns to
+/// the target application before simulating paste keystrokes.
+#[tauri::command]
+fn hide_for_paste(window: WebviewWindow) {
+    let _ = window.hide();
+    println!("Window hidden for paste (PIN state ignored)");
+}
+
+/// Show window (for re-showing after paste when pinned)
+///
+/// Note: On Wayland, window position cannot be restored by the app.
+/// Window will appear at center. User can double-Ctrl to reposition at cursor.
+#[tauri::command]
+fn show_window(window: WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+    println!("Window shown");
 }
 
 /// Set window pinned state (always-on-top with auto-hide disabled)
@@ -781,7 +884,11 @@ fn run_gui(start_minimized: bool) {
         .manage(PinState::new())
         .invoke_handler(tauri::generate_handler![
             toggle_window,
+            hide_for_paste,
+            show_window,
             set_pinned,
+            set_window_mode,
+            type_text,
             get_clipboard_history,
             add_clipboard_item,
             remove_clipboard_item,

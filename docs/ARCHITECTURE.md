@@ -8,7 +8,7 @@ uti is a clipboard manager and app launcher that is invoked by pressing Ctrl twi
 
 ```mermaid
 flowchart LR
-    KB[Keyboard] -->|evdev| DAEMON[uti-daemon]
+    KB[Keyboard] -->|evdev read| DAEMON[uti-daemon]
     DAEMON -->|D-Bus signal| APP[uti]
     DAEMON -->|D-Bus signal| EXT[uti for GNOME]
     APP --> WIN[Window]
@@ -35,13 +35,14 @@ flowchart LR
 
 ### uti-daemon
 
-Rust daemon that monitors keyboard input and detects double Ctrl press.
+Rust daemon that monitors keyboard input, detects double Ctrl press, and provides
+virtual keyboard for auto-paste functionality.
 
 | Property | Value |
 | -------- | ----- |
 | Language | Rust |
-| Input | evdev (`/dev/input/event*`) |
-| Output | D-Bus signal |
+| Input | evdev (`/dev/input/event*`), D-Bus signals |
+| Output | D-Bus signal, uinput (`/dev/uinput`) |
 | Permissions | `input` group membership |
 | Service | `uti-daemon.service` (systemd user) |
 
@@ -159,6 +160,26 @@ sequenceDiagram
     Ext->>Mutter: make_above()
 ```
 
+### Prompt Auto-Paste Sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    box rgb(74, 158, 255) uti components
+        participant App as uti
+        participant Daemon as uti-daemon
+    end
+    participant DBus as D-Bus
+    participant Target as Active Window
+
+    User->>App: Ctrl+Enter in Prompt tab
+    App->>App: Copy to clipboard
+    App->>App: Hide window
+    App->>DBus: Emit TypeText
+    DBus->>Daemon: Signal received
+    Daemon->>Target: Ctrl+V via uinput
+```
+
 ---
 
 ## D-Bus Interfaces
@@ -173,6 +194,7 @@ Shared interface for daemon-to-app and app-to-extension communication:
   <signal name="SetAlwaysOnTop">
     <arg name="enabled" type="b"/>
   </signal>
+  <signal name="TypeText"/>
 </interface>
 ```
 
@@ -180,6 +202,7 @@ Shared interface for daemon-to-app and app-to-extension communication:
 | ------ | ------ | -------- | ------- |
 | `Triggered` | uti-daemon | uti, GNOME Extension | Double Ctrl press detected |
 | `SetAlwaysOnTop` | uti | GNOME Extension | Pin state changed |
+| `TypeText` | uti | uti-daemon | Trigger auto-paste via Ctrl+V |
 
 ### StatusNotifierItem (App → Extension)
 
@@ -199,6 +222,7 @@ The extension acts as a StatusNotifierHost, watching for this name and proxying 
 | ---- | ------- |
 | `/usr/bin/uti` | Main application |
 | `/usr/bin/uti-daemon` | Keyboard daemon |
+| `/etc/udev/rules.d/99-uti-uinput.rules` | uinput access for auto-paste |
 | `~/.config/systemd/user/uti-daemon.service` | Daemon service |
 | `~/.config/uti/config.json` | User configuration |
 | `~/.config/uti/launcher.json` | Launcher commands |

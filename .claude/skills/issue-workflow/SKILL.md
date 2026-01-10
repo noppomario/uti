@@ -155,6 +155,31 @@ Before creating PR, investigate if documentation updates are needed.
    >
    > Please review. Say "OK" to create PR.
 
+### Phase 6.5: Additional Changes (If Any)
+
+If changes are made after the completion summary (Phase 6):
+
+1. Post update comment to Issue:
+
+   ```bash
+   gh issue comment {url} --body "## Additional Changes
+
+   [Description of changes made after the completion summary]
+
+   - Change 1
+   - Change 2"
+   ```
+
+2. Wait for user confirmation before proceeding to PR
+
+This phase is only needed when:
+
+- User requests additional improvements after reviewing
+- Bug fixes discovered during final testing
+- Any modifications after the completion summary was posted
+
+Skip this phase if no changes were made after Phase 6.
+
 ### Phase 7: PR Creation
 
 1. Create branch, commit, and push changes
