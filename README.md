@@ -1,8 +1,7 @@
 <div align="center">
 
-# uti
-
 <img src="app/src-tauri/icons/icon.png" alt="uti icon" width="128" style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+# uti
 
 [![Release](https://img.shields.io/github/v/release/noppomario/uti)](https://github.com/noppomario/uti/releases)
 [![CI](https://github.com/noppomario/uti/actions/workflows/ci.yml/badge.svg)](https://github.com/noppomario/uti/actions/workflows/ci.yml)
@@ -36,9 +35,9 @@
 - 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
 
 <p align="center">
-  <img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="32%">
-  <img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="32%">
-  <img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="32%">
+  <img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="200">
+  <img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="200">
+  <img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="200">
 </p>
 
 ## 📋 System Requirements
@@ -145,8 +144,6 @@ Right-click the tray icon for options:
 - **Check for Updates...**: Check for new versions
 - **GitHub**: Open project page
 - **Quit**: Exit application
-
-<img src="docs/assets/screenshot_4.png" alt="System tray menu" width="280">
 
 ### Updating
 
