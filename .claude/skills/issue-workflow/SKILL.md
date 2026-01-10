@@ -93,7 +93,34 @@ After user approves the plan:
 2. Periodically check remaining tasks
 3. Track any deviations from original plan
 
-### Phase 5: PR Creation
+### Phase 5: Documentation Review
+
+Before creating PR, investigate if documentation updates are needed.
+
+1. Check these files for potential updates:
+
+   - **Project docs**: README.md, docs/*.md
+   - **Claude memory**: CLAUDE.md, .claude/rules/*.md
+
+   Consider:
+
+   - Does the feature need user-facing documentation?
+   - Are there architecture or setup changes?
+   - Should a new ADR be recorded for significant decisions?
+
+2. Report findings to user:
+
+   > **Documentation Review**
+   >
+   > - README.md: [No changes needed / Needs update: reason]
+   > - CLAUDE.md: [No changes needed / Needs update: reason]
+   > - .claude/rules/decisions.md: [No ADR needed / New ADR recommended: topic]
+   >
+   > Reply with files to update, or "none" to skip.
+
+3. Make documentation updates as specified by user
+
+### Phase 6: Completion Summary
 
 1. Post completion summary to Issue:
 
@@ -128,8 +155,10 @@ After user approves the plan:
    >
    > Please review. Say "OK" to create PR.
 
-3. Create branch, commit, and push changes
-4. Create PR with Issue link (target `develop` branch):
+### Phase 7: PR Creation
+
+1. Create branch, commit, and push changes
+2. Create PR with Issue link (target `develop` branch):
 
    ```bash
    gh pr create --base develop --title "feat: ..." --body "...
@@ -137,15 +166,15 @@ After user approves the plan:
    Closes owner/repo#123"
    ```
 
-5. Post PR info to Issue:
+3. Post PR info to Issue:
 
    ```bash
    gh issue comment {url} --body "PR created: {pr_url}"
    ```
 
-6. **STOP HERE** - Wait for user to review, approve, and merge the PR
+4. **STOP HERE** - Wait for user to review, approve, and merge the PR
 
-### Phase 6: Post-Merge Completion (User-Initiated)
+### Phase 8: Post-Merge Completion (User-Initiated)
 
 **Trigger**: User says "PR merged" or "complete the issue"
 
@@ -179,7 +208,7 @@ number = URL segment after "issues"
 - PR body must include `Closes owner/repo#number` for auto-linking
 - Project status auto-closes Issue when set to "Done"
 - **Never update status to "Done" before PR is merged**
-- Phase 6 requires explicit user confirmation to proceed
+- Phase 8 requires explicit user confirmation to proceed
 
 ## Recommended Permission Settings
 
