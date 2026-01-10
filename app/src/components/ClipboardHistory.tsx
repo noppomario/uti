@@ -5,6 +5,7 @@
  * Users can select items with mouse click or keyboard (ArrowUp/Down + Enter).
  * Uses CSS variables for sizing to support theme-based scaling.
  */
+import { Star } from 'lucide-react';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useListKeyboardNavigation } from '../hooks/useListKeyboardNavigation';
@@ -43,37 +44,8 @@ const emptyStyles: React.CSSProperties = {
   padding: 'calc(var(--size-padding-x) * 2)',
 };
 
-/**
- * Star icon SVG component (filled version for pinned state)
- * Uses em units for size to match text size
- */
-function StarIconFilled() {
-  return (
-    <svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </svg>
-  );
-}
-
-/**
- * Star icon SVG component (outline version for unpinned state)
- * Uses em units for size to match text size
- */
-function StarIconOutline() {
-  return (
-    <svg
-      width="1.25em"
-      height="1.25em"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </svg>
-  );
-}
+/** Icon size using em units to scale with text size */
+const ICON_SIZE = '1.25em';
 
 interface StarButtonProps {
   isPinned: boolean;
@@ -107,7 +79,7 @@ function StarButton({ isPinned, onClick, isVisible }: StarButtonProps) {
         isPinned ? 'text-app-accent' : 'text-app-text-muted hover:text-app-text'
       } ${isVisible || isPinned ? 'opacity-100' : 'opacity-0'}`}
     >
-      {isPinned ? <StarIconFilled /> : <StarIconOutline />}
+      <Star size={ICON_SIZE} fill={isPinned ? 'currentColor' : 'none'} aria-hidden="true" />
     </span>
   );
 }
