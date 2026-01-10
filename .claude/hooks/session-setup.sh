@@ -58,17 +58,24 @@ setup_branch() {
         return 0
     fi
 
-    # Check for uncommitted changes
-    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-        log "WARNING: Uncommitted changes detected, staying on $current_branch"
+    # Rebase current work branch onto target branch
+    # This handles Claude Code on Web auto-created branches
+    log "Rebasing $current_branch onto $target_branch..."
+
+    if ! git fetch origin "$target_branch" 2>/dev/null; then
+        log "WARNING: Failed to fetch $target_branch"
         return 0
     fi
 
-    log "Switching from $current_branch to $target_branch..."
-    if git checkout "$target_branch" 2>/dev/null; then
-        log "Switched to $target_branch"
+    if ! git reset --hard "origin/$target_branch" 2>/dev/null; then
+        log "WARNING: Failed to reset to origin/$target_branch"
+        return 0
+    fi
+
+    if git push -u origin "$current_branch" --force 2>/dev/null; then
+        log "Work branch $current_branch rebased onto $target_branch"
     else
-        log "WARNING: Failed to switch to $target_branch (branch may not exist)"
+        log "WARNING: Failed to push rebased branch (may need manual push)"
     fi
 }
 
