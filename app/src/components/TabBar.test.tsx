@@ -103,4 +103,48 @@ describe('TabBar', () => {
     // Inactive tab should have text-app-text-muted class
     expect(launcherTab.className).toContain('text-app-text-muted');
   });
+
+  describe('icons and accessibility', () => {
+    it('renders icons for each tab', () => {
+      render(<TabBar activeTab="clipboard" onTabChange={() => {}} />);
+
+      const tabs = screen.getAllByRole('tab');
+      // Each tab should contain an SVG icon
+      for (const tab of tabs) {
+        expect(tab.querySelector('svg')).not.toBeNull();
+      }
+    });
+
+    it('icons have aria-hidden attribute', () => {
+      render(<TabBar activeTab="clipboard" onTabChange={() => {}} />);
+
+      const tabs = screen.getAllByRole('tab');
+      for (const tab of tabs) {
+        const svg = tab.querySelector('svg');
+        expect(svg?.getAttribute('aria-hidden')).toBe('true');
+      }
+    });
+
+    it('has title attribute for tooltip on each tab', () => {
+      render(<TabBar activeTab="clipboard" onTabChange={() => {}} />);
+
+      const clipboardTab = screen.getByRole('tab', { name: /clipboard/i });
+      const snippetsTab = screen.getByRole('tab', { name: /snippets/i });
+      const launcherTab = screen.getByRole('tab', { name: /launcher/i });
+
+      expect(clipboardTab.getAttribute('title')).toBe('Clipboard');
+      expect(snippetsTab.getAttribute('title')).toBe('Snippets');
+      expect(launcherTab.getAttribute('title')).toBe('Launcher');
+    });
+
+    it('renders text labels with tab-label class', () => {
+      render(<TabBar activeTab="clipboard" onTabChange={() => {}} />);
+
+      const tabs = screen.getAllByRole('tab');
+      for (const tab of tabs) {
+        const label = tab.querySelector('.tab-label');
+        expect(label).not.toBeNull();
+      }
+    });
+  });
 });
