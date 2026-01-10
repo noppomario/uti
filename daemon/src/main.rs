@@ -2,8 +2,13 @@
 //!
 //! This daemon monitors keyboard input devices for double Ctrl key presses
 //! and sends D-Bus signals to notify the Tauri application.
+//!
+//! It also listens for TypeText signals to simulate keyboard input.
+
+mod uinput;
 
 use evdev::{Device, EventType, Key};
+use futures_util::StreamExt;
 use log::{debug, error, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -44,6 +49,63 @@ async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
     .await?;
     info!("D-Bus signal sent: Triggered");
     Ok(())
+}
+
+/// Listens for TypeText D-Bus signals and simulates paste
+///
+/// When a TypeText signal is received, this function uses the virtual keyboard
+/// to simulate Ctrl+Shift+V to paste the content from clipboard.
+///
+/// # Arguments
+///
+/// * `conn` - The D-Bus connection to listen on
+async fn listen_for_type_text(conn: Arc<Connection>) {
+    info!("Setting up TypeText signal listener...");
+
+    // Create a rule to match TypeText signals
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .interface("io.github.noppomario.uti.DoubleTap")
+        .unwrap()
+        .member("TypeText")
+        .unwrap()
+        .build();
+
+    // Subscribe to matching signals
+    let mut stream = match zbus::MessageStream::for_match_rule(rule, &conn, None).await {
+        Ok(stream) => stream,
+        Err(e) => {
+            error!("Failed to create message stream for TypeText: {}", e);
+            return;
+        }
+    };
+
+    info!("TypeText signal listener started");
+
+    // Create virtual keyboard once
+    let mut virtual_kb = match uinput::VirtualKeyboard::new() {
+        Ok(kb) => kb,
+        Err(e) => {
+            error!("Failed to create virtual keyboard: {}", e);
+            error!("TypeText functionality will be disabled");
+            return;
+        }
+    };
+
+    while let Some(msg) = stream.next().await {
+        match msg {
+            Ok(_) => {
+                debug!("Received TypeText signal");
+                // Simulate Ctrl+Shift+V paste
+                if let Err(e) = virtual_kb.paste() {
+                    error!("Failed to simulate paste: {}", e);
+                }
+            }
+            Err(e) => {
+                error!("Error receiving TypeText signal: {}", e);
+            }
+        }
+    }
 }
 
 /// Finds all available keyboard devices
@@ -170,6 +232,14 @@ async fn monitor_device(
                 }
             }
             Err(e) => {
+                // ENODEV (errno 19): Device disconnected (sleep/resume or unplug)
+                if e.raw_os_error() == Some(19) {
+                    error!(
+                        "[{}] Device disconnected (ENODEV), exiting monitor task",
+                        device_name
+                    );
+                    return Err(e.into());
+                }
                 error!("[{}] Error fetching events: {}", device_name, e);
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
@@ -221,7 +291,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let last_ctrl_release = Arc::new(Mutex::new(None));
 
     // Spawn a monitoring task for each keyboard device
-    let mut tasks = vec![];
+    let mut tasks = tokio::task::JoinSet::new();
 
     for path in keyboards {
         let device_name = if let Ok(dev) = Device::open(&path) {
@@ -233,23 +303,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let last_release_clone = Arc::clone(&last_ctrl_release);
         let conn_clone = Arc::clone(&conn);
 
-        let task = tokio::spawn(async move {
+        tasks.spawn(async move {
             if let Err(e) =
                 monitor_device(path, device_name.clone(), last_release_clone, conn_clone).await
             {
                 error!("[{}] Monitoring task failed: {}", device_name, e);
             }
         });
-
-        tasks.push(task);
     }
 
-    // Wait for all tasks to complete (they run indefinitely)
-    for task in tasks {
-        let _ = task.await;
+    // Spawn TypeText signal listener
+    let conn_for_type_text = Arc::clone(&conn);
+    tasks.spawn(async move {
+        listen_for_type_text(conn_for_type_text).await;
+    });
+
+    // Exit when any task completes (device disconnect triggers systemd restart)
+    if let Some(result) = tasks.join_next().await {
+        match result {
+            Ok(()) => info!("A monitoring task exited, shutting down for restart"),
+            Err(e) => error!("A monitoring task panicked: {}", e),
+        }
     }
 
-    Ok(())
+    // Return error to trigger systemd restart
+    Err("Device monitoring stopped, daemon exiting for restart".into())
 }
 
 #[cfg(test)]
@@ -339,5 +417,37 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_enodev_error_detection() {
+        // ENODEV is errno 19 on Linux
+        const ENODEV: i32 = 19;
+
+        // Create an error with ENODEV errno
+        let error = std::io::Error::from_raw_os_error(ENODEV);
+
+        // Verify we can detect ENODEV via raw_os_error
+        assert_eq!(
+            error.raw_os_error(),
+            Some(19),
+            "ENODEV should have raw_os_error of 19"
+        );
+
+        // Note: ENODEV maps to Uncategorized (not Other) in modern Rust,
+        // which is why we must use raw_os_error() for detection
+    }
+
+    #[test]
+    fn test_enodev_vs_other_errors() {
+        // Test that we can distinguish ENODEV from other errors
+        let enodev = std::io::Error::from_raw_os_error(19); // ENODEV
+        let enoent = std::io::Error::from_raw_os_error(2); // ENOENT (No such file)
+        let eacces = std::io::Error::from_raw_os_error(13); // EACCES (Permission denied)
+
+        // Only ENODEV should match our check
+        assert!(enodev.raw_os_error() == Some(19));
+        assert!(enoent.raw_os_error() != Some(19));
+        assert!(eacces.raw_os_error() != Some(19));
     }
 }

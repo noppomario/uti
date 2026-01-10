@@ -7,14 +7,17 @@
 
 mod clipboard;
 mod launcher;
+mod snippets;
 mod updater;
 
 use clap::{Parser, Subcommand};
 use clipboard::{ClipboardItem, ClipboardStore};
 use launcher::{LauncherConfig, RecentFile};
 use serde::{Deserialize, Serialize};
+use snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -22,6 +25,27 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use zbus::Connection;
+
+// Window size constants for each theme
+mod window_size {
+    /// Minimal theme: compact width
+    pub const MINIMAL: (f64, f64) = (250.0, 600.0);
+    /// Normal theme: balanced size
+    pub const NORMAL: (f64, f64) = (500.0, 700.0);
+    /// Wide theme: expanded width
+    pub const WIDE: (f64, f64) = (750.0, 800.0);
+    /// Prompt mode: horizontal layout for text input
+    pub const PROMPT: (f64, f64) = (600.0, 250.0);
+
+    /// Get window size by theme name
+    pub fn by_theme(theme: &str) -> (f64, f64) {
+        match theme {
+            "normal" => NORMAL,
+            "wide" => WIDE,
+            _ => MINIMAL,
+        }
+    }
+}
 
 /// Payload for update dialog window
 #[derive(Clone)]
@@ -64,6 +88,84 @@ enum Commands {
     },
 }
 
+/// Theme configuration
+///
+/// Defines color and size theme settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeConfig {
+    /// Color theme: 'midnight', 'dark', or 'light'
+    #[serde(default = "default_color")]
+    pub color: String,
+
+    /// Size theme: 'minimal', 'normal', or 'wide'
+    #[serde(default = "default_size")]
+    pub size: String,
+
+    /// Custom accent color (hex format, e.g., '#3584e4')
+    #[serde(
+        default,
+        rename = "accentColor",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub accent_color: Option<String>,
+}
+
+fn default_color() -> String {
+    "dark".to_string()
+}
+
+fn default_size() -> String {
+    "normal".to_string()
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            color: default_color(),
+            size: default_size(),
+            accent_color: None,
+        }
+    }
+}
+
+impl ThemeConfig {
+    /// Validate theme values
+    fn validate(&mut self) {
+        // Validate color
+        if !matches!(self.color.as_str(), "midnight" | "dark" | "light") {
+            eprintln!(
+                "Invalid color theme '{}', falling back to 'dark'",
+                self.color
+            );
+            self.color = "dark".to_string();
+        }
+
+        // Validate size
+        if !matches!(self.size.as_str(), "minimal" | "normal" | "wide") {
+            eprintln!(
+                "Invalid size theme '{}', falling back to 'normal'",
+                self.size
+            );
+            self.size = "normal".to_string();
+        }
+    }
+}
+
+/// Application state for window pin functionality
+///
+/// Tracks whether the window is pinned (always-on-top with auto-hide disabled).
+struct PinState {
+    is_pinned: Arc<AtomicBool>,
+}
+
+impl PinState {
+    fn new() -> Self {
+        Self {
+            is_pinned: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
 /// Application configuration
 ///
 /// This struct represents the user's configuration for the uti application.
@@ -71,46 +173,24 @@ enum Commands {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
-    /// Theme mode: 'light' or 'dark'
-    #[serde(default = "default_theme")]
-    pub theme: String,
+    /// Theme configuration
+    #[serde(default)]
+    pub theme: ThemeConfig,
 
     /// Maximum number of clipboard items to store
     #[serde(default = "default_clipboard_limit")]
     pub clipboard_history_limit: usize,
-
-    /// Whether to show tooltip on hover
-    #[serde(default = "default_show_tooltip")]
-    pub show_tooltip: bool,
-
-    /// Delay before showing tooltip (milliseconds)
-    #[serde(default = "default_tooltip_delay")]
-    pub tooltip_delay: u32,
-}
-
-fn default_theme() -> String {
-    "dark".to_string()
 }
 
 fn default_clipboard_limit() -> usize {
     50
 }
 
-fn default_show_tooltip() -> bool {
-    true
-}
-
-fn default_tooltip_delay() -> u32 {
-    500
-}
-
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            theme: default_theme(),
+            theme: ThemeConfig::default(),
             clipboard_history_limit: default_clipboard_limit(),
-            show_tooltip: default_show_tooltip(),
-            tooltip_delay: default_tooltip_delay(),
         }
     }
 }
@@ -127,14 +207,9 @@ impl AppConfig {
     }
 
     /// Validate configuration values
-    ///
-    /// Ensures theme is one of: 'dark' or 'light'
     fn validate(&mut self) {
         // Validate theme
-        if !matches!(self.theme.as_str(), "dark" | "light") {
-            eprintln!("Invalid theme '{}', falling back to 'dark'", self.theme);
-            self.theme = "dark".to_string();
-        }
+        self.theme.validate();
 
         // Validate clipboard_history_limit
         if self.clipboard_history_limit == 0 {
@@ -179,7 +254,8 @@ impl AppConfig {
 /// ```typescript
 /// import { invoke } from '@tauri-apps/api/core';
 /// const config = await invoke('read_config');
-/// console.log(config.theme); // 'dark' | 'light'
+/// console.log(config.theme.color); // 'midnight' | 'dark' | 'light'
+/// console.log(config.theme.size);  // 'minimal' | 'normal' | 'wide'
 /// ```
 #[tauri::command]
 fn read_config() -> AppConfig {
@@ -354,6 +430,163 @@ fn get_launcher_config() -> LauncherConfig {
     launcher::load_launcher_config()
 }
 
+/// Gets all snippets
+///
+/// Returns the list of saved snippets from `~/.config/uti/snippets.json`.
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const snippets = await invoke('get_snippets');
+/// ```
+#[tauri::command]
+fn get_snippets(store: State<Mutex<SnippetsStore>>) -> Vec<SnippetItem> {
+    let store = store.lock().unwrap();
+    store.items.clone()
+}
+
+/// Adds a new snippet (used when pinning from clipboard)
+///
+/// Creates a new snippet with auto-generated UUID and saves it to disk.
+///
+/// # Arguments
+///
+/// * `value` - The text content of the snippet
+/// * `label` - Optional display label
+///
+/// # Returns
+///
+/// The newly created snippet item
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const snippet = await invoke('add_snippet', { value: 'Hello', label: null });
+/// ```
+#[tauri::command]
+fn add_snippet(
+    value: String,
+    label: Option<String>,
+    store: State<Mutex<SnippetsStore>>,
+) -> SnippetItem {
+    let mut store = store.lock().unwrap();
+    let item = SnippetItem::new(value, label);
+    store.items.push(item.clone());
+
+    if let Err(e) = save_snippets(&store) {
+        eprintln!("Failed to save snippets: {}", e);
+    }
+    item
+}
+
+/// Removes a clipboard item by index (used when pinning to snippets)
+///
+/// # Arguments
+///
+/// * `index` - The index of the item to remove
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// await invoke('remove_clipboard_item', { index: 0 });
+/// ```
+#[tauri::command]
+fn remove_clipboard_item(index: usize, store: State<Mutex<ClipboardStore>>) {
+    let mut store = store.lock().unwrap();
+    if index < store.items.len() {
+        store.items.remove(index);
+        let path = ClipboardStore::get_storage_path();
+        if let Err(e) = store.save(&path) {
+            eprintln!("Failed to save clipboard store: {}", e);
+        }
+    }
+}
+
+/// Apply window size based on size theme
+///
+/// Sets the window dimensions based on the configured size theme.
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance
+/// * `size` - The size theme name: "minimal", "normal", or "wide"
+fn apply_window_size(window: &WebviewWindow, size: &str) {
+    let (width, height) = window_size::by_theme(size);
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
+        eprintln!("Failed to set window size: {}", e);
+    } else {
+        println!("Window size set to {}x{} ({})", width, height, size);
+    }
+}
+
+/// Sets window mode for different tab layouts
+///
+/// Switches between "prompt" mode (horizontal layout) and "default" mode
+/// (uses configured theme size).
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance
+/// * `mode` - The window mode: "prompt" or "default"
+#[tauri::command]
+fn set_window_mode(window: WebviewWindow, mode: String) {
+    let (width, height) = match mode.as_str() {
+        "prompt" => window_size::PROMPT,
+        _ => {
+            // Use configured theme size for default mode
+            let config = AppConfig::load();
+            window_size::by_theme(&config.theme.size)
+        }
+    };
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
+        eprintln!("Failed to set window mode: {}", e);
+    } else {
+        println!("Window mode set to {} ({}x{})", mode, width, height);
+    }
+}
+
+/// Emits a TypeText D-Bus signal to trigger auto-paste via daemon
+///
+/// The daemon receives this signal and simulates Ctrl+V to paste
+/// the content from the clipboard.
+///
+/// # Examples
+///
+/// This function is invoked from the frontend:
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// invoke('type_text');
+/// ```
+#[tauri::command]
+async fn type_text() {
+    match Connection::session().await {
+        Ok(conn) => {
+            if let Err(e) = conn
+                .emit_signal(
+                    None::<()>,
+                    "/io/github/noppomario/uti/DoubleTap",
+                    "io.github.noppomario.uti.DoubleTap",
+                    "TypeText",
+                    &(),
+                )
+                .await
+            {
+                eprintln!("Failed to emit TypeText signal: {}", e);
+            } else {
+                println!("TypeText signal emitted");
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to D-Bus: {}", e);
+        }
+    }
+}
+
 /// Toggles the window visibility state
 ///
 /// If the window is currently visible, it will be hidden. If hidden, it will be shown
@@ -371,7 +604,13 @@ fn get_launcher_config() -> LauncherConfig {
 /// invoke('toggle_window');
 /// ```
 #[tauri::command]
-fn toggle_window(window: WebviewWindow) {
+fn toggle_window(window: WebviewWindow, pin_state: State<'_, PinState>) {
+    // Ignore toggle when window is pinned to prevent unexpected behavior
+    if pin_state.is_pinned.load(Ordering::SeqCst) {
+        println!("Window is pinned, toggle_window ignored");
+        return;
+    }
+
     let is_visible = window.is_visible().unwrap_or(false);
     println!("Current window state: visible={}", is_visible);
 
@@ -400,6 +639,95 @@ fn toggle_window(window: WebviewWindow) {
         let _ = window.set_focus();
         println!("Window shown");
     }
+}
+
+/// Force hide window for paste operation (ignores PIN state)
+///
+/// Unlike `toggle_window`, this command always hides the window regardless
+/// of whether it's pinned. Used by Prompt tab to ensure focus returns to
+/// the target application before simulating paste keystrokes.
+#[tauri::command]
+fn hide_for_paste(window: WebviewWindow) {
+    let _ = window.hide();
+    println!("Window hidden for paste (PIN state ignored)");
+}
+
+/// Show window (for re-showing after paste when pinned)
+///
+/// Note: On Wayland, window position cannot be restored by the app.
+/// Window will appear at center. User can double-Ctrl to reposition at cursor.
+#[tauri::command]
+fn show_window(window: WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+    println!("Window shown");
+}
+
+/// Set window pinned state (always-on-top with auto-hide disabled)
+///
+/// On GNOME/Wayland, Tauri's `set_always_on_top()` is ignored by Mutter.
+/// This command also emits a D-Bus signal for the GNOME extension to handle
+/// window layer changes via `Meta.Window.make_above()`.
+///
+/// # Arguments
+///
+/// * `window` - The Tauri window instance
+/// * `pin_state` - Application state for pin functionality
+/// * `pinned` - Whether to pin the window
+///
+/// # Returns
+///
+/// Ok if successful, Err with error message if failed
+#[tauri::command]
+async fn set_pinned(
+    window: WebviewWindow,
+    pin_state: State<'_, PinState>,
+    pinned: bool,
+) -> Result<(), String> {
+    pin_state.is_pinned.store(pinned, Ordering::SeqCst);
+
+    // Emit D-Bus signal for GNOME extension to handle always-on-top
+    // The extension listens for this signal and calls window.make_above()
+    if let Ok(conn) = zbus::Connection::session().await {
+        let _ = conn
+            .emit_signal(
+                None::<()>,
+                "/io/github/noppomario/uti/DoubleTap",
+                "io.github.noppomario.uti.DoubleTap",
+                "SetAlwaysOnTop",
+                &(pinned,),
+            )
+            .await;
+        println!("D-Bus SetAlwaysOnTop signal emitted: {}", pinned);
+    }
+
+    // Also call Tauri API (works on non-GNOME environments)
+    window
+        .set_always_on_top(pinned)
+        .map_err(|e| e.to_string())?;
+    println!("Window pinned: {}", pinned);
+    Ok(())
+}
+
+/// Search for desktop applications matching the query
+///
+/// # Arguments
+///
+/// * `query` - Search query string to match against application names
+///
+/// # Returns
+///
+/// A list of matching desktop applications, sorted by relevance
+///
+/// # Example
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// const apps = await invoke('search_desktop_files', { query: 'firefox' });
+/// ```
+#[tauri::command]
+fn search_desktop_files(query: String) -> Vec<launcher::DesktopApp> {
+    launcher::search_desktop_files(&query)
 }
 
 /// Listens for D-Bus signals from the daemon and forwards them to the frontend
@@ -552,19 +880,34 @@ fn run_gui(start_minimized: bool) {
         ))
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Mutex::new(store))
+        .manage(Mutex::new(load_snippets()))
+        .manage(PinState::new())
         .invoke_handler(tauri::generate_handler![
             toggle_window,
+            hide_for_paste,
+            show_window,
+            set_pinned,
+            set_window_mode,
+            type_text,
             get_clipboard_history,
             add_clipboard_item,
+            remove_clipboard_item,
             paste_item,
             read_config,
             get_recent_files,
             get_vscode_recent_files,
             execute_command,
-            get_launcher_config
+            get_launcher_config,
+            get_snippets,
+            add_snippet,
+            search_desktop_files
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
+
+            // Apply window size based on theme configuration
+            let config = AppConfig::load();
+            apply_window_size(&window, &config.theme.size);
 
             // Hide window if started with --minimized flag
             if start_minimized {
@@ -691,19 +1034,19 @@ fn run_gui(start_minimized: bool) {
 
                             // Create new dialog window with URL parameters
                             let url = format!(
-                                "dialog.html?title={}&message={}&kind={}",
+                                "update-dialog.html?title={}&message={}&kind={}",
                                 urlencoding(&payload.title),
                                 urlencoding(&payload.message),
                                 urlencoding(&payload.kind)
                             );
 
-                            if let Ok(dialog_window) = WebviewWindowBuilder::new(
+                            match WebviewWindowBuilder::new(
                                 &app_handle,
                                 "dialog",
                                 WebviewUrl::App(url.into()),
                             )
                             .title("uti")
-                            .inner_size(320.0, 200.0)
+                            .inner_size(420.0, 200.0)
                             .resizable(false)
                             .decorations(false)
                             .transparent(true)
@@ -712,9 +1055,12 @@ fn run_gui(start_minimized: bool) {
                             .focused(true)
                             .build()
                             {
-                                println!("Dialog window created: {:?}", dialog_window.label());
-                            } else {
-                                eprintln!("Failed to create dialog window");
+                                Ok(dialog_window) => {
+                                    println!("Dialog window created: {:?}", dialog_window.label());
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to create dialog window: {:?}", e);
+                                }
                             }
                         });
                     }
@@ -748,11 +1094,12 @@ fn run_gui(start_minimized: bool) {
                 })
                 .build(app)?;
 
-            // Auto-hide window when it loses focus
+            // Auto-hide window when it loses focus (unless pinned)
             let window_for_blur = window.clone();
+            let is_pinned = app.state::<PinState>().is_pinned.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(focused) = event {
-                    if !focused {
+                    if !focused && !is_pinned.load(Ordering::SeqCst) {
                         let _ = window_for_blur.hide();
                         println!("Window lost focus, hiding");
                     }

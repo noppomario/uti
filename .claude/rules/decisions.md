@@ -508,7 +508,8 @@ Users need to customize settings without recompiling.
 
 Use `~/.config/uti/config.json` for persistent user configuration with:
 
-- `theme`: "light" or "dark"
+- `theme.color`: "midnight", "dark", or "light"
+- `theme.size`: "minimal", "normal", or "wide"
 - `clipboardHistoryLimit`: Number of items to store
 
 ### Rationale
@@ -567,7 +568,7 @@ Use `~/.config/uti/config.json` for persistent user configuration with:
 ## ADR-012: Centralize theme management with Tailwind CSS v4 @theme
 
 **Date**: 2025-12-30
-**Status**: Accepted
+**Status**: Accepted (Updated 2026-01-04)
 **Decision Makers**: Project team
 
 ### Context
@@ -579,15 +580,34 @@ Tailwind CSS v4 introduced CSS-first configuration with `@theme` directive.
 
 Use Tailwind v4 `@theme` directive with CSS variables in `index.css`:
 
+**Color themes** (3 options):
+
+| Name     | Description        | Base Color          |
+| -------- | ------------------ | ------------------- |
+| Midnight | Slate-based dark   | slate-900 (#0f172a) |
+| Dark     | Adwaita-inspired   | neutral (#1c1c1c)   |
+| Light    | Default light      | white (#ffffff)     |
+
+**Size themes** (3 options):
+
+| Name    | Window | Font  | Padding |
+| ------- | ------ | ----- | ------- |
+| Minimal | 250px  | 12px  | 4px     |
+| Normal  | 500px  | 14px  | 8px     |
+| Wide    | 750px  | 16px  | 12px    |
+
 ```css
 @theme {
   --color-app-bg: #ffffff;
-  --color-app-item: #f1f5f9;
+  --size-font-base: 0.75rem;
 }
 
-.dark {
-  --color-app-bg: #0f172a;
-  --color-app-item: #334155;
+.theme-dark {
+  --color-app-bg: #1c1c1c;
+}
+
+.size-normal {
+  --size-font-base: 0.875rem;
 }
 ```
 
@@ -613,6 +633,11 @@ Components use semantic tokens: `bg-app-bg`, `text-app-text`
 - Easier to understand component intent
 - Can change underlying colors without touching components
 
+**Separate color and size**:
+
+- Users can mix any color with any size
+- 9 combinations possible (3 colors × 3 sizes)
+
 ### Alternatives Considered
 
 1. **Tailwind v3 style (tailwind.config.js)**
@@ -633,7 +658,8 @@ Components use semantic tokens: `bg-app-bg`, `text-app-text`
 
 - Theme changes in one file
 - Follows Tailwind v4 conventions
-- Dark mode via simple `.dark` class toggle
+- Color/size themes via class toggle (`.theme-{color}`, `.size-{size}`)
+- Flexible combinations for user preference
 
 **Negative**:
 
@@ -1234,6 +1260,301 @@ Change sync-develop.yml to create a PR instead of pushing directly:
 
 - Slightly more complex workflow
 - Creates additional sync branches (cleaned up by --delete-branch)
+
+---
+
+## ADR-023: Window pinning with GNOME extension for always-on-top
+
+**Date**: 2026-01-04
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Window pinning feature requested to keep window visible during frequent
+clipboard access. On Wayland/GNOME, `set_always_on_top()` is ignored by Mutter.
+
+### Decision
+
+Two-phase implementation:
+
+1. **Phase 1.5**: Pin state disables auto-hide and ignores double Ctrl toggle
+2. **Phase 2**: D-Bus signal `SetAlwaysOnTop(bool)` to GNOME extension, which
+   calls `Meta.Window.make_above()`
+
+### Rationale
+
+**Wayland security model**:
+
+- Mutter ignores app-level always-on-top requests
+- Only compositor (GNOME Shell) can control window stacking
+- Extension is the only way to access `Meta.Window.make_above()`
+
+**Leveraging existing infrastructure**:
+
+- GNOME extension already exists for tray and positioning
+- D-Bus signal pattern already established
+- No new dependencies
+
+### Alternatives Considered
+
+1. **GTK always-on-top APIs**
+   - Pro: No extension needed
+   - Con: Doesn't work on Wayland/Mutter
+
+2. **org.gnome.Shell.Eval D-Bus**
+   - Pro: No extension changes
+   - Con: Disabled for security (GNOME 3.38+)
+
+3. **Pin = auto-hide disable only**
+   - Pro: Simpler, works everywhere
+   - Con: Window can be covered by other windows
+
+### Consequences
+
+**Positive**:
+
+- Full pinning functionality on GNOME/Wayland
+- Consistent with existing architecture
+- Graceful degradation (auto-hide still works without extension)
+
+**Negative**:
+
+- GNOME-specific (KDE/Sway need separate implementation)
+- Requires extension reload after update
+
+**Reconsider when**:
+
+- Wayland standardizes always-on-top protocol
+- KDE/Sway support needed
+
+---
+
+## ADR-024: Snippets feature with delayed pin mechanism
+
+**Date**: 2026-01-05
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Users requested ability to save frequently used clipboard items permanently.
+The feature should integrate with existing tab-based UI and clipboard workflow.
+
+### Decision
+
+Add Snippets tab with delayed pin mechanism:
+
+1. **Tab placement**: Clipboard → Snippets → Launcher
+2. **Storage**: `~/.config/uti/snippets.json` with UUID-based IDs
+3. **Pin mechanism**: Delayed move (mark in clipboard → move on window close)
+4. **UI**: Same list/search pattern as Clipboard and Launcher
+
+### Rationale
+
+**Delayed pin vs immediate move**:
+
+- Immediate move breaks user flow (item disappears mid-work)
+- Delayed move allows accumulating multiple pins before processing
+- Visual feedback (pin icon) confirms user intent
+- Consistent with "work session" mental model
+
+**Separate storage file**:
+
+- Snippets are user-curated, persist across clipboard clears
+- Different lifecycle than transient clipboard history
+- Easier backup/migration of permanent items
+
+**Tab ordering**:
+
+- Clipboard is primary use case (default tab)
+- Snippets are clipboard-related (placed next to clipboard)
+- Launcher is distinct feature (rightmost)
+
+### Alternatives Considered
+
+1. **Immediate move on pin click**
+   - Pro: Simpler implementation
+   - Con: Disruptive UX, item disappears immediately
+
+2. **Star/favorite within clipboard**
+   - Pro: Single list, simpler UI
+   - Con: Mixes transient and permanent items, confusing
+
+3. **Context menu for pin**
+   - Pro: Cleaner item UI
+   - Con: Hidden functionality, extra click required
+
+### Consequences
+
+**Positive**:
+
+- Non-disruptive pin workflow
+- Clear separation of transient vs permanent items
+- Consistent UI pattern across all tabs
+- Keyboard navigation works uniformly
+
+**Negative**:
+
+- Delayed move may confuse users expecting immediate action
+- Pin state is lost if app crashes before window close
+- Index-based removal requires descending order processing
+
+**Reconsider when**:
+
+- Users request immediate move option
+- Need for snippet categories/folders
+- Sync across devices requested
+
+---
+
+## ADR-025: ENODEV handling for sleep/resume recovery
+
+**Date**: 2026-01-06
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After system sleep/resume, the daemon continues running but fails to receive
+keyboard events. The kernel reinitializes USB devices during resume, which
+invalidates the evdev file descriptors held by the daemon. The daemon enters
+an infinite error loop logging `No such device (os error 19)` without recovery.
+
+Related: ADR-018 solved a similar issue for re-login (stale D-Bus connection)
+using `BindsTo=graphical-session.target`. However, sleep/resume does not
+terminate the graphical session, so the daemon is not restarted.
+
+### Decision
+
+Detect ENODEV errors and exit the monitor task, allowing systemd to restart
+the daemon with fresh file descriptors:
+
+1. Check `e.raw_os_error() == Some(19)` in the error handler
+2. Return error to exit the task (triggers daemon exit)
+3. Add `RestartSec=1s` to systemd service for restart backoff
+
+### Rationale
+
+**Consistency with ADR-018 pattern**:
+
+- Both issues involve stale resources (D-Bus vs evdev)
+- Both solved by daemon restart for clean state
+- Minimal code change, maximum reliability
+
+**Why not device reconnection in-process**:
+
+- More complex state management
+- Risk of resource leaks
+- systemd restart is proven reliable
+
+### Alternatives Considered
+
+1. **Retry with exponential backoff**
+   - Pro: No daemon restart
+   - Con: Never recovers if device path changes
+
+2. **inotify/udev device monitoring**
+   - Pro: Handles any hotplug event
+   - Con: High complexity, overkill for sleep/resume
+
+3. **Bind to sleep.target**
+   - Pro: Explicit sleep handling
+   - Con: Doesn't cover USB disconnect scenarios
+
+### Consequences
+
+**Positive**:
+
+- Automatic recovery after sleep/resume
+- No log spam on device disconnect
+- Works for any ENODEV scenario (sleep, USB unplug)
+
+**Negative**:
+
+- Brief interruption during daemon restart (~1s)
+- All keyboards reconnect together
+
+**Reconsider when**:
+
+- Need sub-second recovery time
+- Need per-device reconnection without full restart
+
+---
+
+## ADR-026: Prompt feature with uinput auto-paste
+
+**Date**: 2026-01-10
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Users wanted a quick way to input text and paste it to the active window.
+On Wayland, applications cannot directly inject keystrokes or access other
+windows, requiring a system-level solution.
+
+### Decision
+
+Add Prompt tab with auto-paste functionality:
+
+1. **Frontend**: New Prompt tab with textarea and Ctrl+Enter submit
+2. **Window mode**: Horizontal layout (700x300) for Prompt tab
+3. **Auto-paste**: D-Bus TypeText signal triggers daemon to simulate Ctrl+Shift+V via uinput
+4. **Permissions**: udev rule grants input group access to /dev/uinput
+
+### Rationale
+
+**uinput approach**:
+
+- Works on all Wayland compositors (GNOME, KDE, Sway)
+- Uses same input group as keyboard monitoring
+- Ctrl+Shift+V simulation avoids keyboard layout issues
+
+**Architecture alignment**:
+
+- Leverages existing daemon infrastructure
+- D-Bus signal pattern consistent with DoubleTap/SetAlwaysOnTop
+- No new dependencies (evdev already supports uinput)
+
+**Why Ctrl+Shift+V**:
+
+- Ctrl+V doesn't work in terminal emulators (reserved for interrupt)
+- Ctrl+Shift+V works in both terminals and most GUI apps
+- Trade-off: Some text editors may require manual Ctrl+V paste
+
+### Alternatives Considered
+
+1. **ydotool**
+   - Pro: Full keyboard simulation
+   - Con: Requires separate daemon, additional dependency
+
+2. **GNOME extension Clutter VirtualDevice**
+   - Pro: Native GNOME integration
+   - Con: GNOME-only, doesn't work on other desktops
+
+3. **wtype**
+   - Pro: Wayland-native
+   - Con: Only works on wlroots-based compositors, not GNOME
+
+### Consequences
+
+**Positive**:
+
+- Desktop-environment independent solution
+- Reuses existing input group permissions
+- Consistent with existing architecture
+
+**Negative**:
+
+- Requires udev rule for /dev/uinput access
+- Small delay (100ms) needed for focus to return to previous window
+- Ctrl+Shift+V may not work in some GUI text editors (user must paste manually)
+
+**Reconsider when**:
+
+- Wayland standardizes input injection API
+- Need for character-by-character typing (shortcuts, mouse clicks)
 
 ---
 

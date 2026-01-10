@@ -1,39 +1,117 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 @theme {
-  /* Light theme colors */
+  /* ============================================
+   * Light theme colors (default)
+   * ============================================ */
   --color-app-bg: #ffffff;
   --color-app-header: #f8fafc; /* slate-50 */
   --color-app-header-border: #e2e8f0; /* slate-200 */
   --color-app-item: #f1f5f9; /* slate-100 */
   --color-app-item-hover: #e2e8f0; /* slate-200 */
-  --color-app-item-selected: #3b82f6; /* blue-500 */
+  --color-app-item-selected: #e2e8f0; /* slate-200 - same as hover */
   --color-app-text: #1e293b; /* slate-800 */
   --color-app-text-muted: #64748b; /* slate-500 */
-  --color-app-text-on-selected: #ffffff;
+  --color-app-text-on-selected: #1e293b; /* slate-800 - same as text */
 
-  /* Dialog colors */
-  --color-app-dialog-overlay: rgba(0, 0, 0, 0.5);
+  /* Accent colors */
   --color-app-accent-info: #3b82f6; /* blue-500 */
   --color-app-accent-error: #ef4444; /* red-500 */
+
+  /* Header shadow for elevation */
+  --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  /* ============================================
+   * Size tokens (default: minimal)
+   * Matches original design: text-xs, py-1, px-2, rounded
+   * ============================================ */
+  --size-font-base: 0.75rem; /* 12px - matches text-xs */
+  --size-padding-x: 0.5rem; /* 8px - matches px-2 */
+  --size-padding-y: 0.25rem; /* 4px - matches py-1 */
+  --size-gap: 0.25rem; /* 4px */
+  --size-radius: 0.25rem; /* 4px - matches rounded */
 }
 
-.dark {
-  /* Dark theme colors */
+/* ============================================
+ * Color Theme: Midnight (slate-based dark)
+ * ============================================ */
+.theme-midnight {
   --color-app-bg: #0f172a; /* slate-900 */
   --color-app-header: #1e293b; /* slate-800 */
   --color-app-header-border: #334155; /* slate-700 */
-  --color-app-item: #334155; /* slate-700 */
-  --color-app-item-hover: #475569; /* slate-600 */
-  --color-app-item-selected: #2563eb; /* blue-600 */
-  --color-app-text: #e2e8f0; /* slate-200 */
+  --shadow-header: 0 1px 4px rgba(0, 0, 0, 0.3);
+  --color-app-item: #0f172a; /* same as bg - no mach band effect */
+  --color-app-item-hover: #1e293b; /* slate-800 - gentle hover */
+  --color-app-item-selected: #1e293b; /* same as hover */
+  --color-app-text: #d4d4d4; /* softer gray like VSCode */
   --color-app-text-muted: #94a3b8; /* slate-400 */
-  --color-app-text-on-selected: #ffffff;
+  --color-app-text-on-selected: #d4d4d4; /* same as text */
 
-  /* Dialog colors */
-  --color-app-dialog-overlay: rgba(0, 0, 0, 0.7);
+  /* Accent colors */
   --color-app-accent-info: #60a5fa; /* blue-400 */
   --color-app-accent-error: #f87171; /* red-400 */
+}
+
+/* ============================================
+ * Color Theme: Dark (Adwaita-inspired)
+ * More subtle contrast for better visual comfort
+ * ============================================ */
+.theme-dark {
+  --color-app-bg: #1c1c1c; /* darker bg for contrast with header */
+  --color-app-header: #303030; /* headerbar_bg_color */
+  --color-app-header-border: rgba(0, 0, 0, 0.36); /* headerbar_shade_color */
+  --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.36); /* Adwaita shadow */
+  --color-app-item: #1c1c1c; /* same as bg - no mach band effect */
+  --color-app-item-hover: #353535; /* gentle hover */
+  --color-app-item-selected: #353535; /* same as hover */
+  --color-app-text: #d4d4d4; /* softer gray like VSCode */
+  --color-app-text-muted: #9a9996; /* Adwaita dim-label */
+  --color-app-text-on-selected: #d4d4d4; /* same as text */
+
+  /* Accent colors */
+  --color-app-accent-info: #78aeed; /* @blue_2 */
+  --color-app-accent-error: #ff7b63; /* @red_2 */
+}
+
+/* ============================================
+ * Color Theme: Light (explicit, same as default)
+ * ============================================ */
+.theme-light {
+  /* Uses default @theme values - no overrides needed */
+}
+
+/* ============================================
+ * Size Theme: Normal (~2x width)
+ * ============================================ */
+.size-normal {
+  --size-font-base: 0.875rem; /* 14px */
+  --size-padding-x: 0.75rem; /* 12px */
+  --size-padding-y: 0.5rem; /* 8px */
+  --size-gap: 0.5rem; /* 8px */
+  --size-radius: 0.375rem; /* 6px */
+}
+
+/* ============================================
+ * Size Theme: Wide (~3x width)
+ * ============================================ */
+.size-wide {
+  --size-font-base: 1rem; /* 16px */
+  --size-padding-x: 1rem; /* 16px */
+  --size-padding-y: 0.75rem; /* 12px */
+  --size-gap: 0.75rem; /* 12px */
+  --size-radius: 0.5rem; /* 8px */
+}
+
+/* ============================================
+ * Tab label display based on size theme
+ * Default (minimal): Icon only
+ * Normal/Wide: Icon + text
+ * ============================================ */
+.tab-label {
+  display: none;
+}
+
+.size-normal .tab-label,
+.size-wide .tab-label {
+  display: inline;
 }

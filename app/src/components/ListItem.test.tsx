@@ -151,7 +151,7 @@ describe('ListItem', () => {
     expect(buttons).toHaveLength(2);
 
     // Click the suffix button (second one)
-    const suffixButton = screen.getByRole('button', { name: '>' });
+    const suffixButton = screen.getByRole('button', { name: 'Expand' });
     fireEvent.click(suffixButton);
 
     expect(handleSuffixClick).toHaveBeenCalled();

@@ -2,9 +2,11 @@
 //!
 //! Provides launcher configuration and recent files functionality.
 
+pub mod desktop;
 pub mod recent_files;
 mod store;
 
+pub use desktop::{search_desktop_files, DesktopApp};
 pub use recent_files::RecentFile;
 pub use store::load_launcher_config;
 
