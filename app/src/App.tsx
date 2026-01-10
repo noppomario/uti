@@ -8,6 +8,7 @@ import { ClipboardHistory, type ClipboardItem } from './components/ClipboardHist
 import type { RecentFile } from './components/JumpList';
 import { Launcher, type LauncherItem } from './components/Launcher';
 import { PinButton } from './components/PinButton';
+import { Prompt } from './components/Prompt';
 import { SearchBar } from './components/SearchBar';
 import { type SnippetItem, Snippets } from './components/Snippets';
 import { TabBar, type TabType } from './components/TabBar';
@@ -55,6 +56,24 @@ function App() {
 
   // Start clipboard monitoring
   useClipboard();
+
+  /**
+   * Handles tab change and updates window mode for Prompt tab
+   */
+  const handleTabChange = useCallback(async (tab: TabType) => {
+    setActiveTab(tab);
+    // Clear jump list state when switching tabs
+    setExpandedItemId(undefined);
+    setRecentFiles([]);
+
+    // Switch window mode based on tab
+    const mode = tab === 'prompt' ? 'prompt' : 'default';
+    try {
+      await invoke('set_window_mode', { mode });
+    } catch (err) {
+      console.error('Failed to set window mode:', err);
+    }
+  }, []);
 
   // Filter clipboard history based on search query
   const filteredHistory = useMemo(() => {
@@ -121,20 +140,17 @@ function App() {
    */
   const switchTab = useCallback(
     (direction: 'left' | 'right') => {
-      const tabs: TabType[] = ['clipboard', 'snippets', 'launcher'];
+      const tabs: TabType[] = ['prompt', 'clipboard', 'snippets', 'launcher'];
       const currentIndex = tabs.indexOf(activeTab);
       const newIndex =
         direction === 'right'
           ? Math.min(currentIndex + 1, tabs.length - 1)
           : Math.max(currentIndex - 1, 0);
       if (newIndex !== currentIndex) {
-        setActiveTab(tabs[newIndex]);
-        // Clear jump list state when switching tabs
-        setExpandedItemId(undefined);
-        setRecentFiles([]);
+        handleTabChange(tabs[newIndex]);
       }
     },
-    [activeTab]
+    [activeTab, handleTabChange]
   );
 
   /**
@@ -496,6 +512,40 @@ function App() {
   ]);
 
   /**
+   * Handles prompt text submission
+   * Copies to clipboard, hides window, and triggers auto-paste
+   *
+   * @param text - The submitted text
+   */
+  const handlePromptSubmit = useCallback(
+    async (text: string) => {
+      try {
+        // Copy to clipboard
+        await writeText(text);
+        console.log('Prompt text copied to clipboard:', text.substring(0, 50));
+
+        // Force hide window (even when pinned)
+        await invoke('hide_for_paste');
+
+        // Wait for focus to return to previous window
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Trigger auto-paste via daemon
+        await invoke('type_text');
+
+        // If pinned, re-show window after paste
+        if (isPinned) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await invoke('show_window');
+        }
+      } catch (err) {
+        console.error('Failed to submit prompt:', err);
+      }
+    },
+    [isPinned]
+  );
+
+  /**
    * Handles file selection from jump list
    *
    * @param item - The launcher item
@@ -525,34 +575,40 @@ function App() {
         style={headerStyles}
       >
         <div data-tauri-drag-region className="flex items-center justify-between">
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
           <PinButton isPinned={isPinned} onToggle={handlePinToggle} />
         </div>
-        <div style={{ marginTop: 'var(--size-gap)' }}>
-          <SearchBar
-            value={searchQueries[activeTab]}
-            onChange={handleSearchChange}
-            onArrowDown={focusList}
-            onEscape={handleSearchEscape}
-            onArrowLeft={() => switchTab('left')}
-            onArrowRight={() => switchTab('right')}
-            onEnter={handleSearchEnter}
-            inputRef={searchInputRef}
-            placeholder={
-              activeTab === 'clipboard'
-                ? 'Search history...'
-                : activeTab === 'snippets'
-                  ? 'Search snippets...'
-                  : 'Search apps...'
-            }
-          />
-        </div>
+        {activeTab !== 'prompt' && (
+          <div style={{ marginTop: 'var(--size-gap)' }}>
+            <SearchBar
+              value={searchQueries[activeTab] ?? ''}
+              onChange={handleSearchChange}
+              onArrowDown={focusList}
+              onEscape={handleSearchEscape}
+              onArrowLeft={() => switchTab('left')}
+              onArrowRight={() => switchTab('right')}
+              onEnter={handleSearchEnter}
+              inputRef={searchInputRef}
+              placeholder={
+                activeTab === 'clipboard'
+                  ? 'Search history...'
+                  : activeTab === 'snippets'
+                    ? 'Search snippets...'
+                    : 'Search apps...'
+              }
+            />
+          </div>
+        )}
       </div>
       <div className="flex-1 min-h-0">
+        {activeTab === 'prompt' && (
+          <Prompt onSubmit={handlePromptSubmit} onSwitchToNextTab={() => switchTab('right')} />
+        )}
         {activeTab === 'clipboard' && (
           <ClipboardHistory
             items={filteredHistory}
             onSelect={handleClipboardSelect}
+            onSwitchToPreviousTab={() => switchTab('left')}
             onSwitchToNextTab={() => switchTab('right')}
             onUpAtTop={focusSearchInput}
             listContainerRef={listContainerRef}

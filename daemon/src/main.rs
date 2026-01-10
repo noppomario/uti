@@ -2,8 +2,13 @@
 //!
 //! This daemon monitors keyboard input devices for double Ctrl key presses
 //! and sends D-Bus signals to notify the Tauri application.
+//!
+//! It also listens for TypeText signals to simulate keyboard input.
+
+mod uinput;
 
 use evdev::{Device, EventType, Key};
+use futures_util::StreamExt;
 use log::{debug, error, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -44,6 +49,63 @@ async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
     .await?;
     info!("D-Bus signal sent: Triggered");
     Ok(())
+}
+
+/// Listens for TypeText D-Bus signals and simulates paste
+///
+/// When a TypeText signal is received, this function uses the virtual keyboard
+/// to simulate Ctrl+Shift+V to paste the content from clipboard.
+///
+/// # Arguments
+///
+/// * `conn` - The D-Bus connection to listen on
+async fn listen_for_type_text(conn: Arc<Connection>) {
+    info!("Setting up TypeText signal listener...");
+
+    // Create a rule to match TypeText signals
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .interface("io.github.noppomario.uti.DoubleTap")
+        .unwrap()
+        .member("TypeText")
+        .unwrap()
+        .build();
+
+    // Subscribe to matching signals
+    let mut stream = match zbus::MessageStream::for_match_rule(rule, &conn, None).await {
+        Ok(stream) => stream,
+        Err(e) => {
+            error!("Failed to create message stream for TypeText: {}", e);
+            return;
+        }
+    };
+
+    info!("TypeText signal listener started");
+
+    // Create virtual keyboard once
+    let mut virtual_kb = match uinput::VirtualKeyboard::new() {
+        Ok(kb) => kb,
+        Err(e) => {
+            error!("Failed to create virtual keyboard: {}", e);
+            error!("TypeText functionality will be disabled");
+            return;
+        }
+    };
+
+    while let Some(msg) = stream.next().await {
+        match msg {
+            Ok(_) => {
+                debug!("Received TypeText signal");
+                // Simulate Ctrl+Shift+V paste
+                if let Err(e) = virtual_kb.paste() {
+                    error!("Failed to simulate paste: {}", e);
+                }
+            }
+            Err(e) => {
+                error!("Error receiving TypeText signal: {}", e);
+            }
+        }
+    }
 }
 
 /// Finds all available keyboard devices
@@ -249,6 +311,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+
+    // Spawn TypeText signal listener
+    let conn_for_type_text = Arc::clone(&conn);
+    tasks.spawn(async move {
+        listen_for_type_text(conn_for_type_text).await;
+    });
 
     // Exit when any task completes (device disconnect triggers systemd restart)
     if let Some(result) = tasks.join_next().await {

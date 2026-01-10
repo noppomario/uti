@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
-import { ClipboardList, Rocket, Star } from 'lucide-react';
+import { ClipboardList, MessageSquare, Rocket, Star } from 'lucide-react';
 
 /**
  * Tab types supported by the application
  */
-export type TabType = 'clipboard' | 'snippets' | 'launcher';
+export type TabType = 'prompt' | 'clipboard' | 'snippets' | 'launcher';
 
 /**
  * Props for the TabBar component
@@ -49,6 +49,7 @@ const containerStyles: React.CSSProperties = {
  */
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   const tabs: TabDefinition[] = [
+    { id: 'prompt', label: 'Prompt', icon: MessageSquare },
     { id: 'clipboard', label: 'Clipboard', icon: ClipboardList },
     { id: 'snippets', label: 'Snippets', icon: Star },
     { id: 'launcher', label: 'Launcher', icon: Rocket },

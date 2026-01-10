@@ -1482,6 +1482,82 @@ the daemon with fresh file descriptors:
 
 ---
 
+## ADR-026: Prompt feature with uinput auto-paste
+
+**Date**: 2026-01-10
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Users wanted a quick way to input text and paste it to the active window.
+On Wayland, applications cannot directly inject keystrokes or access other
+windows, requiring a system-level solution.
+
+### Decision
+
+Add Prompt tab with auto-paste functionality:
+
+1. **Frontend**: New Prompt tab with textarea and Ctrl+Enter submit
+2. **Window mode**: Horizontal layout (700x300) for Prompt tab
+3. **Auto-paste**: D-Bus TypeText signal triggers daemon to simulate Ctrl+Shift+V via uinput
+4. **Permissions**: udev rule grants input group access to /dev/uinput
+
+### Rationale
+
+**uinput approach**:
+
+- Works on all Wayland compositors (GNOME, KDE, Sway)
+- Uses same input group as keyboard monitoring
+- Ctrl+Shift+V simulation avoids keyboard layout issues
+
+**Architecture alignment**:
+
+- Leverages existing daemon infrastructure
+- D-Bus signal pattern consistent with DoubleTap/SetAlwaysOnTop
+- No new dependencies (evdev already supports uinput)
+
+**Why Ctrl+Shift+V**:
+
+- Ctrl+V doesn't work in terminal emulators (reserved for interrupt)
+- Ctrl+Shift+V works in both terminals and most GUI apps
+- Trade-off: Some text editors may require manual Ctrl+V paste
+
+### Alternatives Considered
+
+1. **ydotool**
+   - Pro: Full keyboard simulation
+   - Con: Requires separate daemon, additional dependency
+
+2. **GNOME extension Clutter VirtualDevice**
+   - Pro: Native GNOME integration
+   - Con: GNOME-only, doesn't work on other desktops
+
+3. **wtype**
+   - Pro: Wayland-native
+   - Con: Only works on wlroots-based compositors, not GNOME
+
+### Consequences
+
+**Positive**:
+
+- Desktop-environment independent solution
+- Reuses existing input group permissions
+- Consistent with existing architecture
+
+**Negative**:
+
+- Requires udev rule for /dev/uinput access
+- Small delay (100ms) needed for focus to return to previous window
+- Ctrl+Shift+V may not work in some GUI text editors (user must paste manually)
+
+**Reconsider when**:
+
+- Wayland standardizes input injection API
+- Need for character-by-character typing (shortcuts, mouse clicks)
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

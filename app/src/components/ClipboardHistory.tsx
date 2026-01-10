@@ -21,6 +21,8 @@ export interface ClipboardHistoryProps {
   items: ClipboardItem[];
   /** Callback when an item is selected */
   onSelect: (text: string) => void;
+  /** Called when user wants to switch to previous tab */
+  onSwitchToPreviousTab?: () => void;
   /** Called when user wants to switch to next tab */
   onSwitchToNextTab?: () => void;
   /** Called when ArrowUp is pressed at first item (to focus search bar) */
@@ -98,6 +100,7 @@ function StarButton({ isPinned, onClick, isVisible }: StarButtonProps) {
 export function ClipboardHistory({
   items,
   onSelect,
+  onSwitchToPreviousTab,
   onSwitchToNextTab,
   onUpAtTop,
   listContainerRef,
@@ -111,6 +114,7 @@ export function ClipboardHistory({
 
   const { selectedIndex, handleKeyDown: baseHandleKeyDown } = useListKeyboardNavigation(items, {
     onSelect: item => onSelect(item.text),
+    onLeft: onSwitchToPreviousTab,
     onRight: onSwitchToNextTab,
     onUpAtTop,
     wrapAround: false,

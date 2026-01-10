@@ -28,6 +28,7 @@
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - ⭐ **Snippets**: Pin frequently used text for quick access (star icon in clipboard history)
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
+- 💬 **Prompt**: Quick text input with auto-paste to active window (Ctrl+Enter)
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **System Tray**: Runs in the background with tray icon control
@@ -112,24 +113,27 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 | 🎨 Styling | Tailwind CSS v4 |
 | 📦 Bundler | Vite 6 + Bun |
 | 🔧 Linting | Biome (25-100x faster than ESLint) |
-| 🎹 Daemon | Rust + evdev + D-Bus |
+| 🎹 Daemon | Rust + evdev + uinput + D-Bus |
 
 ## 📖 Usage
 
 ### Basic Operation
 
 1. Press **Ctrl twice quickly** to toggle window visibility
-2. Use **←/→** to switch between Clipboard, Snippets, and Launcher tabs
+2. Use **←/→** to switch between Clipboard, Snippets, Launcher, and Prompt tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
 4. Press **1-9** to quickly select an item by its number
 5. Press **Ctrl+F** to focus the search bar
 6. **Type to search**: Filter items or search system applications
 7. **Escape** clears search and returns focus to the list
-8. In Clipboard tab, press **S** or click **⭐** (star icon) to pin item to Snippets
+8. In **Clipboard tab**, press **S** or click **⭐** (star icon) to pin item to Snippets
    - Item is immediately added to Snippets tab
    - Item is removed from Clipboard when the window closes
-9. In Launcher tab, press **→** to expand jump list (recent files)
-10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
+9. In **Launcher tab**, press **→** to expand jump list (recent files)
+10. In **Prompt tab**: Type text and press **Ctrl+Enter** to paste to active window
+    - Text is copied to clipboard, window hides, and text is pasted to the previously active window
+    - **Note**: Auto-paste uses Ctrl+Shift+V, optimized for terminal emulators. Regular text editors may require manual paste (Ctrl+V).
+11. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
     - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
 ### System Tray
@@ -301,13 +305,14 @@ When you install uti, the following changes are made to your system:
 | **User service** | `~/.config/systemd/user/` | Daemon autostart service |
 | **Config** | `~/.config/uti/` | User configuration, clipboard history, snippets, launcher config |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
+| **udev rule** | `/etc/udev/rules.d/99-uti-uinput.rules` | Enables uinput access for auto-paste |
 | **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
 
 ### ⚠️ About the Input Group
 
-The daemon needs to read keyboard events from `/dev/input/*` devices. This requires membership in the **input group**. The installer automatically adds your user to this group.
+The daemon needs to read keyboard events from `/dev/input/*` devices and write to `/dev/uinput` for auto-paste. This requires membership in the **input group**. The installer automatically adds your user to this group.
 
-**Security note**: Members of the input group can read all input devices (keyboard, mouse). This is necessary for the double-Ctrl detection to work.
+**Security note**: Members of the input group can read all input devices (keyboard, mouse) and create virtual input devices. This is necessary for double-Ctrl detection and auto-paste to work.
 
 ## 👨‍💻 Development
 

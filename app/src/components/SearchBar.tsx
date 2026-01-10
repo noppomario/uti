@@ -140,7 +140,7 @@ export function SearchBar({
             <KbdBadge>Esc</KbdBadge>
           </button>
         ) : (
-          <div className="flex items-center gap-0.5 pointer-events-none">
+          <div className="flex items-center gap-1 pointer-events-none">
             <KbdBadge>Ctrl</KbdBadge>
             <KbdBadge>F</KbdBadge>
           </div>
