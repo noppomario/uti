@@ -134,9 +134,15 @@ export function useListKeyboardNavigation<T>(
           break;
 
         case 'ArrowRight':
-          if (onRight && itemCount > 0) {
+          if (onRight) {
             e.preventDefault();
-            onRight(items[selectedIndex], selectedIndex);
+            // Allow tab switching even when list is empty
+            if (itemCount > 0) {
+              onRight(items[selectedIndex], selectedIndex);
+            } else {
+              // Call with placeholder values for empty list (tab switching uses no args)
+              onRight(undefined as T, -1);
+            }
           }
           break;
 

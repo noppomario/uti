@@ -101,3 +101,17 @@
   --size-gap: 0.75rem; /* 12px */
   --size-radius: 0.5rem; /* 8px */
 }
+
+/* ============================================
+ * Tab label display based on size theme
+ * Default (minimal): Icon only
+ * Normal/Wide: Icon + text
+ * ============================================ */
+.tab-label {
+  display: none;
+}
+
+.size-normal .tab-label,
+.size-wide .tab-label {
+  display: inline;
+}

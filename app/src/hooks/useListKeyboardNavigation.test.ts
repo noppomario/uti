@@ -270,7 +270,7 @@ describe('useListKeyboardNavigation', () => {
       expect(handleRight).toHaveBeenCalledWith('item1', 0);
     });
 
-    it('does not call onRight with empty items', () => {
+    it('calls onRight with placeholder values when list is empty (for tab switching)', () => {
       const handleRight = vi.fn();
       const { result } = renderHook(() => useListKeyboardNavigation([], { onRight: handleRight }));
 
@@ -281,7 +281,8 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(handleRight).not.toHaveBeenCalled();
+      // Called with undefined item and -1 index for empty list
+      expect(handleRight).toHaveBeenCalledWith(undefined, -1);
     });
   });
 

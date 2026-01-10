@@ -265,19 +265,30 @@ pub fn install_gnome_extension(zip_path: &PathBuf) -> Result<(), UpdateError> {
     Ok(())
 }
 
-/// Install an RPM package using pkexec (Polkit authentication)
+/// Install multiple RPM packages in a single pkexec session
+///
+/// This function installs all RPMs in one authentication prompt,
+/// similar to how install.sh handles it.
 ///
 /// # Arguments
 ///
-/// * `rpm_path` - The path to the RPM file
+/// * `rpm_paths` - Slice of paths to RPM files
 ///
 /// # Returns
 ///
 /// Returns `Ok(())` if installation was successful
-pub fn install_rpm(rpm_path: &PathBuf) -> Result<(), UpdateError> {
-    let output = Command::new("pkexec")
-        .args(["dnf", "install", "-y"])
-        .arg(rpm_path)
+pub fn install_rpms(rpm_paths: &[PathBuf]) -> Result<(), UpdateError> {
+    if rpm_paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut cmd = Command::new("pkexec");
+    cmd.args(["dnf", "install", "-y"]);
+    for path in rpm_paths {
+        cmd.arg(path);
+    }
+
+    let output = cmd
         .output()
         .map_err(|e| UpdateError::Install(format!("Failed to run pkexec: {}", e)))?;
 
@@ -302,7 +313,9 @@ pub fn install_rpm(rpm_path: &PathBuf) -> Result<(), UpdateError> {
 ///
 /// Returns `Ok(())` if update was successful
 pub async fn perform_update(result: &UpdateCheckResult) -> Result<(), UpdateError> {
-    // Download and install daemon first (dependency)
+    let mut rpm_paths: Vec<PathBuf> = Vec::new();
+
+    // Download daemon RPM
     if let Some(ref daemon_url) = result.daemon_rpm_url {
         println!("Downloading daemon RPM...");
         let daemon_path = download_rpm(
@@ -310,16 +323,20 @@ pub async fn perform_update(result: &UpdateCheckResult) -> Result<(), UpdateErro
             &format!("uti-daemon-{}.rpm", result.latest_version),
         )
         .await?;
-        println!("Installing daemon RPM...");
-        install_rpm(&daemon_path)?;
+        rpm_paths.push(daemon_path);
     }
 
-    // Download and install uti app
+    // Download uti app RPM
     if let Some(ref uti_url) = result.uti_rpm_url {
         println!("Downloading uti RPM...");
         let uti_path = download_rpm(uti_url, &format!("uti-{}.rpm", result.latest_version)).await?;
-        println!("Installing uti RPM...");
-        install_rpm(&uti_path)?;
+        rpm_paths.push(uti_path);
+    }
+
+    // Install all RPMs in a single pkexec session (one authentication prompt)
+    if !rpm_paths.is_empty() {
+        println!("Installing RPM packages...");
+        install_rpms(&rpm_paths)?;
     }
 
     // Download and install GNOME extension (if available and on GNOME)
