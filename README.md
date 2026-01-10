@@ -1,6 +1,7 @@
 <div align="center">
 
 <img src="app/src-tauri/icons/icon.png" alt="uti icon" width="128" style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+
 # uti
 
 [![Release](https://img.shields.io/github/v/release/noppomario/uti)](https://github.com/noppomario/uti/releases)
@@ -19,6 +20,10 @@
 
 > A modern clipboard manager and app launcher for Linux with double-Ctrl toggle
 
+<img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="200">
+<img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="200">
+<img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="200">
+
 </div>
 
 ## ✨ Features
@@ -34,11 +39,7 @@
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
 
-<p align="center">
-  <img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="200">
-  <img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="200">
-  <img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="200">
-</p>
+
 
 ## 📋 System Requirements
 
