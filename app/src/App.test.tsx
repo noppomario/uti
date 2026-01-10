@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -108,5 +108,158 @@ describe('App', () => {
 
     // Assert
     expect(invoke).toHaveBeenCalledWith('toggle_window');
+  });
+
+  describe('keyboard shortcuts', () => {
+    it('focuses search bar with Ctrl+F', async () => {
+      // Arrange
+      await act(async () => {
+        render(<App />);
+      });
+
+      // Get search input
+      const searchInput = screen.getByPlaceholderText(/search history/i);
+
+      // Ensure search is not focused initially
+      expect(document.activeElement).not.toBe(searchInput);
+
+      // Act - Press Ctrl+F
+      await act(async () => {
+        fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+      });
+
+      // Assert - Search bar should be focused
+      expect(document.activeElement).toBe(searchInput);
+    });
+
+    it('focuses search bar with Ctrl+F on launcher tab', async () => {
+      // Arrange
+      const { invoke } = await import('@tauri-apps/api/core');
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_clipboard_history') return [];
+        if (cmd === 'get_launcher_config') {
+          return { commands: [] };
+        }
+        return [];
+      });
+
+      await act(async () => {
+        render(<App />);
+      });
+
+      // Switch to launcher tab
+      const launcherTab = screen.getByRole('tab', { name: /launcher/i });
+      await act(async () => {
+        fireEvent.click(launcherTab);
+      });
+
+      // Wait for launcher config to load
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+
+      // Get search input
+      const searchInput = screen.getByPlaceholderText(/search apps/i);
+
+      // Ensure search is not focused initially
+      expect(document.activeElement).not.toBe(searchInput);
+
+      // Act - Press Ctrl+F
+      await act(async () => {
+        fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+      });
+
+      // Assert - Search bar should be focused
+      expect(document.activeElement).toBe(searchInput);
+    });
+  });
+
+  describe('keyboard navigation', () => {
+    it('focuses list from search bar with ArrowDown on launcher tab', async () => {
+      // Arrange
+      const { invoke } = await import('@tauri-apps/api/core');
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_clipboard_history') return [];
+        if (cmd === 'get_launcher_config') {
+          return { commands: [{ id: '1', name: 'Test App', command: 'test', args: [] }] };
+        }
+        return [];
+      });
+
+      await act(async () => {
+        render(<App />);
+      });
+
+      // Switch to launcher tab
+      const launcherTab = screen.getByRole('tab', { name: /launcher/i });
+      await act(async () => {
+        fireEvent.click(launcherTab);
+      });
+
+      // Focus search bar
+      const searchInput = screen.getByPlaceholderText(/search apps/i);
+      await act(async () => {
+        searchInput.focus();
+      });
+
+      // Press ArrowDown to focus list
+      await act(async () => {
+        fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      });
+
+      // Wait for requestAnimationFrame
+      await act(async () => {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      });
+
+      // List should be focused (document.activeElement should not be input)
+      expect(document.activeElement).not.toBe(searchInput);
+    });
+
+    it('focuses search bar from list with ArrowUp at first item on launcher tab', async () => {
+      // Arrange
+      const { invoke } = await import('@tauri-apps/api/core');
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_clipboard_history') return [];
+        if (cmd === 'get_launcher_config') {
+          return { commands: [{ id: '1', name: 'Test App', command: 'test', args: [] }] };
+        }
+        return [];
+      });
+
+      await act(async () => {
+        render(<App />);
+      });
+
+      // Switch to launcher tab
+      const launcherTab = screen.getByRole('tab', { name: /launcher/i });
+      await act(async () => {
+        fireEvent.click(launcherTab);
+      });
+
+      // Wait for launcher config to load
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+
+      // Find and focus the list
+      const list = document.querySelector('ul[tabindex="0"]');
+      expect(list).not.toBeNull();
+
+      await act(async () => {
+        (list as HTMLElement).focus();
+      });
+
+      // Get search input
+      const searchInput = screen.getByPlaceholderText(/search apps/i);
+
+      // Press ArrowUp to focus search bar
+      await act(async () => {
+        fireEvent.keyDown(list as HTMLElement, { key: 'ArrowUp' });
+      });
+
+      // Search bar should be focused
+      expect(document.activeElement).toBe(searchInput);
+    });
   });
 });

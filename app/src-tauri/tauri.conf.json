@@ -1,6 +1,6 @@
 {
   "productName": "uti",
-  "version": "0.0.11",
+  "version": "0.1.0",
   "identifier": "io.github.noppomario.uti",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -30,6 +30,8 @@
         "resizable": false,
         "fullscreen": false,
         "decorations": false,
+        "transparent": true,
+        "shadow": true,
         "center": true,
         "visible": false,
         "skipTaskbar": true,
@@ -55,6 +57,8 @@
             "core:window:allow-is-visible",
             "core:window:allow-cursor-position",
             "core:window:allow-set-position",
+            "core:window:allow-set-size",
+            "core:window:allow-start-dragging",
             "clipboard-manager:allow-read-text",
             "clipboard-manager:allow-write-text"
           ]

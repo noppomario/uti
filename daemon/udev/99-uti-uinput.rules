@@ -1,0 +1,3 @@
+# uti uinput access
+# Allows members of the input group to create virtual input devices
+KERNEL=="uinput", GROUP="input", MODE="0660"

@@ -45,7 +45,7 @@ describe('useListKeyboardNavigation', () => {
       expect(result.current.selectedIndex).toBe(1);
     });
 
-    it('wraps around to first item by default', () => {
+    it('stays at last item by default', () => {
       const { result } = renderHook(() => useListKeyboardNavigation(mockItems));
 
       // Move to last item
@@ -61,12 +61,12 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(result.current.selectedIndex).toBe(0);
+      expect(result.current.selectedIndex).toBe(2);
     });
 
-    it('does not wrap when wrapAround is false', () => {
+    it('wraps around when wrapAround is true', () => {
       const { result } = renderHook(() =>
-        useListKeyboardNavigation(mockItems, { wrapAround: false })
+        useListKeyboardNavigation(mockItems, { wrapAround: true })
       );
 
       // Move to last item
@@ -82,7 +82,7 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(result.current.selectedIndex).toBe(2);
+      expect(result.current.selectedIndex).toBe(0);
     });
 
     it('does nothing with empty items', () => {
@@ -118,7 +118,7 @@ describe('useListKeyboardNavigation', () => {
       expect(result.current.selectedIndex).toBe(0);
     });
 
-    it('wraps around to last item by default', () => {
+    it('stays at first item by default', () => {
       const { result } = renderHook(() => useListKeyboardNavigation(mockItems));
 
       act(() => {
@@ -128,7 +128,62 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(result.current.selectedIndex).toBe(2);
+      expect(result.current.selectedIndex).toBe(0);
+    });
+
+    it('calls onUpAtTop when at first item', () => {
+      const handleUpAtTop = vi.fn();
+      const { result } = renderHook(() =>
+        useListKeyboardNavigation(mockItems, { onUpAtTop: handleUpAtTop })
+      );
+
+      // At first item (index 0)
+      act(() => {
+        result.current.handleKeyDown({
+          key: 'ArrowUp',
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(handleUpAtTop).toHaveBeenCalled();
+    });
+
+    it('does not call onUpAtTop when not at first item', () => {
+      const handleUpAtTop = vi.fn();
+      const { result } = renderHook(() =>
+        useListKeyboardNavigation(mockItems, { onUpAtTop: handleUpAtTop })
+      );
+
+      // Move to index 1
+      act(() => {
+        result.current.setSelectedIndex(1);
+      });
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: 'ArrowUp',
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(handleUpAtTop).not.toHaveBeenCalled();
+      expect(result.current.selectedIndex).toBe(0);
+    });
+
+    it('calls onUpAtTop with empty items to allow navigation to search bar', () => {
+      const handleUpAtTop = vi.fn();
+      const { result } = renderHook(() =>
+        useListKeyboardNavigation([], { onUpAtTop: handleUpAtTop })
+      );
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: 'ArrowUp',
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(handleUpAtTop).toHaveBeenCalled();
     });
   });
 
@@ -215,7 +270,7 @@ describe('useListKeyboardNavigation', () => {
       expect(handleRight).toHaveBeenCalledWith('item1', 0);
     });
 
-    it('does not call onRight with empty items', () => {
+    it('calls onRight with placeholder values when list is empty (for tab switching)', () => {
       const handleRight = vi.fn();
       const { result } = renderHook(() => useListKeyboardNavigation([], { onRight: handleRight }));
 
@@ -226,7 +281,8 @@ describe('useListKeyboardNavigation', () => {
         } as unknown as React.KeyboardEvent);
       });
 
-      expect(handleRight).not.toHaveBeenCalled();
+      // Called with undefined item and -1 index for empty list
+      expect(handleRight).toHaveBeenCalledWith(undefined, -1);
     });
   });
 

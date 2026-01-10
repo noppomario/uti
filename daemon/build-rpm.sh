@@ -72,6 +72,7 @@ sed "s/^Version:.*/Version:        $VERSION/" "$PROJECT_ROOT/daemon/uti-daemon.s
 # Copy build files to SOURCES (rpmbuild expects them there or uses absolute paths)
 cp "$PROJECT_ROOT/target/release/uti-daemon" "$RPMBUILD_DIR/SOURCES/"
 cp "$PROJECT_ROOT/daemon/systemd/uti-daemon.service" "$RPMBUILD_DIR/SOURCES/"
+cp "$PROJECT_ROOT/daemon/udev/99-uti-uinput.rules" "$RPMBUILD_DIR/SOURCES/"
 
 # Build RPM with source directory override
 echo "Building RPM..."

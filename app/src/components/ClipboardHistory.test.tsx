@@ -4,7 +4,7 @@
  * Displays clipboard history with keyboard navigation support.
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ClipboardHistory } from './ClipboardHistory';
 
@@ -191,128 +191,207 @@ describe('ClipboardHistory', () => {
     });
   });
 
-  it('should not show tooltip without hover', () => {
-    const onSelect = vi.fn();
-    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
-
-    // No tooltip by default
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
-  });
-
-  it('should show tooltip after delay on mouse hover', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
-
-    // Hover over second item
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-
-    // Tooltip should not show immediately
-    expect(container.querySelector('[data-tooltip]')).toBeNull();
-
-    // Advance timer past delay
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip?.textContent).toBe('Item 2');
-
-    vi.useRealTimers();
-  });
-
-  it('should not show tooltip if mouse leaves before delay', () => {
-    vi.useFakeTimers();
+  it('should have title attribute for tooltip', () => {
     const onSelect = vi.fn();
     const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
     const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-
-    // Leave before delay
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    fireEvent.mouseLeave(secondItem);
-
-    // Advance past original delay
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
-
-    vi.useRealTimers();
+    expect(secondItem.getAttribute('title')).toBe('Item 2');
   });
 
-  it('should hide tooltip on mouse leave', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+  describe('star button (pin to snippets)', () => {
+    it('should show star button when onTogglePin is provided', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
 
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-    act(() => {
-      vi.advanceTimersByTime(500);
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      expect(starButtons.length).toBe(3);
     });
 
-    // Tooltip is visible
-    expect(container.querySelector('[data-tooltip]')).not.toBeNull();
+    it('should not show star button when onTogglePin is not provided', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
-    // Leave
-    fireEvent.mouseLeave(secondItem);
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      expect(starButtons.length).toBe(0);
+    });
 
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
+    it('should show pinned state when item is in pendingPins', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set([1])} // Second item is pinned
+        />
+      );
 
-    vi.useRealTimers();
+      const pinnedButtons = container.querySelectorAll('[aria-label="Unpin from snippets"]');
+      expect(pinnedButtons.length).toBe(1);
+      expect(pinnedButtons[0]?.className).toContain('text-app-accent');
+    });
+
+    it('should call onTogglePin with index when star button is clicked', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      fireEvent.click(starButtons[1]); // Click second item's star button
+
+      expect(onTogglePin).toHaveBeenCalledWith(1);
+      expect(onTogglePin).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not trigger onSelect when star button is clicked', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const starButtons = container.querySelectorAll('[aria-label="Pin to snippets"]');
+      fireEvent.click(starButtons[0]);
+
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onTogglePin).toHaveBeenCalledWith(0);
+    });
+
+    it('should toggle star with S key on selected item', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      // Press S on first item (selected by default)
+      fireEvent.keyDown(list, { key: 's' });
+
+      expect(onTogglePin).toHaveBeenCalledWith(0);
+      expect(onTogglePin).toHaveBeenCalledTimes(1);
+    });
+
+    it('should toggle star with uppercase S key', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={mockItems}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      // Navigate to second item then press S
+      fireEvent.keyDown(list, { key: 'ArrowDown' });
+      fireEvent.keyDown(list, { key: 'S' });
+
+      expect(onTogglePin).toHaveBeenCalledWith(1);
+    });
+
+    it('should not call onTogglePin with S key when onTogglePin is not provided', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      // Should not throw and should fall through to other handlers
+      fireEvent.keyDown(list, { key: 's' });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('should not call onTogglePin with S key when items are empty', () => {
+      const onSelect = vi.fn();
+      const onTogglePin = vi.fn();
+      const { container } = render(
+        <ClipboardHistory
+          items={[]}
+          onSelect={onSelect}
+          onTogglePin={onTogglePin}
+          pendingPins={new Set()}
+        />
+      );
+
+      const emptyDiv = container.querySelector('div');
+      if (!emptyDiv) throw new Error('Empty state div not found');
+
+      fireEvent.keyDown(emptyDiv, { key: 's' });
+
+      expect(onTogglePin).not.toHaveBeenCalled();
+    });
   });
 
-  it('should not show tooltip when showTooltip is false', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(
-      <ClipboardHistory items={mockItems} onSelect={onSelect} showTooltip={false} />
-    );
+  describe('number key selection', () => {
+    it('should select item with number key 1-9', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-    act(() => {
-      vi.advanceTimersByTime(500);
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      fireEvent.keyDown(list, { key: '2' });
+
+      expect(onSelect).toHaveBeenCalledWith('Item 2');
     });
 
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip).toBeNull();
+    it('should not select item if number exceeds item count', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
 
-    vi.useRealTimers();
-  });
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
 
-  it('should use custom tooltipDelay', () => {
-    vi.useFakeTimers();
-    const onSelect = vi.fn();
-    const { container } = render(
-      <ClipboardHistory items={mockItems} onSelect={onSelect} tooltipDelay={1000} />
-    );
+      fireEvent.keyDown(list, { key: '9' });
 
-    const secondItem = container.querySelectorAll('[data-clipboard-item]')[1];
-    fireEvent.mouseEnter(secondItem);
-
-    // Should not show after 500ms (default)
-    act(() => {
-      vi.advanceTimersByTime(500);
+      expect(onSelect).not.toHaveBeenCalled();
     });
-    expect(container.querySelector('[data-tooltip]')).toBeNull();
 
-    // Should show after 1000ms (custom delay)
-    act(() => {
-      vi.advanceTimersByTime(500);
+    it('should select first item with key 1', () => {
+      const onSelect = vi.fn();
+      const { container } = render(<ClipboardHistory items={mockItems} onSelect={onSelect} />);
+
+      const list = container.querySelector('ul');
+      if (!list) throw new Error('List not found');
+
+      fireEvent.keyDown(list, { key: '1' });
+
+      expect(onSelect).toHaveBeenCalledWith('Item 1');
     });
-    const tooltip = container.querySelector('[data-tooltip]');
-    expect(tooltip?.textContent).toBe('Item 2');
-
-    vi.useRealTimers();
   });
 });

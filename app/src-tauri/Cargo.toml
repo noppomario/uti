@@ -1,6 +1,6 @@
 [package]
 name = "uti"
-version = "0.0.11"
+version = "0.1.0"
 description = "Double Ctrl hotkey desktop tool"
 authors = []
 license = "MIT"
@@ -31,6 +31,7 @@ semver = "1"
 quick-xml = { version = "0.37", features = ["serialize"] }
 percent-encoding = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3"

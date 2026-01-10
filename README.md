@@ -1,8 +1,8 @@
 <div align="center">
 
-# uti
-
 <img src="app/src-tauri/icons/icon.png" alt="uti icon" width="128" style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+
+# uti
 
 [![Release](https://img.shields.io/github/v/release/noppomario/uti)](https://github.com/noppomario/uti/releases)
 [![CI](https://github.com/noppomario/uti/actions/workflows/ci.yml/badge.svg)](https://github.com/noppomario/uti/actions/workflows/ci.yml)
@@ -20,22 +20,26 @@
 
 > A modern clipboard manager and app launcher for Linux with double-Ctrl toggle
 
+<img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="200">
+<img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="200">
+<img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="200">
+
 </div>
 
 ## ✨ Features
 
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
+- ⭐ **Snippets**: Pin frequently used text for quick access (star icon in clipboard history)
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
+- 💬 **Prompt**: Quick text input with auto-paste to active window (Ctrl+Enter)
+- 🔍 **Search**: Filter clipboard history or search system applications in real-time
+- 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **System Tray**: Runs in the background with tray icon control
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
 
-<p align="center">
-  <img src="docs/assets/screenshot_1.png" alt="Clipboard tab" width="32%">
-  <img src="docs/assets/screenshot_2.png" alt="Launcher tab" width="32%">
-  <img src="docs/assets/screenshot_3.png" alt="Jump list expanded" width="32%">
-</p>
+
 
 ## 📋 System Requirements
 
@@ -53,7 +57,8 @@ curl -fsSL https://raw.githubusercontent.com/noppomario/uti/main/install.sh | ba
 
 After installation, **log out and log back in** (required for input group), then run `uti`.
 
-### GNOME Users
+<details>
+<summary><strong>GNOME Users</strong></summary>
 
 On GNOME, the installer automatically installs the "uti for GNOME" extension. After logging back in, enable it:
 
@@ -71,6 +76,8 @@ This extension provides:
 The extension displays Tauri's tray icon directly, so no additional extensions (like AppIndicator) are required.
 
 Without the extension, uti still works but the window appears at screen center.
+
+</details>
 
 <details>
 <summary>Using AppIndicator instead?</summary>
@@ -106,16 +113,28 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 | 🎨 Styling | Tailwind CSS v4 |
 | 📦 Bundler | Vite 6 + Bun |
 | 🔧 Linting | Biome (25-100x faster than ESLint) |
-| 🎹 Daemon | Rust + evdev + D-Bus |
+| 🎹 Daemon | Rust + evdev + uinput + D-Bus |
 
 ## 📖 Usage
 
 ### Basic Operation
 
 1. Press **Ctrl twice quickly** to toggle window visibility
-2. Use **←/→** to switch between Clipboard and Launcher tabs
+2. Use **←/→** to switch between Clipboard, Snippets, Launcher, and Prompt tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
-4. In Launcher tab, press **→** to expand jump list (recent files)
+4. Press **1-9** to quickly select an item by its number
+5. Press **Ctrl+F** to focus the search bar
+6. **Type to search**: Filter items or search system applications
+7. **Escape** clears search and returns focus to the list
+8. In **Clipboard tab**, press **S** or click **⭐** (star icon) to pin item to Snippets
+   - Item is immediately added to Snippets tab
+   - Item is removed from Clipboard when the window closes
+9. In **Launcher tab**, press **→** to expand jump list (recent files)
+10. In **Prompt tab**: Type text and press **Ctrl+Enter** to paste to active window
+    - Text is copied to clipboard, window hides, and text is pasted to the previously active window
+    - **Note**: Auto-paste uses Ctrl+Shift+V, optimized for terminal emulators. Regular text editors may require manual paste (Ctrl+V).
+11. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
+    - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
 ### System Tray
 
@@ -126,8 +145,6 @@ Right-click the tray icon for options:
 - **Check for Updates...**: Check for new versions
 - **GitHub**: Open project page
 - **Quit**: Exit application
-
-<img src="docs/assets/screenshot_4.png" alt="System tray menu" width="280">
 
 ### Updating
 
@@ -149,19 +166,37 @@ Configuration file: `~/.config/uti/config.json`
 
 ```json
 {
-  "theme": "dark",
-  "clipboardHistoryLimit": 50,
-  "showTooltip": true,
-  "tooltipDelay": 500
+  "theme": {
+    "color": "dark",
+    "size": "normal"
+  },
+  "clipboardHistoryLimit": 50
 }
 ```
 
-| Option                  | Type    | Default | Description                     |
-| ----------------------- | ------- | ------- | ------------------------------- |
-| `theme`                 | string  | `dark`  | UI theme: `dark` or `light`     |
-| `clipboardHistoryLimit` | number  | `50`    | Max clipboard items to store    |
-| `showTooltip`           | boolean | `true`  | Show tooltip on hover           |
-| `tooltipDelay`          | number  | `500`   | Tooltip delay in ms             |
+| Option                  | Type   | Default                            | Description                  |
+| ----------------------- | ------ | ---------------------------------- | ---------------------------- |
+| `theme.color`           | string | `dark`                             | `midnight`, `dark`, `light`  |
+| `theme.size`            | string | `normal`                           | `minimal`, `normal`, `wide`  |
+| `clipboardHistoryLimit` | number | `50`                               | Max clipboard items to store |
+
+### Snippets Data
+
+Snippets are stored in `~/.config/uti/snippets.json`:
+
+```json
+{
+  "items": [
+    { "id": "my-email", "label": "My Email", "value": "user@example.com" }
+  ]
+}
+```
+
+- `id`: Unique identifier (any string; auto-generated UUID when added via UI)
+- `label`: Optional display name (shows `value` if omitted)
+- `value`: The actual text to copy
+
+To add snippets manually, edit this file with any unique `id` string.
 
 ### Launcher Configuration
 
@@ -253,7 +288,7 @@ sudo gpasswd -d $USER input
 | --------- | ---- |
 | **uti-daemon** | Detects double Ctrl press via evdev |
 | **uti** | Clipboard manager + App launcher UI (Tauri) |
-| **uti for GNOME** | GNOME Shell extension for tray icon + cursor positioning (optional) |
+| **uti for GNOME** | GNOME Shell extension for tray icon, cursor positioning, and always-on-top control (optional) |
 
 For details, see [Architecture Documentation](docs/ARCHITECTURE.md).
 
@@ -266,15 +301,16 @@ When you install uti, the following changes are made to your system:
 | **uti** | `/usr/bin/uti` | Main application (RPM package) |
 | **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
 | **User service** | `~/.config/systemd/user/` | Daemon autostart service |
-| **Config** | `~/.config/uti/` | User configuration, clipboard history, launcher config |
+| **Config** | `~/.config/uti/` | User configuration, clipboard history, snippets, launcher config |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
+| **udev rule** | `/etc/udev/rules.d/99-uti-uinput.rules` | Enables uinput access for auto-paste |
 | **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
 
 ### ⚠️ About the Input Group
 
-The daemon needs to read keyboard events from `/dev/input/*` devices. This requires membership in the **input group**. The installer automatically adds your user to this group.
+The daemon needs to read keyboard events from `/dev/input/*` devices and write to `/dev/uinput` for auto-paste. This requires membership in the **input group**. The installer automatically adds your user to this group.
 
-**Security note**: Members of the input group can read all input devices (keyboard, mouse). This is necessary for the double-Ctrl detection to work.
+**Security note**: Members of the input group can read all input devices (keyboard, mouse) and create virtual input devices. This is necessary for double-Ctrl detection and auto-paste to work.
 
 ## 👨‍💻 Development
 

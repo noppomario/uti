@@ -37,7 +37,7 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 - **Language**: JavaScript (GJS)
 - **UUID**: `uti@noppomario.github.io`
-- **Role**: StatusNotifierHost + window positioning
+- **Role**: StatusNotifierHost + window positioning + always-on-top control
 - **Settings**: GSettings (`org.gnome.shell.extensions.uti`)
 
 ## Key Technical Decisions
@@ -78,7 +78,9 @@ uti/
 ├── app/                        # Tauri frontend
 │   ├── src/
 │   │   ├── components/         # React components
+│   │   │   ├── Prompt.tsx      # Prompt input with auto-paste
 │   │   │   ├── ClipboardHistory.tsx  # Clipboard history list
+│   │   │   ├── Snippets.tsx    # Pinned snippets list
 │   │   │   ├── Launcher.tsx    # Launcher command list
 │   │   │   ├── JumpList.tsx    # Recent files list
 │   │   │   ├── TabBar.tsx      # Tab navigation
@@ -98,17 +100,23 @@ uti/
 │           ├── clipboard/      # Clipboard module
 │           │   ├── mod.rs      # ClipboardItem definition
 │           │   └── store.rs    # LRU clipboard storage
+│           ├── snippets/       # Snippets module
+│           │   ├── mod.rs      # SnippetItem definition
+│           │   └── store.rs    # JSON file storage
 │           ├── launcher/       # Launcher module
 │           │   ├── mod.rs      # LauncherConfig, HistorySource
 │           │   ├── store.rs    # Config file loading
 │           │   └── recent_files.rs  # XBEL/VSCode history
 │           └── updater.rs      # Self-update functionality
 ├── daemon/
-│   ├── src/main.rs             # evdev keyboard monitor + D-Bus sender
+│   ├── src/
+│   │   ├── main.rs             # evdev keyboard monitor + D-Bus sender/receiver
+│   │   └── uinput.rs           # Virtual keyboard for auto-paste
+│   ├── udev/                   # udev rules for uinput access
 │   ├── systemd/                # systemd user service
 │   └── uti-daemon.spec         # RPM spec
 ├── gnome-extension/            # GNOME Shell extension
-│   ├── extension.js            # StatusNotifierHost + positioning
+│   ├── extension.js            # StatusNotifierHost + positioning + always-on-top
 │   ├── metadata.json           # Extension metadata
 │   └── schemas/                # GSettings schema
 └── README.md                   # English documentation
@@ -139,16 +147,18 @@ uti/
 
 ```json
 {
-  "theme": "dark",
-  "clipboardHistoryLimit": 50,
-  "showTooltip": true,
-  "tooltipDelay": 500
+  "theme": {
+    "color": "dark",
+    "size": "normal"
+  },
+  "clipboardHistoryLimit": 50
 }
 ```
 
 **Validation**:
 
-- `theme`: "light" or "dark" (default: "dark")
+- `theme.color`: "midnight", "dark", or "light" (default: "dark")
+- `theme.size`: "minimal", "normal", or "wide" (default: "normal")
 - `clipboardHistoryLimit`: Must be > 0 (default: 50)
 
 **Auto-migration**: On startup, `clipboard.json` max_items syncs with
@@ -158,6 +168,20 @@ uti/
 
 - Rust: `AppConfig::load()` at startup
 - TypeScript: `getConfig()` async function
+
+**Snippets storage file**: `~/.config/uti/snippets.json`
+
+```json
+{
+  "items": [
+    { "id": "my-email", "label": "Email", "value": "user@example.com" }
+  ]
+}
+```
+
+- `id`: Unique identifier (any string; auto-generated UUID when added via UI)
+- `label`: Optional display name (shows value if empty/null)
+- `value`: The actual text to copy to clipboard
 
 ## Development Environment
 
@@ -262,6 +286,8 @@ bun run all:test               # Parallel execution
 4. Window position/size not persisted
 5. Window appears in dock/taskbar on Wayland (Tauri limitation, see
    [#9829](https://github.com/tauri-apps/tauri/issues/9829))
+6. Always-on-top (pin) requires "uti for GNOME" extension on GNOME/Wayland
+   (without extension, pin only disables auto-hide)
 
 ## Roadmap
 

@@ -2,6 +2,7 @@
  * ListItem component
  *
  * Shared list item button with consistent styling for keyboard-navigable lists.
+ * Uses CSS variables for sizing to support theme-based scaling.
  */
 
 import type React from 'react';
@@ -19,6 +20,10 @@ export interface ListItemProps {
   suffix?: React.ReactNode;
   /** Called when the suffix is clicked (if provided, suffix becomes clickable) */
   onSuffixClick?: () => void;
+  /** Aria label for the suffix button (default: "Expand") */
+  suffixAriaLabel?: string;
+  /** Additional class name for the suffix button */
+  suffixClassName?: string;
   /** Called when the item is clicked */
   onClick: () => void;
   /** Called when mouse enters the item */
@@ -32,6 +37,13 @@ export interface ListItemProps {
   /** Optional ref callback for the button element */
   buttonRef?: (el: HTMLButtonElement | null) => void;
 }
+
+/** Inline styles using CSS variables for theme-based sizing */
+const sizeStyles: React.CSSProperties = {
+  fontSize: 'var(--size-font-base)',
+  padding: 'var(--size-padding-y) var(--size-padding-x)',
+  borderRadius: 'var(--size-radius)',
+};
 
 /**
  * List item button with consistent styling
@@ -54,6 +66,8 @@ export function ListItem({
   showIndex = true,
   suffix,
   onSuffixClick,
+  suffixAriaLabel = 'Expand',
+  suffixClassName = '',
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -61,13 +75,13 @@ export function ListItem({
   dataAttributes,
   buttonRef,
 }: ListItemProps) {
-  const baseClassName = `w-full cursor-pointer rounded px-2 py-1 text-left text-xs truncate flex items-center ${
+  const baseClassName = `w-full cursor-pointer text-left truncate flex items-center ${
     selected
       ? 'bg-app-item-selected text-app-text-on-selected'
       : 'bg-app-item text-app-text hover:bg-app-item-hover'
   }`;
 
-  // When suffix has its own click handler, use div container with separate buttons
+  // When suffix has its own click handler, use div container with 50/50 split buttons
   if (onSuffixClick && suffix) {
     return (
       // biome-ignore lint/a11y/useSemanticElements: div is visual container, interaction via child buttons
@@ -77,14 +91,16 @@ export function ListItem({
         {...dataAttributes}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className={baseClassName}
+        className={`${baseClassName} border border-solid border-current/30`}
+        style={sizeStyles}
       >
         <button
           ref={buttonRef}
           type="button"
           title={title}
           onClick={onClick}
-          className="truncate flex-1 text-left bg-transparent border-none cursor-pointer p-0"
+          className="w-1/2 truncate text-left bg-transparent border-none cursor-pointer p-0"
+          style={{ fontSize: 'inherit' }}
         >
           {showIndex && <>{index + 1}:&nbsp;&nbsp;&nbsp;&nbsp;</>}
           {children}
@@ -92,8 +108,10 @@ export function ListItem({
         <button
           type="button"
           tabIndex={-1}
+          aria-label={suffixAriaLabel}
           onClick={onSuffixClick}
-          className="ml-2 px-1 text-app-text-muted hover:text-app-text cursor-pointer bg-transparent border-none"
+          className={`w-1/2 flex justify-end items-center cursor-pointer bg-transparent border-none hover:opacity-70 transition-opacity pr-2 ${suffixClassName}`}
+          style={{ fontSize: 'inherit' }}
         >
           {suffix}
         </button>
@@ -113,12 +131,13 @@ export function ListItem({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={baseClassName}
+      style={sizeStyles}
     >
       <span className="truncate flex-1">
         {showIndex && <>{index + 1}:&nbsp;&nbsp;&nbsp;&nbsp;</>}
         {children}
       </span>
-      {suffix}
+      {suffix && <span className="mr-2 shrink-0 flex items-center">{suffix}</span>}
     </button>
   );
 }

@@ -97,28 +97,50 @@ describe('Launcher', () => {
     expect(selected?.textContent).toContain('1:');
   });
 
-  it('wraps around when navigating past end', () => {
+  it('stays at last item when navigating past end', () => {
     const { container } = render(<Launcher items={mockItems} onSelect={() => {}} />);
     const list = container.querySelector('ul') as Element;
 
     // Go to second item
     fireEvent.keyDown(list, { key: 'ArrowDown' });
-    // Go past end - should wrap to first
+    // Go past end - should stay at last
     fireEvent.keyDown(list, { key: 'ArrowDown' });
+
+    const selected = container.querySelector('[data-selected="true"]');
+    expect(selected?.textContent).toContain('2:');
+  });
+
+  it('stays at first item when navigating before start', () => {
+    const { container } = render(<Launcher items={mockItems} onSelect={() => {}} />);
+    const list = container.querySelector('ul') as Element;
+
+    // Go before start - should stay at first
+    fireEvent.keyDown(list, { key: 'ArrowUp' });
 
     const selected = container.querySelector('[data-selected="true"]');
     expect(selected?.textContent).toContain('1:');
   });
 
-  it('wraps around when navigating before start', () => {
-    const { container } = render(<Launcher items={mockItems} onSelect={() => {}} />);
+  it('calls onUpAtTop when ArrowUp is pressed at first item', () => {
+    const handleUpAtTop = vi.fn();
+    const { container } = render(
+      <Launcher items={mockItems} onSelect={() => {}} onUpAtTop={handleUpAtTop} />
+    );
     const list = container.querySelector('ul') as Element;
 
-    // Go before start - should wrap to last
     fireEvent.keyDown(list, { key: 'ArrowUp' });
 
-    const selected = container.querySelector('[data-selected="true"]');
-    expect(selected?.textContent).toContain('2:');
+    expect(handleUpAtTop).toHaveBeenCalled();
+  });
+
+  it('calls onUpAtTop when ArrowUp is pressed with empty items', () => {
+    const handleUpAtTop = vi.fn();
+    render(<Launcher items={[]} onSelect={() => {}} onUpAtTop={handleUpAtTop} />);
+
+    const emptyState = screen.getByText(/no launcher commands/i);
+    fireEvent.keyDown(emptyState, { key: 'ArrowUp' });
+
+    expect(handleUpAtTop).toHaveBeenCalled();
   });
 
   it('selects item with Enter key', () => {
@@ -234,7 +256,7 @@ describe('Launcher', () => {
       render(<Launcher items={itemsWithHistory} onSelect={() => {}} />);
 
       // VSCode has historySource, so expand indicator button should exist
-      const expandIndicator = screen.getByRole('button', { name: '>' });
+      const expandIndicator = screen.getByRole('button', { name: 'Expand' });
       expect(expandIndicator).toBeDefined();
     });
 
@@ -257,7 +279,7 @@ describe('Launcher', () => {
       expect(buttons).toHaveLength(2);
 
       // Click the expand indicator (suffix button)
-      const expandIndicator = screen.getByRole('button', { name: '>' });
+      const expandIndicator = screen.getByRole('button', { name: 'Expand' });
       fireEvent.click(expandIndicator);
 
       expect(handleExpand).toHaveBeenCalledWith(itemsWithHistory[0]);
@@ -288,11 +310,70 @@ describe('Launcher', () => {
       );
 
       // Click the expand indicator on already-expanded item
-      const expandIndicator = screen.getByRole('button', { name: '>' });
+      const expandIndicator = screen.getByRole('button', { name: 'Expand' });
       fireEvent.click(expandIndicator);
 
       expect(handleCollapse).toHaveBeenCalled();
       expect(handleExpand).not.toHaveBeenCalled();
+    });
+
+    it('calls onCollapse when clicking on empty space', () => {
+      const handleCollapse = vi.fn();
+      const itemsWithHistory: LauncherItem[] = [
+        {
+          id: 'vscode',
+          name: 'VSCode',
+          command: 'code',
+          args: [],
+          historySource: { type: 'vscode', path: '~/.config/Code' },
+        },
+      ];
+      const { container } = render(
+        <Launcher
+          items={itemsWithHistory}
+          onSelect={() => {}}
+          onCollapse={handleCollapse}
+          expandedItemId="vscode"
+          recentFiles={[]}
+        />
+      );
+
+      // Click directly on the ul (empty space), not on items
+      const list = container.querySelector('ul') as HTMLElement;
+      fireEvent.click(list);
+
+      expect(handleCollapse).toHaveBeenCalled();
+    });
+
+    it('does not call onCollapse when clicking on item', () => {
+      const handleCollapse = vi.fn();
+      const handleSelect = vi.fn();
+      const itemsWithHistory: LauncherItem[] = [
+        {
+          id: 'vscode',
+          name: 'VSCode',
+          command: 'code',
+          args: [],
+          historySource: { type: 'vscode', path: '~/.config/Code' },
+        },
+      ];
+      render(
+        <Launcher
+          items={itemsWithHistory}
+          onSelect={handleSelect}
+          onCollapse={handleCollapse}
+          expandedItemId="vscode"
+          recentFiles={[]}
+        />
+      );
+
+      // Click on the item content (left half button)
+      const mainButton = screen.getByRole('button', { name: /VSCode/ });
+      fireEvent.click(mainButton);
+
+      // onCollapse should NOT be called (click was on item, not empty space)
+      expect(handleCollapse).not.toHaveBeenCalled();
+      expect(handleSelect).toHaveBeenCalled();
     });
   });
 });
