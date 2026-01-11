@@ -55,6 +55,7 @@ Create your plan with EXACTLY these phases. Each phase must be included.
 **Goal**: Create detailed technical plan
 
 - [ ] Investigate codebase based on issue requirements
+  - Use `Task(subagent_type: "Explore")` for context-efficient codebase search
 - [ ] Identify files to modify/create
 - [ ] Design implementation approach
 - [ ] List test items
@@ -78,7 +79,9 @@ Then proceed to Phase 2.
 **Goal**: Execute the technical plan
 
 - [ ] Implement changes following Phase 1 plan
+  - For large/multi-file changes: use `Task(subagent_type: "implementer")` to isolate
 - [ ] Run tests: `bun run ci:local`
+  - Use `Task(subagent_type: "ci-runner")` to isolate verbose output
 - [ ] Track deviations from original plan
 
 ---
@@ -92,6 +95,8 @@ Check these files for potential updates:
 - [ ] README.md - User-facing documentation
 - [ ] CLAUDE.md - Project memory
 - [ ] .claude/rules/*.md - Architecture decisions
+
+Use `Task(subagent_type: "doc-updater")` for substantial doc updates.
 
 Report findings to user and update as specified.
 
