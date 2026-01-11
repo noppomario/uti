@@ -198,6 +198,8 @@ jobs:
           tool: git-cliff
 
       - name: Generate release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: git-cliff --latest --strip header > /tmp/release-notes.md
 
       - name: Download artifacts
