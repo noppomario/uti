@@ -1,0 +1,80 @@
+version: 2
+updates:
+  # Root bun workspace
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      bun-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Frontend (app/) - bun workspace
+  - package-ecosystem: "bun"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      frontend-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Frontend Rust (app/src-tauri) - Cargo
+  - package-ecosystem: "cargo"
+    directory: "/app/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    labels:
+      - "dependencies"
+      - "tauri"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      tauri-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Daemon (daemon/) - Cargo
+  - package-ecosystem: "cargo"
+    directory: "/daemon"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    labels:
+      - "dependencies"
+      - "daemon"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      daemon-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(deps)"
