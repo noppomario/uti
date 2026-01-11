@@ -91,3 +91,87 @@ pub fn reload_config() -> AppConfig {
     println!("Reloading configuration...");
     AppConfig::load()
 }
+
+/// Opens the launcher configuration file in the default editor
+///
+/// Opens `~/.config/uti/launcher.json` using the system's default editor.
+/// Creates the file with an empty config if it doesn't exist.
+///
+/// # Returns
+///
+/// Ok if successful, Err with error message if failed
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// await invoke('open_launcher_config');
+/// ```
+#[tauri::command]
+pub fn open_launcher_config() -> Result<(), String> {
+    use crate::launcher::get_launcher_config_path;
+
+    let path = get_launcher_config_path();
+
+    // Ensure the directory exists
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        }
+    }
+
+    // Create the file with default content if it doesn't exist
+    if !path.exists() {
+        let default_content = r#"{
+  "commands": []
+}
+"#;
+        std::fs::write(&path, default_content)
+            .map_err(|e| format!("Failed to create launcher config: {}", e))?;
+    }
+
+    open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
+}
+
+/// Opens the snippets configuration file in the default editor
+///
+/// Opens `~/.config/uti/snippets.json` using the system's default editor.
+/// Creates the file with an empty config if it doesn't exist.
+///
+/// # Returns
+///
+/// Ok if successful, Err with error message if failed
+///
+/// # Examples
+///
+/// ```typescript
+/// import { invoke } from '@tauri-apps/api/core';
+/// await invoke('open_snippets_config');
+/// ```
+#[tauri::command]
+pub fn open_snippets_config() -> Result<(), String> {
+    use crate::snippets::SnippetsStore;
+
+    let path = SnippetsStore::get_storage_path();
+
+    // Ensure the directory exists
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        }
+    }
+
+    // Create the file with default content if it doesn't exist
+    if !path.exists() {
+        let default_content = r#"{
+  "items": []
+}
+"#;
+        std::fs::write(&path, default_content)
+            .map_err(|e| format!("Failed to create snippets config: {}", e))?;
+    }
+
+    open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
+}

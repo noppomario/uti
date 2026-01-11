@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Transparent background for rounded window corners */
+html,
+body {
+  background: transparent;
+}
+
 @theme {
   /* ============================================
    * Light theme colors (default)
@@ -68,8 +74,8 @@
   --color-app-text-muted: #9a9996; /* Adwaita dim-label */
   --color-app-text-on-selected: #d4d4d4; /* same as text */
 
-  /* Accent colors */
-  --color-app-accent-info: #78aeed; /* @blue_2 */
+  /* Accent colors - slightly more saturated than Adwaita for better visibility */
+  --color-app-accent-info: #3584e4; /* GNOME accent blue */
   --color-app-accent-error: #ff7b63; /* @red_2 */
 }
 

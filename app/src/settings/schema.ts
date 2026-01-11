@@ -6,7 +6,7 @@
  */
 
 /** Supported field types for settings UI */
-export type FieldType = 'select' | 'number' | 'color' | 'button';
+export type FieldType = 'select' | 'number' | 'color' | 'button' | 'checkbox' | 'text';
 
 /** Base field definition */
 interface BaseField {
@@ -54,16 +54,44 @@ interface ColorField extends BaseField {
   allowClear?: boolean;
 }
 
+/** Checkbox field (toggle) */
+interface CheckboxField extends BaseField {
+  type: 'checkbox';
+  /** Config path: 'autoStart' */
+  configPath: string;
+}
+
+/** Text field (read-only display) */
+interface TextField extends BaseField {
+  type: 'text';
+  /** Value key to fetch from app state (not config) */
+  valueKey: 'version';
+}
+
 /** Action button field (no config binding) */
 interface ButtonField extends BaseField {
   type: 'button';
   /** Action to perform */
-  action: 'openConfigFolder' | 'reloadConfig';
-  /** Button variant */
-  variant?: 'primary' | 'secondary';
+  action:
+    | 'openConfigFolder'
+    | 'openLauncherConfig'
+    | 'openSnippetsConfig'
+    | 'reloadConfig'
+    | 'checkForUpdates'
+    | 'openGitHub';
+  /** Button variant: action (default), primary, or secondary */
+  variant?: 'primary' | 'action' | 'secondary';
+  /** Show external link icon */
+  externalLink?: boolean;
 }
 
-export type Field = SelectField | NumberField | ColorField | ButtonField;
+export type Field =
+  | SelectField
+  | NumberField
+  | ColorField
+  | ButtonField
+  | CheckboxField
+  | TextField;
 
 /** Settings section definition */
 export interface Section {
@@ -81,40 +109,63 @@ export type SettingsSchema = Section[];
 /** The settings schema definition */
 export const settingsSchema: SettingsSchema = [
   {
+    id: 'general',
+    titleKey: 'sections.general',
+    fields: [
+      {
+        key: 'autoStart',
+        labelKey: 'general.autoStart.label',
+        descriptionKey: 'general.autoStart.description',
+        type: 'checkbox',
+        configPath: 'autoStart',
+      },
+      {
+        key: 'language',
+        labelKey: 'general.language.label',
+        type: 'select',
+        configPath: 'language',
+        options: [
+          { value: 'en', labelKey: 'general.language.options.en' },
+          { value: 'ja', labelKey: 'general.language.options.ja' },
+        ],
+      },
+    ],
+  },
+  {
     id: 'appearance',
     titleKey: 'sections.appearance',
     fields: [
       {
         key: 'theme.color',
-        labelKey: 'theme.color.label',
-        descriptionKey: 'theme.color.description',
+        labelKey: 'appearance.theme.color.label',
+        descriptionKey: 'appearance.theme.color.description',
         type: 'select',
         configPath: 'theme.color',
         options: [
-          { value: 'midnight', labelKey: 'theme.color.options.midnight' },
-          { value: 'dark', labelKey: 'theme.color.options.dark' },
-          { value: 'light', labelKey: 'theme.color.options.light' },
+          { value: 'midnight', labelKey: 'appearance.theme.color.options.midnight' },
+          { value: 'dark', labelKey: 'appearance.theme.color.options.dark' },
+          { value: 'light', labelKey: 'appearance.theme.color.options.light' },
         ],
       },
       {
         key: 'theme.size',
-        labelKey: 'theme.size.label',
+        labelKey: 'appearance.theme.size.label',
         type: 'select',
         configPath: 'theme.size',
         options: [
-          { value: 'minimal', labelKey: 'theme.size.options.minimal' },
-          { value: 'normal', labelKey: 'theme.size.options.normal' },
-          { value: 'wide', labelKey: 'theme.size.options.wide' },
+          { value: 'minimal', labelKey: 'appearance.theme.size.options.minimal' },
+          { value: 'normal', labelKey: 'appearance.theme.size.options.normal' },
+          { value: 'wide', labelKey: 'appearance.theme.size.options.wide' },
         ],
       },
-      {
-        key: 'theme.accentColor',
-        labelKey: 'theme.accentColor.label',
-        descriptionKey: 'theme.accentColor.description',
-        type: 'color',
-        configPath: 'theme.accentColor',
-        allowClear: true,
-      },
+      // {
+      //   key: 'theme.accentColor',
+      //   labelKey: 'appearance.theme.accentColor.label',
+      //   descriptionKey: 'appearance.theme.accentColor.description',
+      //   type: 'color',
+      //   configPath: 'theme.accentColor',
+      //   allowClear: true,
+      // },
     ],
   },
   {
@@ -134,18 +185,28 @@ export const settingsSchema: SettingsSchema = [
     ],
   },
   {
-    id: 'language',
-    titleKey: 'sections.language',
+    id: 'snippets',
+    titleKey: 'sections.snippets',
     fields: [
       {
-        key: 'language',
-        labelKey: 'language.label',
-        type: 'select',
-        configPath: 'language',
-        options: [
-          { value: 'en', labelKey: 'language.options.en' },
-          { value: 'ja', labelKey: 'language.options.ja' },
-        ],
+        key: 'openSnippetsConfig',
+        labelKey: 'snippets.openConfig.label',
+        descriptionKey: 'snippets.openConfig.description',
+        type: 'button',
+        action: 'openSnippetsConfig',
+      },
+    ],
+  },
+  {
+    id: 'launcher',
+    titleKey: 'sections.launcher',
+    fields: [
+      {
+        key: 'openLauncherConfig',
+        labelKey: 'launcher.openConfig.label',
+        descriptionKey: 'launcher.openConfig.description',
+        type: 'button',
+        action: 'openLauncherConfig',
       },
     ],
   },
@@ -158,14 +219,38 @@ export const settingsSchema: SettingsSchema = [
         labelKey: 'advanced.openConfigFolder',
         type: 'button',
         action: 'openConfigFolder',
-        variant: 'secondary',
       },
       {
         key: 'reloadConfig',
         labelKey: 'advanced.reloadConfig',
         type: 'button',
         action: 'reloadConfig',
-        variant: 'secondary',
+      },
+    ],
+  },
+  {
+    id: 'about',
+    titleKey: 'sections.about',
+    fields: [
+      {
+        key: 'version',
+        labelKey: 'about.version.label',
+        type: 'text',
+        valueKey: 'version',
+      },
+      {
+        key: 'checkForUpdates',
+        labelKey: 'about.checkForUpdates.label',
+        type: 'button',
+        action: 'checkForUpdates',
+      },
+      {
+        key: 'openGitHub',
+        labelKey: 'about.openGitHub.label',
+        descriptionKey: 'about.openGitHub.description',
+        type: 'button',
+        action: 'openGitHub',
+        externalLink: true,
       },
     ],
   },

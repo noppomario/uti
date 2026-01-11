@@ -5,7 +5,9 @@
  * Initializes i18n and renders the SettingsPage component.
  */
 
+import { listen } from '@tauri-apps/api/event';
 import ReactDOM from 'react-dom/client';
+import type { AppConfig } from './config';
 import { getConfig } from './config';
 import './index.css';
 import './settings/i18n';
@@ -17,10 +19,9 @@ const COLOR_THEMES = ['midnight', 'dark', 'light'] as const;
 const SIZE_THEMES = ['minimal', 'normal', 'wide'] as const;
 
 /**
- * Apply theme based on configuration
+ * Apply theme from config
  */
-async function applyTheme() {
-  const config = await getConfig();
+function applyThemeFromConfig(config: AppConfig) {
   const root = document.documentElement;
   const { color, size, accentColor } = config.theme;
 
@@ -43,11 +44,24 @@ async function applyTheme() {
   // Apply custom accent color if specified
   if (accentColor) {
     root.style.setProperty('--color-app-item-selected', accentColor);
+  } else {
+    root.style.removeProperty('--color-app-item-selected');
   }
 }
 
-// Initialize theme and render
-applyTheme();
+/**
+ * Initialize theme from stored config
+ */
+async function initTheme() {
+  const config = await getConfig();
+  applyThemeFromConfig(config);
+}
+
+// Initialize theme and listen for changes
+initTheme();
+listen<AppConfig>('config_changed', event => {
+  applyThemeFromConfig(event.payload);
+});
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

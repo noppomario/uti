@@ -269,6 +269,31 @@ function App() {
     };
   }, [loadHistory, loadSnippets, processPendingPins]);
 
+  // Listen for config changes from settings window to update window size
+  useEffect(() => {
+    const setupListener = async () => {
+      const unlisten = await listen('config_changed', async () => {
+        // Update window size based on current tab
+        const mode = activeTab === 'prompt' ? 'prompt' : 'default';
+        try {
+          await invoke('set_window_mode', { mode });
+        } catch (err) {
+          console.error('Failed to update window size on config change:', err);
+        }
+      });
+      return unlisten;
+    };
+
+    let unlisten: (() => void) | undefined;
+    setupListener().then(fn => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [activeTab]);
+
   // Listen for double Ctrl press to toggle window
   useEffect(() => {
     /**

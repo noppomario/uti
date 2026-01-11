@@ -55,12 +55,14 @@ fn handle_settings(app: &AppHandle) {
         return;
     }
 
-    // Create settings window
+    // Create settings window with custom title bar (matches main window style)
     let (width, height) = window_size::SETTINGS;
+    let (min_width, min_height) = window_size::SETTINGS;
     match WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
         .title("uti - Settings")
         .inner_size(width, height)
-        .resizable(false)
+        .min_inner_size(min_width, min_height)
+        .resizable(true)
         .decorations(false)
         .transparent(true)
         .center()

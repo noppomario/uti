@@ -102,12 +102,25 @@ Report findings to user and update as specified.
 
 ---
 
-### Phase 5: Feedback and PR
+### Phase 5: Feedback
 
-**Goal**: Address feedback and create PR
+**Goal**: Address user feedback from testing
 
 - [ ] Address any feedback from user testing
-- [ ] Post final summary to Issue (if changes were made)
+- [ ] Iterate until user confirms implementation is complete
+
+**CHECKPOINT**: Wait for user to confirm feedback is complete.
+
+---
+
+### Phase 6: Final Review and PR
+
+**Goal**: Re-verify documentation, summarize, and create PR
+
+**IMPORTANT**: After feedback is complete, re-run Phase 3 and Phase 4 before creating PR.
+
+- [ ] Re-run Phase 3: Documentation Review (check if feedback changes require doc updates)
+- [ ] Re-run Phase 4: Completion Summary (post final summary to Issue)
 - [ ] Create branch, commit, push
 - [ ] Create PR: `gh pr create --base develop --title "..." --body "Closes owner/repo#123"`
 - [ ] Post PR link to Issue
@@ -116,7 +129,7 @@ Report findings to user and update as specified.
 
 ---
 
-### Phase 6: Post-Merge (User-Initiated)
+### Phase 7: Post-Merge (User-Initiated)
 
 **Trigger**: User says "PR merged" or "complete the issue"
 
@@ -188,8 +201,9 @@ Extract from: `https://github.com/{owner}/{repo}/issues/{number}`
 | ----- | ------- | ------- |
 | Plan approval | ExitPlanMode | Confirm implementation approach |
 | Testing | Phase 4 CHECKPOINT | User validates implementation |
-| PR merge | Phase 5 STOP | GitHub review process |
-| Post-merge | Phase 6 (user-initiated) | Final cleanup |
+| Feedback complete | Phase 5 CHECKPOINT | Confirm all feedback addressed |
+| PR merge | Phase 6 STOP | GitHub review process |
+| Post-merge | Phase 7 (user-initiated) | Final cleanup |
 
 ## Error Handling
 

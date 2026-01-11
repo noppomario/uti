@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import type { AppConfig, ColorTheme, SizeTheme } from './config';
@@ -56,6 +57,11 @@ async function initTheme() {
 
 // Apply theme on load
 initTheme();
+
+// Listen for config changes from settings window
+listen<AppConfig>('config_changed', event => {
+  applyTheme(event.payload);
+});
 
 /**
  * Application entry point

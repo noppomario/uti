@@ -3,6 +3,10 @@
  *
  * This module provides centralized configuration for the application.
  * Configuration is loaded from ~/.config/uti/config.json via Tauri backend.
+ *
+ * IMPORTANT: Default values are defined in Rust (src-tauri/src/config/defaults.rs).
+ * TypeScript defaults are fallbacks for when Rust backend is unavailable.
+ * Keep these in sync with the Rust definitions.
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -46,20 +50,16 @@ export interface AppConfig {
 }
 
 /**
- * Default theme configuration
- */
-export const defaultTheme: ThemeConfig = {
-  color: 'dark',
-  size: 'normal',
-};
-
-/**
- * Default application configuration
+ * Fallback default configuration
  *
- * Used as fallback if config file cannot be loaded.
+ * Used only when Rust backend is unavailable.
+ * Authoritative defaults are in: src-tauri/src/config/defaults.rs
  */
 export const defaultConfig: AppConfig = {
-  theme: defaultTheme,
+  theme: {
+    color: 'dark',
+    size: 'normal',
+  },
   clipboardHistoryLimit: 50,
   language: 'en',
 };

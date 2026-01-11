@@ -6,9 +6,11 @@
 
 import { useTranslation } from 'react-i18next';
 import { ButtonField } from './fields/ButtonField';
+import { CheckboxField } from './fields/CheckboxField';
 import { ColorField } from './fields/ColorField';
 import { NumberField } from './fields/NumberField';
 import { SelectField } from './fields/SelectField';
+import { TextField } from './fields/TextField';
 import type { Field } from './schema';
 
 interface FieldRendererProps {
@@ -63,9 +65,27 @@ export function FieldRenderer({ field, value, onChange, onAction }: FieldRendere
         />
       );
 
+    case 'checkbox':
+      return (
+        <CheckboxField
+          label={label}
+          description={description}
+          value={(value as boolean) ?? false}
+          onChange={v => onChange(field.configPath, v)}
+        />
+      );
+
+    case 'text':
+      return <TextField label={label} description={description} value={(value as string) ?? ''} />;
+
     case 'button':
       return (
-        <ButtonField label={label} variant={field.variant} onClick={() => onAction(field.action)} />
+        <ButtonField
+          label={label}
+          variant={field.variant}
+          externalLink={field.externalLink}
+          onClick={() => onAction(field.action)}
+        />
       );
 
     default:

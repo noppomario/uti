@@ -3,11 +3,16 @@
 //! Handles loading, saving, and validating application configuration.
 
 mod commands;
+pub mod defaults;
 
+use defaults::{DEFAULT_CLIPBOARD_LIMIT, DEFAULT_COLOR, DEFAULT_LANGUAGE, DEFAULT_SIZE};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub use commands::{open_config_folder, read_config, reload_config, save_config};
+pub use commands::{
+    open_config_folder, open_launcher_config, open_snippets_config, read_config, reload_config,
+    save_config,
+};
 
 /// Theme configuration
 ///
@@ -32,15 +37,15 @@ pub struct ThemeConfig {
 }
 
 fn default_color() -> String {
-    "dark".to_string()
+    DEFAULT_COLOR.to_string()
 }
 
 fn default_size() -> String {
-    "normal".to_string()
+    DEFAULT_SIZE.to_string()
 }
 
 fn default_language() -> String {
-    "en".to_string()
+    DEFAULT_LANGUAGE.to_string()
 }
 
 impl Default for ThemeConfig {
@@ -59,19 +64,19 @@ impl ThemeConfig {
         // Validate color
         if !matches!(self.color.as_str(), "midnight" | "dark" | "light") {
             eprintln!(
-                "Invalid color theme '{}', falling back to 'dark'",
-                self.color
+                "Invalid color theme '{}', falling back to '{}'",
+                self.color, DEFAULT_COLOR
             );
-            self.color = "dark".to_string();
+            self.color = DEFAULT_COLOR.to_string();
         }
 
         // Validate size
         if !matches!(self.size.as_str(), "minimal" | "normal" | "wide") {
             eprintln!(
-                "Invalid size theme '{}', falling back to 'normal'",
-                self.size
+                "Invalid size theme '{}', falling back to '{}'",
+                self.size, DEFAULT_SIZE
             );
-            self.size = "normal".to_string();
+            self.size = DEFAULT_SIZE.to_string();
         }
     }
 }
@@ -97,7 +102,7 @@ pub struct AppConfig {
 }
 
 fn default_clipboard_limit() -> usize {
-    50
+    DEFAULT_CLIPBOARD_LIMIT
 }
 
 impl Default for AppConfig {
@@ -137,14 +142,20 @@ impl AppConfig {
 
         // Validate clipboard_history_limit
         if self.clipboard_history_limit == 0 {
-            eprintln!("clipboard_history_limit cannot be 0, using default (50)");
-            self.clipboard_history_limit = 50;
+            eprintln!(
+                "clipboard_history_limit cannot be 0, using default ({})",
+                DEFAULT_CLIPBOARD_LIMIT
+            );
+            self.clipboard_history_limit = DEFAULT_CLIPBOARD_LIMIT;
         }
 
         // Validate language
         if !matches!(self.language.as_str(), "en" | "ja") {
-            eprintln!("Invalid language '{}', falling back to 'en'", self.language);
-            self.language = "en".to_string();
+            eprintln!(
+                "Invalid language '{}', falling back to '{}'",
+                self.language, DEFAULT_LANGUAGE
+            );
+            self.language = DEFAULT_LANGUAGE.to_string();
         }
     }
 

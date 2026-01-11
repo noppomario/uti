@@ -3,32 +3,50 @@
   "apply": "適用",
   "cancel": "キャンセル",
   "sections": {
+    "general": "一般",
     "appearance": "外観",
     "clipboard": "クリップボード",
-    "language": "言語",
-    "advanced": "詳細設定"
+    "snippets": "スニペット",
+    "launcher": "ランチャー",
+    "advanced": "詳細設定",
+    "about": "情報"
   },
-  "theme": {
-    "color": {
-      "label": "カラーテーマ",
-      "description": "アプリケーションの配色を選択します",
-      "options": {
-        "midnight": "ミッドナイト (Slate)",
-        "dark": "ダーク (Adwaita)",
-        "light": "ライト"
-      }
+  "general": {
+    "autoStart": {
+      "label": "ログイン時に起動",
+      "description": "ログイン時に uti を自動起動する"
     },
-    "size": {
-      "label": "ウィンドウサイズ",
+    "language": {
+      "label": "表示言語",
       "options": {
-        "minimal": "ミニマル",
-        "normal": "ノーマル",
-        "wide": "ワイド"
+        "en": "English",
+        "ja": "日本語"
       }
-    },
-    "accentColor": {
-      "label": "アクセントカラー",
-      "description": "カスタムのハイライト色 (空でデフォルト)"
+    }
+  },
+  "appearance": {
+    "theme": {
+      "color": {
+        "label": "カラーテーマ",
+        "description": "アプリケーションの配色を選択します",
+        "options": {
+          "midnight": "ミッドナイト (Slate)",
+          "dark": "ダーク (Adwaita)",
+          "light": "ライト"
+        }
+      },
+      "size": {
+        "label": "ウィンドウサイズ",
+        "options": {
+          "minimal": "ミニマル",
+          "normal": "ノーマル",
+          "wide": "ワイド"
+        }
+      },
+      "accentColor": {
+        "label": "アクセントカラー",
+        "description": "カスタムのハイライト色 (空でデフォルト)"
+      }
     }
   },
   "clipboard": {
@@ -37,15 +55,32 @@
       "description": "保存するクリップボード項目の最大数 (10-500)"
     }
   },
-  "language": {
-    "label": "言語",
-    "options": {
-      "en": "English",
-      "ja": "日本語"
+  "snippets": {
+    "openConfig": {
+      "label": "snippets.json を編集",
+      "description": "スニペット設定ファイルをエディタで開く"
+    }
+  },
+  "launcher": {
+    "openConfig": {
+      "label": "launcher.json を編集",
+      "description": "ランチャー設定ファイルをエディタで開く"
     }
   },
   "advanced": {
     "openConfigFolder": "設定フォルダを開く",
     "reloadConfig": "設定を再読み込み"
+  },
+  "about": {
+    "version": {
+      "label": "バージョン"
+    },
+    "checkForUpdates": {
+      "label": "アップデートを確認"
+    },
+    "openGitHub": {
+      "label": "GitHub",
+      "description": "プロジェクトリポジトリをブラウザで開く"
+    }
   }
 }

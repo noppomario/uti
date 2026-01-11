@@ -15,9 +15,15 @@ mod updater;
 
 use clap::{Parser, Subcommand};
 use clipboard::{ClipboardItem, ClipboardStore};
-use config::{open_config_folder, read_config, reload_config, save_config, AppConfig};
+use config::{
+    open_config_folder, open_launcher_config, open_snippets_config, read_config, reload_config,
+    save_config, AppConfig,
+};
 use launcher::{LauncherConfig, RecentFile};
-use settings::{apply_window_size, set_window_mode};
+use settings::{
+    apply_window_size, check_for_updates, check_for_updates_with_dialog, get_autostart_status,
+    get_version, open_github, set_autostart, set_window_mode,
+};
 use snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -428,6 +434,8 @@ fn run_gui(start_minimized: bool) {
             read_config,
             save_config,
             open_config_folder,
+            open_launcher_config,
+            open_snippets_config,
             reload_config,
             // Launcher commands
             get_recent_files,
@@ -438,6 +446,13 @@ fn run_gui(start_minimized: bool) {
             // Snippets commands
             get_snippets,
             add_snippet,
+            // Settings commands
+            get_version,
+            get_autostart_status,
+            set_autostart,
+            check_for_updates,
+            check_for_updates_with_dialog,
+            open_github,
         ])
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
