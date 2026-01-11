@@ -75,7 +75,7 @@ jobs:
             --head release/v${{ inputs.version }} \
             --base main)
           echo "Created PR: $PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
+          gh pr merge --auto --merge "$PR_URL"
           echo "Auto-merge enabled for PR"
 
       - name: Summary
