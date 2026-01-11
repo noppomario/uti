@@ -1582,6 +1582,114 @@ Add Prompt tab with auto-paste functionality:
 
 ---
 
+## ADR-027: Settings UI with declarative schema and i18n
+
+**Date**: 2026-01-11
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Users needed a way to configure application settings (theme, clipboard limit,
+language) without editing JSON files directly. The UI should be extensible
+for future settings and support multiple languages.
+
+### Decision
+
+Implement a settings window with:
+
+1. **Declarative schema** (`settings/schema.ts`) for automatic UI generation
+2. **react-i18next** for settings-only internationalization (en/ja)
+3. **Separate window** opened from tray menu
+4. **Rust module refactoring** (config/, tray/, settings/)
+
+### Schema Design
+
+```typescript
+{
+  id: 'appearance',
+  titleKey: 'sections.appearance',
+  fields: [
+    {
+      key: 'themeColor',
+      labelKey: 'fields.themeColor.label',
+      type: 'select',
+      configPath: 'theme.color',
+      options: [...]
+    }
+  ]
+}
+```
+
+Adding a new setting requires only:
+
+1. Add field to schema
+2. Add translation keys
+3. Update Rust config struct
+
+### Rationale
+
+**Declarative over imperative**:
+
+- Single source of truth for settings structure
+- Automatic form generation reduces boilerplate
+- Easy to add/remove settings without touching components
+
+**Settings-only i18n**:
+
+- Main UI is simple (tab names, status), doesn't need i18n
+- Settings has more complex labels and descriptions
+- Keeps main bundle size small
+
+**Separate window**:
+
+- Settings context differs from main window
+- Can have different window size/style
+- Independent lifecycle (persist while main hides)
+
+**Rust module refactoring**:
+
+- main.rs reduced from 1120 to ~480 lines
+- Clear separation: config/, tray/, settings/
+- Easier to test individual modules
+
+### Alternatives Considered
+
+1. **Hardcoded settings form**
+   - Pro: Simpler initial implementation
+   - Con: Tedious to add new settings
+
+2. **JSON schema with react-hook-form**
+   - Pro: More flexible validation
+   - Con: Overkill for simple settings
+
+3. **Full app i18n (main + settings)**
+   - Pro: Consistent localization
+   - Con: Unnecessary for minimal main UI
+
+### Consequences
+
+**Positive**:
+
+- Easy to add new settings
+- Bilingual settings (en/ja)
+- Cleaner Rust code organization
+- Schema-driven validation
+
+**Negative**:
+
+- Schema adds abstraction layer
+- i18n adds bundle size to settings only
+- Separate window is different from main UI flow
+
+**Reconsider when**:
+
+- Main UI needs i18n support
+- Settings become complex enough for tabs/navigation
+- Need for settings sync across devices
+
+---
+
 ## Template for Future ADRs
 
 ```markdown

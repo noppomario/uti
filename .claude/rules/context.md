@@ -17,6 +17,7 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 - **Styling**: Tailwind CSS v4
 - **Build**: Vite 6 + esbuild
 - **Linter/Formatter**: Biome 2.3 (Rust-based, 25-100x faster than ESLint+Prettier)
+- **i18n**: react-i18next (settings window only)
 
 ### Backend
 
@@ -89,14 +90,29 @@ uti/
 │   │   │   ├── useClipboard.ts # Clipboard monitoring
 │   │   │   ├── useLauncher.ts  # Launcher config loading
 │   │   │   └── useListKeyboardNavigation.ts  # Keyboard nav
+│   │   ├── settings/           # Settings window (separate entry point)
+│   │   │   ├── schema.ts       # Declarative settings schema
+│   │   │   ├── SettingsPage.tsx # Main settings component
+│   │   │   ├── SettingsSection.tsx # Section auto-generation
+│   │   │   ├── FieldRenderer.tsx # Field auto-generation
+│   │   │   ├── fields/         # Field components
+│   │   │   └── i18n/           # Settings-only translations
 │   │   ├── App.tsx             # Main component
 │   │   ├── main.tsx            # Entry point + theme init
 │   │   ├── config.ts           # Configuration loader
 │   │   └── index.css           # Tailwind v4 theme
 │   └── src-tauri/              # Rust backend
 │       └── src/
-│           ├── main.rs         # D-Bus listener + window control + tray
+│           ├── main.rs         # D-Bus listener + window control
 │           ├── lib.rs          # Library exports
+│           ├── config/         # Configuration module
+│           │   ├── mod.rs      # AppConfig, ThemeConfig
+│           │   └── commands.rs # read/save/reload config commands
+│           ├── tray/           # Tray menu module
+│           │   ├── mod.rs      # Tray initialization
+│           │   └── handlers.rs # Menu event handlers
+│           ├── settings/       # Settings window module
+│           │   └── mod.rs      # Window size management
 │           ├── clipboard/      # Clipboard module
 │           │   ├── mod.rs      # ClipboardItem definition
 │           │   └── store.rs    # LRU clipboard storage
@@ -149,9 +165,11 @@ uti/
 {
   "theme": {
     "color": "dark",
-    "size": "normal"
+    "size": "normal",
+    "accentColor": "#3584e4"
   },
-  "clipboardHistoryLimit": 50
+  "clipboardHistoryLimit": 50,
+  "language": "en"
 }
 ```
 
@@ -159,7 +177,9 @@ uti/
 
 - `theme.color`: "midnight", "dark", or "light" (default: "dark")
 - `theme.size`: "minimal", "normal", or "wide" (default: "normal")
+- `theme.accentColor`: Hex color string (optional, uses theme default if not set)
 - `clipboardHistoryLimit`: Must be > 0 (default: 50)
+- `language`: "en" or "ja" (default: "en")
 
 **Auto-migration**: On startup, `clipboard.json` max_items syncs with
 `clipboardHistoryLimit`
@@ -269,9 +289,10 @@ bun run all:test               # Parallel execution
 
 **Status**: Implemented via StatusNotifierItem protocol
 
-- Tray icon with context menu (Show/Hide, Auto-start, Updates, GitHub, Quit)
+- Tray icon with context menu (Show/Hide, Settings, Auto-start, Updates, GitHub, Quit)
 - Left-click toggles window visibility
 - Right-click shows menu
+- **Settings**: Opens separate settings window
 
 **GNOME support**:
 

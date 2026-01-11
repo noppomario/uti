@@ -24,6 +24,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         'update-dialog': resolve(__dirname, 'update-dialog.html'),
+        settings: resolve(__dirname, 'settings.html'),
       },
     },
   },

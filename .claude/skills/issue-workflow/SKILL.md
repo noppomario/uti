@@ -14,10 +14,11 @@ Execute development tasks based on GitHub Issues with full project management.
 /issue-workflow https://github.com/owner/repo/issues/123
 ```
 
-## Prerequisites
+## Key Instruction
 
-- **Plan mode required**: Enter plan mode with `/plan` before invoking this skill
-- Plan mode ensures user approval before implementation begins
+1. **Execute PRELIMINARY ACTIONS first** (before writing the plan file)
+2. **Create plan following the WORKFLOW TEMPLATE**
+3. **Execute POST-APPROVAL ACTIONS** after ExitPlanMode
 
 ## Arguments
 
@@ -25,201 +26,184 @@ Execute development tasks based on GitHub Issues with full project management.
 
 ARGUMENTS: Issue URL passed from skill invocation
 
-## Workflow Overview
+## PRELIMINARY ACTIONS
 
-### Phase 1: Initialization (Plan Mode - Read Only)
+Execute these steps BEFORE writing the plan file (still within plan mode):
 
-1. Parse Issue URL to extract `owner`, `repo`, `issue_number`
+```text
+1. Parse Issue URL → extract `owner`, `repo`, `issue_number`
 2. Fetch issue details: `gh issue view {url} --json title,body,labels,projectItems`
-3. Extract project info from `projectItems` (save for later use)
-4. Note project field IDs (see [gh-project-api.md](references/gh-project-api.md))
+3. Read linked issues mentioned in comments
+4. Update project status to "In Progress" (see references/gh-project-api.md)
+```
 
-### Phase 2: Investigation and Planning (Plan Mode - Read Only)
+After completing preliminary actions, create plan using the WORKFLOW TEMPLATE below.
 
-1. Investigate the codebase based on issue requirements
-2. Create implementation plan (write to plan file)
-3. Use `ExitPlanMode` to request user approval
+## WORKFLOW TEMPLATE
 
-### Phase 3: Post-Approval Actions (After Plan Mode Exit)
+Create your plan with EXACTLY these phases. Each phase must be included.
 
-After user approves the plan:
+---
 
-1. Post **full plan content** to Issue:
+### Phase 1: Investigation and Implementation Plan
 
-   ```bash
-   # MUST read the actual plan file and post its COMPLETE content
-   gh issue comment {url} --body "## Implementation Plan
+**Goal**: Create detailed technical plan
 
-   $(cat {plan_file_path})"
-   ```
+- [ ] Investigate codebase based on issue requirements
+- [ ] Identify files to modify/create
+- [ ] Design implementation approach
+- [ ] List test items
 
-   **CRITICAL REQUIREMENTS** (MUST follow ALL):
+**Plan output**: Technical implementation steps
 
-   - **NEVER summarize** - Post the EXACT content of the plan file
-   - **Use `cat` command** - Read the plan file path shown in system messages
-   - **Include everything** - Code snippets, tables, test items, phases, sources
-   - **No paraphrasing** - Copy the plan content verbatim
+---
 
-   If you summarize instead of posting the full content, you are violating this
-   skill's requirements.
+### --- POST-APPROVAL ACTIONS (after ExitPlanMode) ---
 
-   **IMPORTANT**: Use the **conversation language** for Issue comments.
-   If the conversation is in Japanese, write in Japanese.
-   If the conversation is in English, write in English.
+**This is NOT a phase** - execute immediately after user approves the plan:
 
-2. Update project status to "In Progress" using the commands in
-   [gh-project-api.md](references/gh-project-api.md)
+- [ ] Post **FULL plan content** to Issue (see Post Plan to Issue section)
 
-3. **MANDATORY CHECKPOINT - STOP AND WAIT**:
+Then proceed to Phase 2.
 
-   After posting the plan to the Issue, you MUST:
+---
 
-   - Inform the user that the plan has been posted
-   - Provide the Issue comment URL
-   - Ask the user to review the posted plan
-   - **STOP and wait for explicit approval** (e.g., "OK", "proceed", "continue")
+### Phase 2: Implementation
 
-   **DO NOT proceed to Phase 4 until the user explicitly confirms.**
+**Goal**: Execute the technical plan
 
-   Example message:
+- [ ] Implement changes following Phase 1 plan
+- [ ] Run tests: `bun run ci:local`
+- [ ] Track deviations from original plan
 
-   > Plan posted to Issue: {comment_url}
-   >
-   > Please review the posted plan. Say "OK" to proceed with implementation.
+---
 
-### Phase 4: Implementation (User Approval Required)
+### Phase 3: Documentation Review
 
-1. Follow the plan to implement changes
-2. Periodically check remaining tasks
-3. Track any deviations from original plan
+**Goal**: Ensure documentation is updated
 
-### Phase 5: Documentation Review
+Check these files for potential updates:
 
-Before creating PR, investigate if documentation updates are needed.
+- [ ] README.md - User-facing documentation
+- [ ] CLAUDE.md - Project memory
+- [ ] .claude/rules/*.md - Architecture decisions
 
-1. Check these files for potential updates:
+Report findings to user and update as specified.
 
-   - **Project docs**: README.md, docs/*.md
-   - **Claude memory**: CLAUDE.md, .claude/rules/*.md
+---
 
-   Consider:
+### Phase 4: Completion Summary
 
-   - Does the feature need user-facing documentation?
-   - Are there architecture or setup changes?
-   - Should a new ADR be recorded for significant decisions?
+**Goal**: Document implementation and wait for feedback
 
-2. Report findings to user:
+- [ ] Post completion summary to Issue (see Post Summary to Issue section)
 
-   > **Documentation Review**
-   >
-   > - README.md: [No changes needed / Needs update: reason]
-   > - CLAUDE.md: [No changes needed / Needs update: reason]
-   > - .claude/rules/decisions.md: [No ADR needed / New ADR recommended: topic]
-   >
-   > Reply with files to update, or "none" to skip.
+**CHECKPOINT**: Wait for user testing and feedback.
 
-3. Make documentation updates as specified by user
+---
 
-### Phase 6: Completion Summary
+### Phase 5: Feedback
 
-1. Post completion summary to Issue:
+**Goal**: Address user feedback from testing
 
-   ```bash
-   gh issue comment {url} --body "## Implementation Complete
+- [ ] Address any feedback from user testing
+- [ ] Iterate until user confirms implementation is complete
 
-   ### Changes from Original Plan
-   [Differences if any]
+**CHECKPOINT**: Wait for user to confirm feedback is complete.
 
-   ### Final Implementation
-   [What was actually implemented]"
-   ```
+---
 
-   **IMPORTANT**: Use the **conversation language** for Issue comments.
-   If the conversation is in Japanese, write in Japanese.
-   If the conversation is in English, write in English.
+### Phase 6: Final Review and PR
 
-2. **MANDATORY CHECKPOINT - STOP AND WAIT**:
+**Goal**: Re-verify documentation, summarize, and create PR
 
-   After posting the completion summary, you MUST:
+**IMPORTANT**: After feedback is complete, re-run Phase 3 and Phase 4 before creating PR.
 
-   - Inform the user that the summary has been posted
-   - Provide the Issue comment URL
-   - Ask the user to review the summary
-   - **STOP and wait for explicit approval** before creating PR
+- [ ] Re-run Phase 3: Documentation Review (check if feedback changes require doc updates)
+- [ ] Re-run Phase 4: Completion Summary (post final summary to Issue)
+- [ ] Create branch, commit, push
+- [ ] Create PR: `gh pr create --base develop --title "..." --body "Closes owner/repo#123"`
+- [ ] Post PR link to Issue
 
-   **DO NOT create a PR until the user explicitly confirms.**
+**STOP**: Wait for user to review and merge PR.
 
-   Example message:
+---
 
-   > Completion summary posted to Issue: {comment_url}
-   >
-   > Please review. Say "OK" to create PR.
-
-### Phase 6.5: Additional Changes (If Any)
-
-If changes are made after the completion summary (Phase 6):
-
-1. Post update comment to Issue:
-
-   ```bash
-   gh issue comment {url} --body "## Additional Changes
-
-   [Description of changes made after the completion summary]
-
-   - Change 1
-   - Change 2"
-   ```
-
-2. Wait for user confirmation before proceeding to PR
-
-This phase is only needed when:
-
-- User requests additional improvements after reviewing
-- Bug fixes discovered during final testing
-- Any modifications after the completion summary was posted
-
-Skip this phase if no changes were made after Phase 6.
-
-### Phase 7: PR Creation
-
-1. Create branch, commit, and push changes
-2. Create PR with Issue link (target `develop` branch):
-
-   ```bash
-   gh pr create --base develop --title "feat: ..." --body "...
-
-   Closes owner/repo#123"
-   ```
-
-3. Post PR info to Issue:
-
-   ```bash
-   gh issue comment {url} --body "PR created: {pr_url}"
-   ```
-
-4. **STOP HERE** - Wait for user to review, approve, and merge the PR
-
-### Phase 8: Post-Merge Completion (User-Initiated)
+### Phase 7: Post-Merge (User-Initiated)
 
 **Trigger**: User says "PR merged" or "complete the issue"
 
-1. Verify PR is merged: `gh pr view {pr_number} --json state,mergedAt`
-2. Update project status to "Done" (see [gh-project-api.md](references/gh-project-api.md))
-3. Post final comment to Issue (optional):
+- [ ] Verify PR is merged
+- [ ] Update project status to "Done"
+- [ ] Post final comment (optional)
 
-   ```bash
-   gh issue comment {url} --body "✅ PR merged and issue completed."
-   ```
+---
+
+## Post Plan to Issue
+
+After ExitPlanMode, post the full plan content to the Issue.
+
+**Command**:
+
+```bash
+# Read the plan file path from system messages and post its COMPLETE content
+gh issue comment {url} --body "$(cat <<'EOF'
+## Implementation Plan
+
+$(cat {plan_file_path})
+EOF
+)"
+```
+
+**CRITICAL REQUIREMENTS** (MUST follow ALL):
+
+- **NEVER summarize** - Post the EXACT content of the plan file
+- **Use `cat` command** - Read the plan file path shown in system messages
+- **Include everything** - Code snippets, tables, test items, phases, all sections
+- **No paraphrasing** - Copy the plan content verbatim
+
+If you summarize instead of posting the full content, you are violating this
+skill's requirements.
+
+**Language**: Use the **conversation language** for Issue comments.
+
+- If the conversation is in Japanese → Write comments in Japanese
+- If the conversation is in English → Write comments in English
+
+## Post Summary to Issue
+
+```bash
+gh issue comment {url} --body "$(cat <<'EOF'
+## Implementation Complete
+
+### Changes from Original Plan
+
+[Differences if any, or "None"]
+
+### What Was Implemented
+
+[List of implemented items]
+
+### Verification
+
+[Test results, CI status]
+EOF
+)"
+```
 
 ## URL Parsing
 
 Extract from: `https://github.com/{owner}/{repo}/issues/{number}`
 
-```text
-owner = URL segment after github.com
-repo = URL segment after owner
-number = URL segment after "issues"
-```
+## User Wait Points Summary
+
+| Point | Trigger | Purpose |
+| ----- | ------- | ------- |
+| Plan approval | ExitPlanMode | Confirm implementation approach |
+| Testing | Phase 4 CHECKPOINT | User validates implementation |
+| Feedback complete | Phase 5 CHECKPOINT | Confirm all feedback addressed |
+| PR merge | Phase 6 STOP | GitHub review process |
+| Post-merge | Phase 7 (user-initiated) | Final cleanup |
 
 ## Error Handling
 
@@ -229,15 +213,13 @@ number = URL segment after "issues"
 
 ## Notes
 
-- Use conversation language for Issue comments
 - PR body must include `Closes owner/repo#number` for auto-linking
 - Project status auto-closes Issue when set to "Done"
-- **Never update status to "Done" before PR is merged**
-- Phase 8 requires explicit user confirmation to proceed
+- Never update status to "Done" before PR is merged
 
 ## Recommended Permission Settings
 
-Add to `.claude/settings.local.json` to require approval for status updates:
+Add to `.claude/settings.local.json`:
 
 ```json
 {
@@ -249,5 +231,3 @@ Add to `.claude/settings.local.json` to require approval for status updates:
   }
 }
 ```
-
-This allows project info queries but requires approval for `gh project item-edit`.

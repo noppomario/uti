@@ -8,7 +8,7 @@ mod store;
 
 pub use desktop::{search_desktop_files, DesktopApp};
 pub use recent_files::RecentFile;
-pub use store::load_launcher_config;
+pub use store::{get_launcher_config_path, load_launcher_config};
 
 use serde::{Deserialize, Serialize};
 

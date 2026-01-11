@@ -60,10 +60,10 @@ cd daemon && sudo cargo run    # Run daemon
 
 ### Project Scale
 
-- **Current**: 3 TypeScript files, ~77 lines
+- **Current**: 49 TypeScript files, ~6,600 lines
 - **Philosophy**: Keep it simple (YAGNI)
-- **Refactor when**: 5+ components or multiple features
+- **Structure**: `components/`, `hooks/`, `settings/` directories
 
 ---
 
-**Last updated:** 2025-12-27
+**Last updated:** 2026-01-11

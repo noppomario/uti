@@ -11,24 +11,49 @@ Create a GitHub Issue with appropriate labels.
 
 ```text
 /issue-create owner/repo
+/issue-create owner/repo --from-plan
 ```
 
 ## Arguments
 
 - **Repository** (required): Target repository in `owner/repo` format
+- **--from-plan** (optional): Include current plan file content in issue body
 
-ARGUMENTS: Repository name passed from skill invocation
+ARGUMENTS: Repository name and options passed from skill invocation
 
 ## Workflow
 
 1. Parse repository from ARGUMENTS
-2. Gather issue details from user input
-3. If unclear, ask for clarification (title, description, category)
-4. Present label options and let user select
-5. Fetch issue template from repository based on label (see Template Mapping)
-6. Create issue body following template structure and language
-7. Create issue via `gh issue create`
-8. Report created issue URL
+2. Check if `--from-plan` flag is present
+3. Gather issue details from user input
+4. If unclear, ask for clarification (title, description, category)
+5. Present label options and let user select
+6. Fetch issue template from repository based on label (see Template Mapping)
+7. Create issue body following template structure and language
+8. If `--from-plan`: Append plan content to issue body (see From Plan section)
+9. Create issue via `gh issue create`
+10. Report created issue URL
+
+## From Plan Option
+
+When `--from-plan` is specified:
+
+1. Read current plan file from `~/.claude/plans/` directory
+2. Append plan content to issue body under "## Investigation Results" section
+3. This enables seamless handoff to `issue-workflow`
+
+**Plan file location**: Check system message for active plan file path, or find
+the most recently modified `.md` file in the plans directory.
+
+**Issue body structure with --from-plan**:
+
+```markdown
+[Template-based content]
+
+## Investigation Results
+
+[Full plan content from plan file]
+```
 
 ## Label Selection Guide
 
@@ -88,8 +113,18 @@ language as the repository's issue template.
 - If template is in Japanese → Write issue in Japanese
 - If template is in English → Write issue in English
 
+## Handoff to issue-workflow
+
+After creating an issue with `--from-plan`, suggest:
+
+```text
+Issue created. To implement this issue:
+/issue-workflow {created_issue_url}
+```
+
 ## Notes
 
 - Keep it simple: This is for quick TODO registration
 - Detailed planning happens in `issue-workflow` skill
 - Fetch and follow repository's issue template structure and language
+- `--from-plan` bridges investigation work to formal issue tracking
