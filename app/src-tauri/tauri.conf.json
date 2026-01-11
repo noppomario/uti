@@ -73,6 +73,17 @@
             "core:window:allow-close",
             "core:window:allow-start-dragging"
           ]
+        },
+        {
+          "identifier": "settings-capability",
+          "description": "Settings window capabilities",
+          "windows": [
+            "settings"
+          ],
+          "permissions": [
+            "core:window:allow-close",
+            "core:window:allow-start-dragging"
+          ]
         }
       ]
     }

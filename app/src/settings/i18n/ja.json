@@ -1,0 +1,51 @@
+{
+  "title": "設定",
+  "apply": "適用",
+  "cancel": "キャンセル",
+  "sections": {
+    "appearance": "外観",
+    "clipboard": "クリップボード",
+    "language": "言語",
+    "advanced": "詳細設定"
+  },
+  "theme": {
+    "color": {
+      "label": "カラーテーマ",
+      "description": "アプリケーションの配色を選択します",
+      "options": {
+        "midnight": "ミッドナイト (Slate)",
+        "dark": "ダーク (Adwaita)",
+        "light": "ライト"
+      }
+    },
+    "size": {
+      "label": "ウィンドウサイズ",
+      "options": {
+        "minimal": "ミニマル",
+        "normal": "ノーマル",
+        "wide": "ワイド"
+      }
+    },
+    "accentColor": {
+      "label": "アクセントカラー",
+      "description": "カスタムのハイライト色 (空でデフォルト)"
+    }
+  },
+  "clipboard": {
+    "historyLimit": {
+      "label": "履歴上限",
+      "description": "保存するクリップボード項目の最大数 (10-500)"
+    }
+  },
+  "language": {
+    "label": "言語",
+    "options": {
+      "en": "English",
+      "ja": "日本語"
+    }
+  },
+  "advanced": {
+    "openConfigFolder": "設定フォルダを開く",
+    "reloadConfig": "設定を再読み込み"
+  }
+}

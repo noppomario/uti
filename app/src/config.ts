@@ -18,6 +18,11 @@ export type ColorTheme = 'midnight' | 'dark' | 'light';
 export type SizeTheme = 'minimal' | 'normal' | 'wide';
 
 /**
+ * Language options
+ */
+export type Language = 'en' | 'ja';
+
+/**
  * Theme configuration
  */
 export interface ThemeConfig {
@@ -35,6 +40,9 @@ export interface AppConfig {
 
   /** Maximum number of clipboard items to store */
   clipboardHistoryLimit: number;
+
+  /** UI language: 'en' or 'ja' */
+  language: Language;
 }
 
 /**
@@ -53,6 +61,7 @@ export const defaultTheme: ThemeConfig = {
 export const defaultConfig: AppConfig = {
   theme: defaultTheme,
   clipboardHistoryLimit: 50,
+  language: 'en',
 };
 
 /**

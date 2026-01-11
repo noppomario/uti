@@ -1,0 +1,51 @@
+{
+  "title": "Settings",
+  "apply": "Apply",
+  "cancel": "Cancel",
+  "sections": {
+    "appearance": "Appearance",
+    "clipboard": "Clipboard",
+    "language": "Language",
+    "advanced": "Advanced"
+  },
+  "theme": {
+    "color": {
+      "label": "Color Theme",
+      "description": "Choose the color scheme for the application",
+      "options": {
+        "midnight": "Midnight (Slate)",
+        "dark": "Dark (Adwaita)",
+        "light": "Light"
+      }
+    },
+    "size": {
+      "label": "Window Size",
+      "options": {
+        "minimal": "Minimal",
+        "normal": "Normal",
+        "wide": "Wide"
+      }
+    },
+    "accentColor": {
+      "label": "Accent Color",
+      "description": "Custom highlight color (leave empty for default)"
+    }
+  },
+  "clipboard": {
+    "historyLimit": {
+      "label": "History Limit",
+      "description": "Maximum number of clipboard items to store (10-500)"
+    }
+  },
+  "language": {
+    "label": "Language",
+    "options": {
+      "en": "English",
+      "ja": "Japanese"
+    }
+  },
+  "advanced": {
+    "openConfigFolder": "Open Config Folder",
+    "reloadConfig": "Reload Configuration"
+  }
+}
