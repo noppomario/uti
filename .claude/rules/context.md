@@ -17,6 +17,7 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 - **Styling**: Tailwind CSS v4
 - **Build**: Vite 6 + esbuild
 - **Linter/Formatter**: Biome 2.3 (Rust-based, 25-100x faster than ESLint+Prettier)
+- **i18n**: react-i18next (settings window only)
 
 ### Backend
 
@@ -42,85 +43,25 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 ## Key Technical Decisions
 
-### Why Biome instead of ESLint + Prettier?
+For detailed rationale, see ADRs in `decisions.md` (active) or
+`.claude/archive/adr-archive.md` (archived).
 
-- Rust-based, significantly faster
-- Single tool for linting + formatting
-- Better integration with modern tooling
+Key archived decisions:
 
-### Why NOT oxlint/oxfmt/tsgo?
-
-- Project is too small (77 lines of TS)
-- tsgo is still in preview (unstable)
-- Current tools are fast enough
-- Stability over bleeding-edge performance
-
-### Why NOT complex folder structure?
-
-- YAGNI principle - don't add complexity until needed
-- Current scale: 21 TypeScript files (~2,900 lines), 6 components, 3 hooks
-- Already organized with `components/` and `hooks/` directories
-- Will add feature-based structure when 4+ distinct features exist
-
-### Why custom GNOME extension instead of AppIndicator?
-
-- **Tray**: Extension acts as StatusNotifierHost, displaying Tauri's tray
-  directly without requiring AppIndicator extension
-- **Positioning**: Wayland doesn't allow apps to query cursor position;
-  GNOME extension can use `global.get_pointer()` and `Meta.Window.move_frame()`
-- **Single dependency**: One extension handles both tray and positioning
+- **ADR-001**: Biome over ESLint + Prettier
+- **ADR-004**: D-Bus for IPC
+- **ADR-016**: Custom GNOME extension (active, in decisions.md)
 
 ## Repository Structure
 
-```text
-uti/
-├── .vscode/                    # VSCode configuration
-├── app/                        # Tauri frontend
-│   ├── src/
-│   │   ├── components/         # React components
-│   │   │   ├── Prompt.tsx      # Prompt input with auto-paste
-│   │   │   ├── ClipboardHistory.tsx  # Clipboard history list
-│   │   │   ├── Snippets.tsx    # Pinned snippets list
-│   │   │   ├── Launcher.tsx    # Launcher command list
-│   │   │   ├── JumpList.tsx    # Recent files list
-│   │   │   ├── TabBar.tsx      # Tab navigation
-│   │   │   └── ListItem.tsx    # Shared list item component
-│   │   ├── hooks/              # Custom React hooks
-│   │   │   ├── useClipboard.ts # Clipboard monitoring
-│   │   │   ├── useLauncher.ts  # Launcher config loading
-│   │   │   └── useListKeyboardNavigation.ts  # Keyboard nav
-│   │   ├── App.tsx             # Main component
-│   │   ├── main.tsx            # Entry point + theme init
-│   │   ├── config.ts           # Configuration loader
-│   │   └── index.css           # Tailwind v4 theme
-│   └── src-tauri/              # Rust backend
-│       └── src/
-│           ├── main.rs         # D-Bus listener + window control + tray
-│           ├── lib.rs          # Library exports
-│           ├── clipboard/      # Clipboard module
-│           │   ├── mod.rs      # ClipboardItem definition
-│           │   └── store.rs    # LRU clipboard storage
-│           ├── snippets/       # Snippets module
-│           │   ├── mod.rs      # SnippetItem definition
-│           │   └── store.rs    # JSON file storage
-│           ├── launcher/       # Launcher module
-│           │   ├── mod.rs      # LauncherConfig, HistorySource
-│           │   ├── store.rs    # Config file loading
-│           │   └── recent_files.rs  # XBEL/VSCode history
-│           └── updater.rs      # Self-update functionality
-├── daemon/
-│   ├── src/
-│   │   ├── main.rs             # evdev keyboard monitor + D-Bus sender/receiver
-│   │   └── uinput.rs           # Virtual keyboard for auto-paste
-│   ├── udev/                   # udev rules for uinput access
-│   ├── systemd/                # systemd user service
-│   └── uti-daemon.spec         # RPM spec
-├── gnome-extension/            # GNOME Shell extension
-│   ├── extension.js            # StatusNotifierHost + positioning + always-on-top
-│   ├── metadata.json           # Extension metadata
-│   └── schemas/                # GSettings schema
-└── README.md                   # English documentation
-```
+See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for detailed structure.
+
+**Key directories:**
+
+- `app/` - Tauri frontend (React + TypeScript)
+- `app/src-tauri/` - Rust backend
+- `daemon/` - uti-daemon (evdev + D-Bus)
+- `gnome-extension/` - GNOME Shell extension
 
 ## Important Constraints
 
@@ -149,9 +90,11 @@ uti/
 {
   "theme": {
     "color": "dark",
-    "size": "normal"
+    "size": "normal",
+    "accentColor": "#3584e4"
   },
-  "clipboardHistoryLimit": 50
+  "clipboardHistoryLimit": 50,
+  "language": "en"
 }
 ```
 
@@ -159,7 +102,9 @@ uti/
 
 - `theme.color`: "midnight", "dark", or "light" (default: "dark")
 - `theme.size`: "minimal", "normal", or "wide" (default: "normal")
+- `theme.accentColor`: Hex color string (optional, uses theme default if not set)
 - `clipboardHistoryLimit`: Must be > 0 (default: 50)
+- `language`: "en" or "ja" (default: "en")
 
 **Auto-migration**: On startup, `clipboard.json` max_items syncs with
 `clipboardHistoryLimit`
@@ -269,9 +214,10 @@ bun run all:test               # Parallel execution
 
 **Status**: Implemented via StatusNotifierItem protocol
 
-- Tray icon with context menu (Show/Hide, Auto-start, Updates, GitHub, Quit)
+- Tray icon with context menu (Show/Hide, Settings, Auto-start, Updates, GitHub, Quit)
 - Left-click toggles window visibility
 - Right-click shows menu
+- **Settings**: Opens separate settings window
 
 **GNOME support**:
 

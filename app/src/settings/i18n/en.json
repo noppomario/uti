@@ -1,0 +1,86 @@
+{
+  "title": "Settings",
+  "apply": "Apply",
+  "cancel": "Cancel",
+  "sections": {
+    "general": "General",
+    "appearance": "Appearance",
+    "clipboard": "Clipboard",
+    "snippets": "Snippets",
+    "launcher": "Launcher",
+    "advanced": "Advanced",
+    "about": "About"
+  },
+  "general": {
+    "autoStart": {
+      "label": "Launch at Login",
+      "description": "Automatically start uti when you log in"
+    },
+    "language": {
+      "label": "Display Language",
+      "options": {
+        "en": "English",
+        "ja": "Japanese"
+      }
+    }
+  },
+  "appearance": {
+    "theme": {
+      "color": {
+        "label": "Color Theme",
+        "description": "Choose the color scheme for the application",
+        "options": {
+          "midnight": "Midnight (Slate)",
+          "dark": "Dark (Adwaita)",
+          "light": "Light"
+        }
+      },
+      "size": {
+        "label": "Window Size",
+        "options": {
+          "minimal": "Minimal",
+          "normal": "Normal",
+          "wide": "Wide"
+        }
+      },
+      "accentColor": {
+        "label": "Accent Color",
+        "description": "Custom highlight color (leave empty for default)"
+      }
+    }
+  },
+  "clipboard": {
+    "historyLimit": {
+      "label": "History Limit",
+      "description": "Maximum number of clipboard items to store (10-500)"
+    }
+  },
+  "snippets": {
+    "openConfig": {
+      "label": "Edit snippets.json",
+      "description": "Open snippets configuration file in default editor"
+    }
+  },
+  "launcher": {
+    "openConfig": {
+      "label": "Edit launcher.json",
+      "description": "Open launcher configuration file in default editor"
+    }
+  },
+  "advanced": {
+    "openConfigFolder": "Open Config Folder",
+    "reloadConfig": "Reload Configuration"
+  },
+  "about": {
+    "version": {
+      "label": "Version"
+    },
+    "checkForUpdates": {
+      "label": "Check for Updates"
+    },
+    "openGitHub": {
+      "label": "GitHub",
+      "description": "Open project repository in browser"
+    }
+  }
+}

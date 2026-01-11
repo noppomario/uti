@@ -159,89 +159,89 @@ async fn monitor_device(
     last_ctrl_release: Arc<Mutex<Option<Instant>>>,
     conn: Arc<Connection>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut device = Device::open(&device_path)?;
-    info!("[{}] Monitoring started", device_name);
+    let device = Device::open(&device_path)?;
+    let mut stream = device.into_event_stream()?;
+    info!("[{}] Monitoring started (async)", device_name);
 
     loop {
-        match device.fetch_events() {
-            Ok(events) => {
-                for event in events {
-                    // Log all key events for debugging (debug level)
-                    if event.event_type() == EventType::KEY {
-                        let key = Key::new(event.code());
+        match stream.next_event().await {
+            Ok(event) => {
+                // Log all key events for debugging (debug level)
+                if event.event_type() == EventType::KEY {
+                    let key = Key::new(event.code());
+                    debug!(
+                        "[{}] Key event: {:?} value={} (type={:?})",
+                        device_name,
+                        key,
+                        event.value(),
+                        event.event_type()
+                    );
+                }
+
+                if event.event_type() != EventType::KEY {
+                    continue;
+                }
+
+                let key = Key::new(event.code());
+                if key != Key::KEY_LEFTCTRL && key != Key::KEY_RIGHTCTRL {
+                    continue;
+                }
+
+                let key_name = if key == Key::KEY_LEFTCTRL {
+                    "LEFT"
+                } else {
+                    "RIGHT"
+                };
+
+                // Key press event (value == 1)
+                if event.value() == 1 {
+                    debug!("[{}] Ctrl key pressed ({})", device_name, key_name);
+                }
+
+                // Key release event (value == 0)
+                if event.value() == 0 {
+                    let now = Instant::now();
+                    let mut last_release = last_ctrl_release.lock().await;
+
+                    if let Some(last) = *last_release {
+                        let interval = now.duration_since(last);
                         debug!(
-                            "[{}] Key event: {:?} value={} (type={:?})",
+                            "[{}] Ctrl key released ({}) - {}ms since last release",
                             device_name,
-                            key,
-                            event.value(),
-                            event.event_type()
+                            key_name,
+                            interval.as_millis()
+                        );
+
+                        if interval < DOUBLE_TAP_INTERVAL {
+                            info!("[{}] Double Ctrl detected!", device_name);
+                            if let Err(e) = notify_double_ctrl(&conn).await {
+                                error!("[{}] Failed to send D-Bus signal: {}", device_name, e);
+                            }
+                            *last_release = None;
+                            continue;
+                        }
+                    } else {
+                        debug!(
+                            "[{}] Ctrl key released ({}) - first press",
+                            device_name, key_name
                         );
                     }
 
-                    if event.event_type() != EventType::KEY {
-                        continue;
-                    }
-
-                    let key = Key::new(event.code());
-                    if key != Key::KEY_LEFTCTRL && key != Key::KEY_RIGHTCTRL {
-                        continue;
-                    }
-
-                    let key_name = if key == Key::KEY_LEFTCTRL {
-                        "LEFT"
-                    } else {
-                        "RIGHT"
-                    };
-
-                    // Key press event (value == 1)
-                    if event.value() == 1 {
-                        debug!("[{}] Ctrl key pressed ({})", device_name, key_name);
-                    }
-
-                    // Key release event (value == 0)
-                    if event.value() == 0 {
-                        let now = Instant::now();
-                        let mut last_release = last_ctrl_release.lock().await;
-
-                        if let Some(last) = *last_release {
-                            let interval = now.duration_since(last);
-                            debug!(
-                                "[{}] Ctrl key released ({}) - {}ms since last release",
-                                device_name,
-                                key_name,
-                                interval.as_millis()
-                            );
-
-                            if interval < DOUBLE_TAP_INTERVAL {
-                                info!("[{}] Double Ctrl detected!", device_name);
-                                if let Err(e) = notify_double_ctrl(&conn).await {
-                                    error!("[{}] Failed to send D-Bus signal: {}", device_name, e);
-                                }
-                                *last_release = None;
-                                continue;
-                            }
-                        } else {
-                            debug!(
-                                "[{}] Ctrl key released ({}) - first press",
-                                device_name, key_name
-                            );
-                        }
-
-                        *last_release = Some(now);
-                    }
+                    *last_release = Some(now);
                 }
             }
             Err(e) => {
                 // ENODEV (errno 19): Device disconnected (sleep/resume or unplug)
+                // All errors from EventStream are likely fatal, exit the task
                 if e.raw_os_error() == Some(19) {
                     error!(
                         "[{}] Device disconnected (ENODEV), exiting monitor task",
                         device_name
                     );
-                    return Err(e.into());
+                } else {
+                    error!("[{}] Fatal error: {}, exiting monitor task", device_name, e);
                 }
-                error!("[{}] Error fetching events: {}", device_name, e);
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                return Err(e.into());
             }
         }
     }

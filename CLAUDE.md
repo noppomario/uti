@@ -6,7 +6,7 @@ All team members should read this when starting development.
 **Note:** Detailed rules are automatically loaded from `.claude/rules/`:
 
 - `context.md` - Technical stack, architecture, constraints
-- `decisions.md` - Architectural Decision Records (ADRs)
+- `decisions.md` - Active ADRs (archived ADRs in `.claude/archive/`)
 - `conventions.md` - Code standards, naming, Git conventions
 
 ---
@@ -60,10 +60,10 @@ cd daemon && sudo cargo run    # Run daemon
 
 ### Project Scale
 
-- **Current**: 3 TypeScript files, ~77 lines
+- **Current**: 49 TypeScript files, ~6,600 lines
 - **Philosophy**: Keep it simple (YAGNI)
-- **Refactor when**: 5+ components or multiple features
+- **Structure**: `components/`, `hooks/`, `settings/` directories
 
 ---
 
-**Last updated:** 2025-12-27
+**Last updated:** 2026-01-11

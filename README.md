@@ -39,8 +39,6 @@
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
 
-
-
 ## 📋 System Requirements
 
 - **OS**: Linux with systemd (Fedora 43+ recommended)
@@ -141,6 +139,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 Right-click the tray icon for options:
 
 - **Show/Hide**: Toggle window visibility
+- **Settings**: Open settings window
 - **Auto-start**: Enable/disable start on login
 - **Check for Updates...**: Check for new versions
 - **GitHub**: Open project page
@@ -170,15 +169,17 @@ Configuration file: `~/.config/uti/config.json`
     "color": "dark",
     "size": "normal"
   },
-  "clipboardHistoryLimit": 50
+  "clipboardHistoryLimit": 50,
+  "language": "en"
 }
 ```
 
-| Option                  | Type   | Default                            | Description                  |
-| ----------------------- | ------ | ---------------------------------- | ---------------------------- |
-| `theme.color`           | string | `dark`                             | `midnight`, `dark`, `light`  |
-| `theme.size`            | string | `normal`                           | `minimal`, `normal`, `wide`  |
-| `clipboardHistoryLimit` | number | `50`                               | Max clipboard items to store |
+| Option                  | Type   | Default  | Description                   |
+| ----------------------- | ------ | -------- | ----------------------------- |
+| `theme.color`           | string | `dark`   | `midnight`, `dark`, `light`   |
+| `theme.size`            | string | `normal` | `minimal`, `normal`, `wide`   |
+| `clipboardHistoryLimit` | number | `50`     | Max clipboard items to store  |
+| `language`              | string | `en`     | `en` (English), `ja` (日本語) |
 
 ### Snippets Data
 

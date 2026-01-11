@@ -1,24 +1,27 @@
+/**
+ * Settings window entry point
+ *
+ * Separate entry point for the settings window.
+ * Initializes i18n and renders the SettingsPage component.
+ */
+
 import { listen } from '@tauri-apps/api/event';
 import ReactDOM from 'react-dom/client';
-import App from './App';
-import type { AppConfig, ColorTheme, SizeTheme } from './config';
+import type { AppConfig } from './config';
 import { getConfig } from './config';
 import './index.css';
+import './settings/i18n';
+import { SettingsPage } from './settings/SettingsPage';
 
-/** Valid color theme classes */
-const COLOR_THEMES: ColorTheme[] = ['midnight', 'dark', 'light'];
-
-/** Valid size theme classes */
-const SIZE_THEMES: SizeTheme[] = ['minimal', 'normal', 'wide'];
+/** Available color themes */
+const COLOR_THEMES = ['midnight', 'dark', 'light'] as const;
+/** Available size themes */
+const SIZE_THEMES = ['minimal', 'normal', 'wide'] as const;
 
 /**
- * Apply theme based on configuration
- *
- * Adds theme classes to document root element.
- *
- * @param config - Application configuration
+ * Apply theme from config
  */
-function applyTheme(config: AppConfig) {
+function applyThemeFromConfig(config: AppConfig) {
   const root = document.documentElement;
   const { color, size, accentColor } = config.theme;
 
@@ -30,10 +33,11 @@ function applyTheme(config: AppConfig) {
     root.classList.remove(`size-${s}`);
   }
 
-  // Apply new theme classes
+  // Apply color theme
   root.classList.add(`theme-${color}`);
+
+  // Apply size theme (minimal is default, no class needed)
   if (size !== 'minimal') {
-    // minimal is default, no class needed
     root.classList.add(`size-${size}`);
   }
 
@@ -46,31 +50,22 @@ function applyTheme(config: AppConfig) {
 }
 
 /**
- * Initialize theme
- *
- * Loads configuration from file and applies theme.
+ * Initialize theme from stored config
  */
 async function initTheme() {
   const config = await getConfig();
-  applyTheme(config);
+  applyThemeFromConfig(config);
 }
 
-// Apply theme on load
+// Initialize theme and listen for changes
 initTheme();
-
-// Listen for config changes from settings window
 listen<AppConfig>('config_changed', event => {
-  applyTheme(event.payload);
+  applyThemeFromConfig(event.payload);
 });
 
-/**
- * Application entry point
- *
- * Renders the main App component into the root DOM element.
- */
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error('Root element not found');
 }
 
-ReactDOM.createRoot(rootElement).render(<App />);
+ReactDOM.createRoot(rootElement).render(<SettingsPage />);
