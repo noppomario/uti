@@ -15,6 +15,9 @@ pub const DEFAULT_LANGUAGE: &str = "en";
 /// Default clipboard history limit
 pub const DEFAULT_CLIPBOARD_LIMIT: usize = 50;
 
+// Compile-time validation of default values
+const _: () = assert!(DEFAULT_CLIPBOARD_LIMIT > 0);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -30,7 +33,6 @@ mod tests {
         // Language must be one of the valid options
         assert!(matches!(DEFAULT_LANGUAGE, "en" | "ja"));
 
-        // Clipboard limit must be positive
-        assert!(DEFAULT_CLIPBOARD_LIMIT > 0);
+        // Clipboard limit is validated at compile-time via const assertion above
     }
 }
