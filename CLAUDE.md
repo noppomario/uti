@@ -6,7 +6,7 @@ All team members should read this when starting development.
 **Note:** Detailed rules are automatically loaded from `.claude/rules/`:
 
 - `context.md` - Technical stack, architecture, constraints
-- `decisions.md` - Architectural Decision Records (ADRs)
+- `decisions.md` - Active ADRs (archived ADRs in `.claude/archive/`)
 - `conventions.md` - Code standards, naming, Git conventions
 
 ---

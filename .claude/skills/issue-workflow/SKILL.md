@@ -10,15 +10,18 @@ Execute development tasks based on GitHub Issues with full project management.
 ## Usage
 
 ```text
-/plan
 /issue-workflow https://github.com/owner/repo/issues/123
 ```
 
+**IMPORTANT**: Execute this skill in NORMAL mode (not Plan mode). The skill will
+use EnterPlanMode tool to transition to Plan mode after preliminary actions.
+
 ## Key Instruction
 
-1. **Execute PRELIMINARY ACTIONS first** (before writing the plan file)
-2. **Create plan following the WORKFLOW TEMPLATE**
-3. **Execute POST-APPROVAL ACTIONS** after ExitPlanMode
+1. **Execute PRELIMINARY ACTIONS first** (in normal mode, with tool execution)
+2. **Call EnterPlanMode** to enter Claude Code's official Plan mode
+3. **Create plan following the WORKFLOW TEMPLATE** (in Plan mode)
+4. **Execute POST-APPROVAL ACTIONS** after user approves the plan
 
 ## Arguments
 
@@ -28,16 +31,18 @@ ARGUMENTS: Issue URL passed from skill invocation
 
 ## PRELIMINARY ACTIONS
 
-Execute these steps BEFORE writing the plan file (still within plan mode):
+Execute these steps in NORMAL mode (before entering Plan mode):
 
 ```text
 1. Parse Issue URL → extract `owner`, `repo`, `issue_number`
 2. Fetch issue details: `gh issue view {url} --json title,body,labels,projectItems`
 3. Read linked issues mentioned in comments
 4. Update project status to "In Progress" (see references/gh-project-api.md)
+5. Call EnterPlanMode tool to enter Plan mode
 ```
 
-After completing preliminary actions, create plan using the WORKFLOW TEMPLATE below.
+After completing preliminary actions and entering Plan mode, create plan using
+the WORKFLOW TEMPLATE below.
 
 ## WORKFLOW TEMPLATE
 
@@ -58,7 +63,7 @@ Create your plan with EXACTLY these phases. Each phase must be included.
 
 ---
 
-### --- POST-APPROVAL ACTIONS (after ExitPlanMode) ---
+### --- POST-APPROVAL ACTIONS (after user approves plan) ---
 
 **This is NOT a phase** - execute immediately after user approves the plan:
 
@@ -141,12 +146,13 @@ Report findings to user and update as specified.
 
 ## Post Plan to Issue
 
-After ExitPlanMode, post the full plan content to the Issue.
+After user approves the plan, post the full plan content to the Issue.
 
 **Command**:
 
 ```bash
-# Read the plan file path from system messages and post its COMPLETE content
+# Read the plan file and post its COMPLETE content
+# Plan file path is shown in system messages when in Plan mode (e.g., /tmp/xxx/plan.md)
 gh issue comment {url} --body "$(cat <<'EOF'
 ## Implementation Plan
 
@@ -158,7 +164,7 @@ EOF
 **CRITICAL REQUIREMENTS** (MUST follow ALL):
 
 - **NEVER summarize** - Post the EXACT content of the plan file
-- **Use `cat` command** - Read the plan file path shown in system messages
+- **Use `cat` command** - Read the plan file from the path shown in Plan mode system messages
 - **Include everything** - Code snippets, tables, test items, phases, all sections
 - **No paraphrasing** - Copy the plan content verbatim
 
@@ -199,7 +205,7 @@ Extract from: `https://github.com/{owner}/{repo}/issues/{number}`
 
 | Point | Trigger | Purpose |
 | ----- | ------- | ------- |
-| Plan approval | ExitPlanMode | Confirm implementation approach |
+| Plan approval | User approves plan in Plan mode | Confirm implementation approach |
 | Testing | Phase 4 CHECKPOINT | User validates implementation |
 | Feedback complete | Phase 5 CHECKPOINT | Confirm all feedback addressed |
 | PR merge | Phase 6 STOP | GitHub review process |
