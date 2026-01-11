@@ -1411,7 +1411,7 @@ Add Snippets tab with delayed pin mechanism:
 ## ADR-025: ENODEV handling for sleep/resume recovery
 
 **Date**: 2026-01-06
-**Status**: Accepted
+**Status**: Updated (2026-01-11)
 **Decision Makers**: Project team
 
 ### Context
@@ -1427,26 +1427,44 @@ terminate the graphical session, so the daemon is not restarted.
 
 ### Decision
 
-Detect ENODEV errors and exit the monitor task, allowing systemd to restart
-the daemon with fresh file descriptors:
+Use evdev's async EventStream API to enable proper task cancellation:
 
-1. Check `e.raw_os_error() == Some(19)` in the error handler
-2. Return error to exit the task (triggers daemon exit)
-3. Add `RestartSec=1s` to systemd service for restart backoff
+1. Change `evdev` dependency to include `tokio` feature
+2. Replace `device.fetch_events()` with `stream.next_event().await`
+3. ENODEV detection logic remains the same (`e.raw_os_error() == Some(19)`)
+4. `RestartSec=1s` in systemd service for restart backoff
+
+### Decision History
+
+**Phase 1 (2026-01-06)**: Detect ENODEV and return error from monitor task.
+
+- Issue: `Vec<JoinHandle>` waited for all tasks, process never exited.
+
+**Phase 2 (2026-01-10, uti-dev#51)**: Change to `JoinSet` + `join_next()`.
+
+- Issue: `fetch_events()` is synchronous blocking, `abort()` has no effect.
+
+**Phase 3 (2026-01-11, uti-dev#56)**: Use EventStream (async API).
+
+- `next_event().await` provides cancellation point for `abort()`.
+- All tasks now properly cancel when any device disconnects.
 
 ### Rationale
 
-**Consistency with ADR-018 pattern**:
+**Why EventStream over fetch_events**:
 
-- Both issues involve stale resources (D-Bus vs evdev)
-- Both solved by daemon restart for clean state
-- Minimal code change, maximum reliability
+- `fetch_events()` is synchronous blocking - no `.await` point
+- `JoinSet::abort_all()` only takes effect at `.await` points
+- Internal keyboards may continue working after USB device ENODEV
+- Process never exits if any device keeps blocking
 
-**Why not device reconnection in-process**:
+**EventStream benefits**:
 
-- More complex state management
-- Risk of resource leaks
-- systemd restart is proven reliable
+- `next_event().await` provides cancellation point
+- When any device returns ENODEV, `join_next()` completes
+- `JoinSet` drop triggers `abort_all()` on remaining tasks
+- All tasks cancel at their next `.await`
+- Process exits cleanly, systemd restarts with fresh state
 
 ### Alternatives Considered
 
@@ -1462,6 +1480,10 @@ the daemon with fresh file descriptors:
    - Pro: Explicit sleep handling
    - Con: Doesn't cover USB disconnect scenarios
 
+4. **std::process::exit(1)**
+   - Pro: Guaranteed process termination
+   - Con: Skips cleanup, not idiomatic Rust
+
 ### Consequences
 
 **Positive**:
@@ -1469,11 +1491,13 @@ the daemon with fresh file descriptors:
 - Automatic recovery after sleep/resume
 - No log spam on device disconnect
 - Works for any ENODEV scenario (sleep, USB unplug)
+- Proper async cancellation (idiomatic tokio)
 
 **Negative**:
 
 - Brief interruption during daemon restart (~1s)
 - All keyboards reconnect together
+- Requires evdev `tokio` feature (additional compile-time dependency)
 
 **Reconsider when**:
 
