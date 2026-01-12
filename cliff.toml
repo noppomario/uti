@@ -43,17 +43,24 @@ conventional_commits = true
 filter_unconventional = false
 split_commits = false
 commit_parsers = [
-  { message = "^feat", group = "🚀 Features" },
-  { message = "^fix", group = "🐛 Bug Fixes" },
-  { message = "^docs", group = "📚 Documentation" },
-  { message = "^refactor", group = "🚜 Refactor" },
-  { message = "^perf", group = "⚡ Performance" },
-  { message = "^test", group = "🧪 Testing" },
-  { message = "^style", group = "🎨 Styling" },
+  # User-facing changes (priority order)
+  { message = "^feat", group = "<!-- 0 -->🚀 Features" },
+  { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+  { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
+  { message = "^refactor", group = "<!-- 3 -->🚜 Refactor" },
+  { message = "^docs", group = "<!-- 4 -->📚 Documentation" },
+  { message = "^test", group = "<!-- 5 -->🧪 Testing" },
+  { message = "^style", group = "<!-- 6 -->🎨 Styling" },
+  { body = ".*security", group = "<!-- 7 -->🛡️ Security" },
+
+  # Skip automated/maintenance commits
   { message = "^chore\\(release\\)", skip = true },
-  { message = "^chore\\(deps\\)", group = "📦 Dependencies" },
-  { message = "^chore", group = "🔧 Miscellaneous" },
-  { body = ".*security", group = "🛡️ Security" },
+  { message = "^chore: bump version", skip = true },
+  { message = "^build", skip = true },
+
+  # Dependencies and miscellaneous (lower priority in changelog)
+  { message = "^chore\\(deps\\)", group = "<!-- 8 -->📦 Dependencies" },
+  { message = "^chore", group = "<!-- 9 -->🔧 Miscellaneous" },
 ]
 protect_breaking_commits = false
 filter_commits = false

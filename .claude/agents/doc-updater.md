@@ -36,7 +36,7 @@ You are a documentation specialist. Update project docs to reflect code changes.
 
 ## Output Format
 
-```
+```markdown
 ## Documentation Updates
 
 ### Updated

@@ -2,6 +2,24 @@
  * Utility functions for settings
  */
 
+/** Keys that could cause prototype pollution */
+const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'];
+
+/**
+ * Validate that a path does not contain dangerous keys
+ *
+ * @param path - The path to validate
+ * @throws Error if path contains dangerous keys
+ */
+function validatePath(path: string): void {
+  const keys = path.split('.');
+  for (const key of keys) {
+    if (DANGEROUS_KEYS.includes(key)) {
+      throw new Error(`Invalid path: "${key}" is not allowed`);
+    }
+  }
+}
+
 /**
  * Get a nested value from an object using dot notation
  *
@@ -10,6 +28,7 @@
  * @returns The value at the path, or undefined if not found
  */
 export function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  validatePath(path);
   const keys = path.split('.');
   let current: unknown = obj;
 
@@ -36,6 +55,7 @@ export function setNestedValue<T extends Record<string, unknown>>(
   path: string,
   value: unknown
 ): T {
+  validatePath(path);
   const keys = path.split('.');
   const result = { ...obj } as Record<string, unknown>;
 

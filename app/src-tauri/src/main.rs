@@ -287,13 +287,18 @@ fn search_desktop_files(query: String) -> Vec<launcher::DesktopApp> {
     launcher::search_desktop_files(&query)
 }
 
-/// Listens for D-Bus signals from the daemon and forwards them to the frontend
-async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
+/// Listens for D-Bus signals from the daemon and forwards them to the frontend.
+///
+/// Uses exponential backoff retry (1s -> 2s -> 4s -> ... -> max 30s) for:
+/// - D-Bus session connection
+/// - Proxy creation (daemon may not be running yet)
+/// - Signal stream acquisition
+///
+/// Automatically reconnects when the stream ends (e.g., daemon restart).
+async fn listen_dbus(window: WebviewWindow) {
     use futures_util::stream::StreamExt;
+    use std::time::Duration;
     use zbus::proxy;
-
-    let conn = Connection::session().await?;
-    println!("Connected to D-Bus session bus");
 
     /// D-Bus proxy interface for receiving DoubleTap signals
     #[proxy(
@@ -306,16 +311,73 @@ async fn listen_dbus(window: WebviewWindow) -> Result<(), Box<dyn std::error::Er
         fn triggered(&self) -> zbus::Result<()>;
     }
 
-    let proxy = DoubleTapProxy::new(&conn, "io.github.noppomario.uti").await?;
-    let mut stream = proxy.receive_triggered().await?;
-    println!("Listening for D-Bus signals...");
+    let mut retry_delay = Duration::from_secs(1);
+    let max_delay = Duration::from_secs(30);
 
-    while let Some(_signal) = stream.next().await {
-        println!("D-Bus signal received!");
-        let _ = window.emit("double-ctrl-pressed", ());
+    loop {
+        // Connect to D-Bus session bus
+        let conn = match Connection::session().await {
+            Ok(c) => {
+                println!("Connected to D-Bus session bus");
+                c
+            }
+            Err(e) => {
+                eprintln!(
+                    "D-Bus connection failed: {}, retrying in {:?}...",
+                    e, retry_delay
+                );
+                tokio::time::sleep(retry_delay).await;
+                retry_delay = (retry_delay * 2).min(max_delay);
+                continue;
+            }
+        };
+
+        // Create proxy (may fail if daemon not running)
+        let proxy = match DoubleTapProxy::new(&conn, "io.github.noppomario.uti").await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!(
+                    "D-Bus proxy creation failed: {}, retrying in {:?}...",
+                    e, retry_delay
+                );
+                tokio::time::sleep(retry_delay).await;
+                retry_delay = (retry_delay * 2).min(max_delay);
+                continue;
+            }
+        };
+
+        // Get signal stream - success, reset retry delay
+        let mut stream = match proxy.receive_triggered().await {
+            Ok(s) => {
+                println!("Listening for D-Bus signals...");
+                retry_delay = Duration::from_secs(1);
+                s
+            }
+            Err(e) => {
+                eprintln!(
+                    "Failed to receive signals: {}, retrying in {:?}...",
+                    e, retry_delay
+                );
+                tokio::time::sleep(retry_delay).await;
+                retry_delay = (retry_delay * 2).min(max_delay);
+                continue;
+            }
+        };
+
+        // Process signals until stream ends
+        while let Some(_signal) = stream.next().await {
+            println!("D-Bus signal received!");
+            let _ = window.emit("double-ctrl-pressed", ());
+        }
+
+        // Stream ended (connection lost), retry with backoff
+        eprintln!(
+            "D-Bus signal stream ended, reconnecting in {:?}...",
+            retry_delay
+        );
+        tokio::time::sleep(retry_delay).await;
+        retry_delay = (retry_delay * 2).min(max_delay);
     }
-
-    Ok(())
 }
 
 /// Handle CLI update command
@@ -485,9 +547,7 @@ fn run_gui(start_minimized: bool) {
 
             let window_clone = window.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = listen_dbus(window_clone).await {
-                    eprintln!("D-Bus error: {}", e);
-                }
+                listen_dbus(window_clone).await;
             });
 
             Ok(())
