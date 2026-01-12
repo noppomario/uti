@@ -31,11 +31,13 @@ ARGUMENTS: Issue URL passed from skill invocation
 
 ## PRELIMINARY ACTIONS
 
-Execute these steps in NORMAL mode (before entering Plan mode):
+Execute these steps in NORMAL mode (before entering Plan mode).
+
+**Note**: Use the skill's base directory shown above (e.g., `/path/to/project/.claude/skills/issue-driven-dev`) for script paths.
 
 ```bash
 # 1. Parse Issue URL
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/parse-issue-url.sh {url}
+{base_dir}/scripts/parse-issue-url.sh {url}
 # Returns: {"owner":"...","repo":"...","number":"..."}
 
 # 2. Fetch issue details
@@ -44,7 +46,7 @@ gh issue view {url} --json title,body,labels,projectItems
 # 3. Read linked issues mentioned in comments (if any)
 
 # 4. Update project status to "In Progress"
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/project-status.sh {url} "In Progress"
+{base_dir}/scripts/project-status.sh {url} "In Progress"
 
 # 5. Call EnterPlanMode tool to enter Plan mode
 ```
@@ -160,11 +162,11 @@ Report findings to user and update as specified.
 
 ```bash
 # Verify PR is merged
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/check-pr-merged.sh {pr_url}
+{base_dir}/scripts/check-pr-merged.sh {pr_url}
 # Must return "merged"
 
 # Update project status to "Done"
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/project-status.sh {issue_url} "Done"
+{base_dir}/scripts/project-status.sh {issue_url} "Done"
 ```
 
 - [ ] Verify PR is merged (must return "merged")
@@ -179,13 +181,13 @@ Detect appropriate language for each output type based on repository conventions
 
 ```bash
 # For Issue comments - detect from issue body
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/detect-repo-lang.sh {owner}/{repo} issue-comment {issue_url}
+{base_dir}/scripts/detect-repo-lang.sh {owner}/{repo} issue-comment {issue_url}
 
 # For PR title/body - detect from recent PRs
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/detect-repo-lang.sh {owner}/{repo} pr
+{base_dir}/scripts/detect-repo-lang.sh {owner}/{repo} pr
 
 # For commit messages - detect from recent commits
-"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-driven-dev/scripts/detect-repo-lang.sh {owner}/{repo} commit
+{base_dir}/scripts/detect-repo-lang.sh {owner}/{repo} commit
 ```
 
 Use detected language for the corresponding output.
