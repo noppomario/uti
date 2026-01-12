@@ -131,14 +131,21 @@ Report findings to user and update as specified.
 
 ---
 
-### Phase 6: Final Review and PR
+### Phase 6a: Pre-PR Review
 
-**Goal**: Re-verify documentation, summarize, and create PR
-
-**IMPORTANT**: After feedback is complete, re-run Phase 3 and Phase 4 before creating PR.
+**Goal**: Re-verify documentation and post final summary before PR
 
 - [ ] Re-run Phase 3: Documentation Review (check if feedback changes require doc updates)
-- [ ] Re-run Phase 4: Completion Summary (post final summary to Issue)
+- [ ] Re-run Phase 4: Post final summary to Issue
+
+**CHECKPOINT**: Confirm above items are posted to Issue before proceeding to 6b.
+
+---
+
+### Phase 6b: PR Creation
+
+**Goal**: Create and submit PR
+
 - [ ] Create branch, commit, push
 - [ ] Create PR: `gh pr create --base develop --title "..." --body "Closes owner/repo#123"`
 - [ ] Post PR link to Issue
@@ -249,7 +256,8 @@ Extract from: `https://github.com/{owner}/{repo}/issues/{number}`
 | Plan approval | User approves plan in Plan mode | Confirm implementation approach |
 | Testing | Phase 4 CHECKPOINT | User validates implementation |
 | Feedback complete | Phase 5 CHECKPOINT | Confirm all feedback addressed |
-| PR merge | Phase 6 STOP | GitHub review process |
+| Pre-PR review | Phase 6a CHECKPOINT | Confirm final summary posted |
+| PR merge | Phase 6b STOP | GitHub review process |
 | Post-merge | Phase 7 (user-initiated) | Final cleanup |
 
 ## Error Handling
