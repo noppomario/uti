@@ -1,16 +1,16 @@
 ---
-name: issue-workflow
-description: GitHub Issue-based task execution workflow with project management. Use when user says "work on issue", "implement issue", "start issue", or "/issue-workflow {issue-url}". Includes project status management, plan mode investigation, and PR auto-linking.
+name: issue-driven-dev
+description: GitHub Issue-based task execution workflow with project management. Use when user says "work on issue", "implement issue", "start issue", or "/issue-driven-dev {issue-url}". Includes project status management, plan mode investigation, and PR auto-linking.
 ---
 
-# Issue Workflow
+# Issue-Driven Development
 
 Execute development tasks based on GitHub Issues with full project management.
 
 ## Usage
 
 ```text
-/issue-workflow https://github.com/owner/repo/issues/123
+/issue-driven-dev https://github.com/owner/repo/issues/123
 ```
 
 **IMPORTANT**: Execute this skill in NORMAL mode (not Plan mode). The skill will
@@ -33,12 +33,20 @@ ARGUMENTS: Issue URL passed from skill invocation
 
 Execute these steps in NORMAL mode (before entering Plan mode):
 
-```text
-1. Parse Issue URL → extract `owner`, `repo`, `issue_number`
-2. Fetch issue details: `gh issue view {url} --json title,body,labels,projectItems`
-3. Read linked issues mentioned in comments
-4. Update project status to "In Progress" (see references/gh-project-api.md)
-5. Call EnterPlanMode tool to enter Plan mode
+```bash
+# 1. Parse Issue URL
+scripts/parse-issue-url.sh {url}
+# Returns: {"owner":"...","repo":"...","number":"..."}
+
+# 2. Fetch issue details
+gh issue view {url} --json title,body,labels,projectItems
+
+# 3. Read linked issues mentioned in comments (if any)
+
+# 4. Update project status to "In Progress"
+scripts/project-status.sh {url} "In Progress"
+
+# 5. Call EnterPlanMode tool to enter Plan mode
 ```
 
 After completing preliminary actions and entering Plan mode, create plan using
@@ -123,14 +131,21 @@ Report findings to user and update as specified.
 
 ---
 
-### Phase 6: Final Review and PR
+### Phase 6a: Pre-PR Review
 
-**Goal**: Re-verify documentation, summarize, and create PR
-
-**IMPORTANT**: After feedback is complete, re-run Phase 3 and Phase 4 before creating PR.
+**Goal**: Re-verify documentation and post final summary before PR
 
 - [ ] Re-run Phase 3: Documentation Review (check if feedback changes require doc updates)
-- [ ] Re-run Phase 4: Completion Summary (post final summary to Issue)
+- [ ] Re-run Phase 4: Post final summary to Issue
+
+**CHECKPOINT**: Confirm above items are posted to Issue before proceeding to 6b.
+
+---
+
+### Phase 6b: PR Creation
+
+**Goal**: Create and submit PR
+
 - [ ] Create branch, commit, push
 - [ ] Create PR: `gh pr create --base develop --title "..." --body "Closes owner/repo#123"`
 - [ ] Post PR link to Issue
@@ -143,9 +158,37 @@ Report findings to user and update as specified.
 
 **Trigger**: User says "PR merged" or "complete the issue"
 
-- [ ] Verify PR is merged
+```bash
+# Verify PR is merged
+scripts/check-pr-merged.sh {pr_url}
+# Must return "merged"
+
+# Update project status to "Done"
+scripts/project-status.sh {issue_url} "Done"
+```
+
+- [ ] Verify PR is merged (must return "merged")
 - [ ] Update project status to "Done"
 - [ ] Post final comment (optional)
+
+---
+
+## Language Detection
+
+Detect appropriate language for each output type based on repository conventions:
+
+```bash
+# For Issue comments - detect from issue body
+scripts/detect-repo-lang.sh {owner}/{repo} issue-comment {issue_url}
+
+# For PR title/body - detect from recent PRs
+scripts/detect-repo-lang.sh {owner}/{repo} pr
+
+# For commit messages - detect from recent commits
+scripts/detect-repo-lang.sh {owner}/{repo} commit
+```
+
+Use detected language for the corresponding output.
 
 ---
 
@@ -213,7 +256,8 @@ Extract from: `https://github.com/{owner}/{repo}/issues/{number}`
 | Plan approval | User approves plan in Plan mode | Confirm implementation approach |
 | Testing | Phase 4 CHECKPOINT | User validates implementation |
 | Feedback complete | Phase 5 CHECKPOINT | Confirm all feedback addressed |
-| PR merge | Phase 6 STOP | GitHub review process |
+| Pre-PR review | Phase 6a CHECKPOINT | Confirm final summary posted |
+| PR merge | Phase 6b STOP | GitHub review process |
 | Post-merge | Phase 7 (user-initiated) | Final cleanup |
 
 ## Error Handling
