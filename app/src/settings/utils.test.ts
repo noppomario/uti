@@ -82,3 +82,58 @@ describe('setNestedValue', () => {
     expect(result.theme.color).toBeUndefined();
   });
 });
+
+describe('Prototype Pollution Protection', () => {
+  describe('getNestedValue', () => {
+    it('throws error for __proto__ in path', () => {
+      const obj = { safe: 'value' };
+      expect(() => getNestedValue(obj, '__proto__.polluted')).toThrow(
+        'Invalid path: "__proto__" is not allowed'
+      );
+    });
+
+    it('throws error for constructor in path', () => {
+      const obj = { safe: 'value' };
+      expect(() => getNestedValue(obj, 'constructor.prototype')).toThrow(
+        'Invalid path: "constructor" is not allowed'
+      );
+    });
+
+    it('throws error for prototype in path', () => {
+      const obj = { safe: 'value' };
+      expect(() => getNestedValue(obj, 'prototype.polluted')).toThrow(
+        'Invalid path: "prototype" is not allowed'
+      );
+    });
+  });
+
+  describe('setNestedValue', () => {
+    it('throws error for __proto__ in path', () => {
+      const obj = { safe: 'value' };
+      expect(() => setNestedValue(obj, '__proto__.polluted', true)).toThrow(
+        'Invalid path: "__proto__" is not allowed'
+      );
+    });
+
+    it('throws error for constructor in path', () => {
+      const obj = { safe: 'value' };
+      expect(() => setNestedValue(obj, 'constructor.prototype', {})).toThrow(
+        'Invalid path: "constructor" is not allowed'
+      );
+    });
+
+    it('throws error for prototype in path', () => {
+      const obj = { safe: 'value' };
+      expect(() => setNestedValue(obj, 'prototype.polluted', true)).toThrow(
+        'Invalid path: "prototype" is not allowed'
+      );
+    });
+
+    it('does not pollute Object prototype', () => {
+      const obj = { safe: 'value' };
+      expect(() => setNestedValue(obj, '__proto__.isAdmin', true)).toThrow();
+      // biome-ignore lint/suspicious/noExplicitAny: testing prototype access
+      expect((Object.prototype as any).isAdmin).toBeUndefined();
+    });
+  });
+});
