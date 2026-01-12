@@ -1,10 +1,9 @@
 //! Settings window and window size management
 //!
 //! Handles window dimensions for different themes and modes,
-//! and provides commands for settings UI functionality.
+//! and provides commands for autostart functionality.
 
-use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, WebviewWindow};
 use tauri_plugin_autostart::ManagerExt;
 
 /// Window size constants for each theme
@@ -77,22 +76,6 @@ pub fn set_window_mode(window: WebviewWindow, mode: String) {
     }
 }
 
-/// Gets the current application version
-///
-/// Returns the version from Cargo.toml.
-///
-/// # Examples
-///
-/// ```typescript
-/// import { invoke } from '@tauri-apps/api/core';
-/// const version = await invoke('get_version');
-/// console.log(version); // e.g., "0.1.0"
-/// ```
-#[tauri::command]
-pub fn get_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-
 /// Gets the current autostart status
 ///
 /// Returns true if autostart is enabled, false otherwise.
@@ -149,144 +132,4 @@ pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-/// Result of update check from settings
-#[derive(Debug, Serialize)]
-pub struct UpdateCheckResult {
-    pub current_version: String,
-    pub latest_version: String,
-    pub update_available: bool,
-}
-
-/// Checks for updates from settings UI
-///
-/// Returns update check result that the frontend can display.
-///
-/// # Returns
-///
-/// UpdateCheckResult with version info
-///
-/// # Examples
-///
-/// ```typescript
-/// import { invoke } from '@tauri-apps/api/core';
-/// const result = await invoke('check_for_updates');
-/// if (result.update_available) {
-///   console.log(`Update available: ${result.latest_version}`);
-/// }
-/// ```
-#[tauri::command]
-pub async fn check_for_updates() -> Result<UpdateCheckResult, String> {
-    use crate::updater;
-
-    let current_version = env!("CARGO_PKG_VERSION");
-
-    let result = updater::check_for_updates(current_version)
-        .await
-        .map_err(|e| format!("{}", e))?;
-
-    Ok(UpdateCheckResult {
-        current_version: result.current_version,
-        latest_version: result.latest_version,
-        update_available: result.update_available,
-    })
-}
-
-/// URL-encode a string for use in query parameters
-fn urlencoding(s: &str) -> String {
-    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
-}
-
-/// Checks for updates and shows a dialog window with the result
-///
-/// This provides the same UX as the tray menu update check.
-///
-/// # Arguments
-///
-/// * `app` - The Tauri AppHandle
-///
-/// # Examples
-///
-/// ```typescript
-/// import { invoke } from '@tauri-apps/api/core';
-/// await invoke('check_for_updates_with_dialog');
-/// ```
-#[tauri::command]
-pub async fn check_for_updates_with_dialog(app: AppHandle) {
-    use crate::updater;
-
-    let current_version = env!("CARGO_PKG_VERSION").to_string();
-
-    let (title, message, kind) = match updater::check_for_updates(&current_version).await {
-        Ok(result) => {
-            if result.update_available {
-                (
-                    "Update Available".to_string(),
-                    format!(
-                        "Update available: {} -> {}\n\nRun 'uti update' in terminal to install.",
-                        result.current_version, result.latest_version
-                    ),
-                    "info".to_string(),
-                )
-            } else {
-                (
-                    "No Update".to_string(),
-                    "You are running the latest version.".to_string(),
-                    "info".to_string(),
-                )
-            }
-        }
-        Err(e) => (
-            "Update Check Failed".to_string(),
-            format!("{}", e),
-            "error".to_string(),
-        ),
-    };
-
-    // Close existing dialog window if any
-    if let Some(existing) = app.get_webview_window("dialog") {
-        let _ = existing.close();
-    }
-
-    // Create new dialog window with URL parameters
-    let url = format!(
-        "update-dialog.html?title={}&message={}&kind={}",
-        urlencoding(&title),
-        urlencoding(&message),
-        urlencoding(&kind)
-    );
-
-    match WebviewWindowBuilder::new(&app, "dialog", WebviewUrl::App(url.into()))
-        .title("uti")
-        .inner_size(420.0, 200.0)
-        .resizable(false)
-        .decorations(false)
-        .transparent(true)
-        .center()
-        .visible(true)
-        .focused(true)
-        .build()
-    {
-        Ok(_) => println!("Update dialog created"),
-        Err(e) => eprintln!("Failed to create update dialog: {:?}", e),
-    }
-}
-
-/// Opens the GitHub repository in the default browser
-///
-/// # Returns
-///
-/// Ok if successful, Err with error message if failed
-///
-/// # Examples
-///
-/// ```typescript
-/// import { invoke } from '@tauri-apps/api/core';
-/// await invoke('open_github');
-/// ```
-#[tauri::command]
-pub fn open_github() -> Result<(), String> {
-    open::that("https://github.com/noppomario/uti")
-        .map_err(|e| format!("Failed to open URL: {}", e))
 }

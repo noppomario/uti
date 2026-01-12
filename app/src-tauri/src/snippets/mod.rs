@@ -3,8 +3,10 @@
 //! Provides persistent snippet storage for quick text access.
 //! Snippets are saved text entries that users can quickly copy to clipboard.
 
+mod commands;
 mod store;
 
+pub use commands::{add_snippet, get_snippets};
 pub use store::{load_snippets, save_snippets, SnippetsStore};
 
 use serde::{Deserialize, Serialize};

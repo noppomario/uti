@@ -3,8 +3,10 @@
 //! Provides clipboard history management with LRU eviction
 //! and JSON-based persistence.
 
+mod commands;
 mod store;
 
+pub use commands::{add_clipboard_item, get_clipboard_history, paste_item, remove_clipboard_item};
 pub use store::ClipboardStore;
 
 use serde::{Deserialize, Serialize};
