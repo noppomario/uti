@@ -58,9 +58,21 @@ setup_branch() {
         return 0
     fi
 
-    # Rebase current work branch onto target branch
+    # Check if this is a resume session (branch already exists on origin)
+    if git ls-remote --exit-code --heads origin "$current_branch" >/dev/null 2>&1; then
+        log "Resume session detected, syncing with origin/$current_branch..."
+        if git fetch origin "$current_branch" 2>/dev/null; then
+            git reset --hard "origin/$current_branch" 2>/dev/null
+            log "Synced to origin/$current_branch"
+        else
+            log "WARNING: Failed to fetch origin/$current_branch"
+        fi
+        return 0
+    fi
+
+    # New session: rebase work branch onto target branch
     # This handles Claude Code on Web auto-created branches
-    log "Rebasing $current_branch onto $target_branch..."
+    log "New session, rebasing $current_branch onto $target_branch..."
 
     if ! git fetch origin "$target_branch" 2>/dev/null; then
         log "WARNING: Failed to fetch $target_branch"
