@@ -14,6 +14,7 @@ use std::process::Command;
 #[derive(Debug, Deserialize)]
 struct Release {
     tag_name: String,
+    html_url: String,
     assets: Vec<Asset>,
 }
 
@@ -33,6 +34,26 @@ pub struct UpdateCheckResult {
     pub uti_rpm_url: Option<String>,
     pub daemon_rpm_url: Option<String>,
     pub gnome_extension_url: Option<String>,
+}
+
+/// Result of update check with full details for GUI
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UpdateCheckResultFull {
+    pub current_version: String,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub release_url: String,
+    pub uti_rpm_url: Option<String>,
+    pub daemon_rpm_url: Option<String>,
+    pub gnome_extension_url: Option<String>,
+}
+
+/// Progress event for update operations
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UpdateProgress {
+    pub step: String,
+    pub message: String,
+    pub is_error: bool,
 }
 
 /// Error types for updater operations
@@ -125,6 +146,76 @@ pub async fn check_for_updates(current_version: &str) -> Result<UpdateCheckResul
         current_version: current_version.to_string(),
         latest_version: latest_version_str.to_string(),
         update_available,
+        uti_rpm_url,
+        daemon_rpm_url,
+        gnome_extension_url,
+    })
+}
+
+/// Check for updates from GitHub Releases (with full details for GUI)
+///
+/// Similar to check_for_updates but returns UpdateCheckResultFull with release URL.
+pub async fn check_for_updates_full(
+    current_version: &str,
+) -> Result<UpdateCheckResultFull, UpdateError> {
+    let client = Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| UpdateError::Network(e.to_string()))?;
+
+    let response = client
+        .get(GITHUB_API_URL)
+        .send()
+        .await
+        .map_err(|e| UpdateError::Network(e.to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(UpdateError::Network(format!(
+            "GitHub API returned status: {}",
+            response.status()
+        )));
+    }
+
+    let release: Release = response
+        .json()
+        .await
+        .map_err(|e| UpdateError::Parse(e.to_string()))?;
+
+    // Parse version (strip 'v' prefix if present)
+    let latest_version_str = release.tag_name.trim_start_matches('v');
+    let current = Version::parse(current_version)
+        .map_err(|e| UpdateError::Parse(format!("Invalid current version: {}", e)))?;
+    let latest = Version::parse(latest_version_str)
+        .map_err(|e| UpdateError::Parse(format!("Invalid latest version: {}", e)))?;
+
+    let update_available = latest > current;
+
+    // Find RPM URLs
+    let uti_rpm_url = release
+        .assets
+        .iter()
+        .find(|a| {
+            a.name.starts_with("uti-") && a.name.ends_with(".rpm") && !a.name.contains("daemon")
+        })
+        .map(|a| a.browser_download_url.clone());
+
+    let daemon_rpm_url = release
+        .assets
+        .iter()
+        .find(|a| a.name.starts_with("uti-daemon-") && a.name.ends_with(".rpm"))
+        .map(|a| a.browser_download_url.clone());
+
+    let gnome_extension_url = release
+        .assets
+        .iter()
+        .find(|a| a.name == "gnome-extension.zip")
+        .map(|a| a.browser_download_url.clone());
+
+    Ok(UpdateCheckResultFull {
+        current_version: current_version.to_string(),
+        latest_version: latest_version_str.to_string(),
+        update_available,
+        release_url: release.html_url,
         uti_rpm_url,
         daemon_rpm_url,
         gnome_extension_url,
@@ -305,6 +396,9 @@ pub fn install_rpms(rpm_paths: &[PathBuf]) -> Result<(), UpdateError> {
 
 /// Perform a full update (download and install RPMs and GNOME extension)
 ///
+/// This is a pure logic function without any output. Callers should handle
+/// progress display (CLI: println, GUI: Tauri events).
+///
 /// # Arguments
 ///
 /// * `result` - The update check result containing download URLs
@@ -317,7 +411,6 @@ pub async fn perform_update(result: &UpdateCheckResult) -> Result<(), UpdateErro
 
     // Download daemon RPM
     if let Some(ref daemon_url) = result.daemon_rpm_url {
-        println!("Downloading daemon RPM...");
         let daemon_path = download_rpm(
             daemon_url,
             &format!("uti-daemon-{}.rpm", result.latest_version),
@@ -328,28 +421,125 @@ pub async fn perform_update(result: &UpdateCheckResult) -> Result<(), UpdateErro
 
     // Download uti app RPM
     if let Some(ref uti_url) = result.uti_rpm_url {
-        println!("Downloading uti RPM...");
         let uti_path = download_rpm(uti_url, &format!("uti-{}.rpm", result.latest_version)).await?;
         rpm_paths.push(uti_path);
     }
 
     // Install all RPMs in a single pkexec session (one authentication prompt)
     if !rpm_paths.is_empty() {
-        println!("Installing RPM packages...");
         install_rpms(&rpm_paths)?;
     }
 
     // Download and install GNOME extension (if available and on GNOME)
     if let Some(ref ext_url) = result.gnome_extension_url {
         if is_gnome_environment() {
-            println!("Downloading GNOME extension...");
             let ext_path = download_file(ext_url, "gnome-extension.zip").await?;
-            println!("Installing GNOME extension...");
             install_gnome_extension(&ext_path)?;
-            println!("GNOME extension updated. Log out and log back in to apply changes.");
         }
     }
 
+    Ok(())
+}
+
+/// Perform a full update with progress events (for GUI)
+///
+/// # Arguments
+///
+/// * `app` - Tauri AppHandle for emitting events
+/// * `result` - The update check result containing download URLs
+///
+/// # Returns
+///
+/// Returns `Ok(())` if update was successful
+pub async fn perform_update_with_progress(
+    app: &tauri::AppHandle,
+    result: &UpdateCheckResultFull,
+) -> Result<(), UpdateError> {
+    use tauri::Emitter;
+
+    let emit_progress = |step: &str, message: &str| {
+        let _ = app.emit(
+            "update-progress",
+            UpdateProgress {
+                step: step.to_string(),
+                message: message.to_string(),
+                is_error: false,
+            },
+        );
+    };
+
+    let emit_error = |step: &str, message: &str| {
+        let _ = app.emit(
+            "update-progress",
+            UpdateProgress {
+                step: step.to_string(),
+                message: message.to_string(),
+                is_error: true,
+            },
+        );
+    };
+
+    let mut rpm_paths: Vec<PathBuf> = Vec::new();
+
+    // Download daemon RPM
+    if let Some(ref daemon_url) = result.daemon_rpm_url {
+        emit_progress("download", "Downloading daemon RPM...");
+        match download_rpm(
+            daemon_url,
+            &format!("uti-daemon-{}.rpm", result.latest_version),
+        )
+        .await
+        {
+            Ok(path) => rpm_paths.push(path),
+            Err(e) => {
+                emit_error("download", &format!("Failed to download daemon: {}", e));
+                return Err(e);
+            }
+        }
+    }
+
+    // Download uti app RPM
+    if let Some(ref uti_url) = result.uti_rpm_url {
+        emit_progress("download", "Downloading uti RPM...");
+        match download_rpm(uti_url, &format!("uti-{}.rpm", result.latest_version)).await {
+            Ok(path) => rpm_paths.push(path),
+            Err(e) => {
+                emit_error("download", &format!("Failed to download uti: {}", e));
+                return Err(e);
+            }
+        }
+    }
+
+    // Install all RPMs in a single pkexec session (one authentication prompt)
+    if !rpm_paths.is_empty() {
+        emit_progress("install", "Installing RPM packages...");
+        if let Err(e) = install_rpms(&rpm_paths) {
+            emit_error("install", &format!("Failed to install RPMs: {}", e));
+            return Err(e);
+        }
+    }
+
+    // Download and install GNOME extension (if available and on GNOME)
+    if let Some(ref ext_url) = result.gnome_extension_url {
+        if is_gnome_environment() {
+            emit_progress("download", "Downloading GNOME extension...");
+            match download_file(ext_url, "gnome-extension.zip").await {
+                Ok(ext_path) => {
+                    emit_progress("install", "Installing GNOME extension...");
+                    if let Err(e) = install_gnome_extension(&ext_path) {
+                        emit_error("install", &format!("Failed to install extension: {}", e));
+                        return Err(e);
+                    }
+                }
+                Err(e) => {
+                    emit_error("download", &format!("Failed to download extension: {}", e));
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    emit_progress("complete", "Update complete!");
     Ok(())
 }
 

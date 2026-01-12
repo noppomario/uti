@@ -10,7 +10,7 @@ import ReactDOM from 'react-dom/client';
 import type { AppConfig } from './config';
 import { getConfig } from './config';
 import './index.css';
-import './settings/i18n';
+import './i18n';
 import { SettingsPage } from './settings/SettingsPage';
 
 /** Available color themes */

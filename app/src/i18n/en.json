@@ -82,5 +82,19 @@
       "label": "GitHub",
       "description": "Open project repository in browser"
     }
+  },
+  "update": {
+    "title": "Update",
+    "checking": "Checking for updates...",
+    "upToDate": "You're up to date!",
+    "available": "Version {{version}} is available",
+    "currentVersion": "Current version: {{version}}",
+    "viewRelease": "View release notes",
+    "updateButton": "Update Now",
+    "closeButton": "Close",
+    "updating": "Installing update...",
+    "success": "Update complete!",
+    "successMessage": "Please log out and log back in to apply changes.",
+    "error": "Update failed"
   }
 }

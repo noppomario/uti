@@ -82,5 +82,19 @@
       "label": "GitHub",
       "description": "プロジェクトリポジトリをブラウザで開く"
     }
+  },
+  "update": {
+    "title": "アップデート",
+    "checking": "アップデートを確認中...",
+    "upToDate": "最新版です！",
+    "available": "バージョン {{version}} が利用可能です",
+    "currentVersion": "現在のバージョン: {{version}}",
+    "viewRelease": "リリースノートを見る",
+    "updateButton": "今すぐアップデート",
+    "closeButton": "閉じる",
+    "updating": "アップデートをインストール中...",
+    "success": "アップデート完了！",
+    "successMessage": "変更を適用するには、ログアウトして再ログインしてください。",
+    "error": "アップデートに失敗しました"
   }
 }

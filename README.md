@@ -159,6 +159,12 @@ Check only (without installing):
 uti update --check
 ```
 
+Skip confirmation prompt:
+
+```bash
+uti update -y
+```
+
 ## ⚙️ Configuration
 
 Configuration file: `~/.config/uti/config.json`
