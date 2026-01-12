@@ -1,16 +1,16 @@
 ---
-name: issue-workflow
-description: GitHub Issue-based task execution workflow with project management. Use when user says "work on issue", "implement issue", "start issue", or "/issue-workflow {issue-url}". Includes project status management, plan mode investigation, and PR auto-linking.
+name: issue-driven-dev
+description: GitHub Issue-based task execution workflow with project management. Use when user says "work on issue", "implement issue", "start issue", or "/issue-driven-dev {issue-url}". Includes project status management, plan mode investigation, and PR auto-linking.
 ---
 
-# Issue Workflow
+# Issue-Driven Development
 
 Execute development tasks based on GitHub Issues with full project management.
 
 ## Usage
 
 ```text
-/issue-workflow https://github.com/owner/repo/issues/123
+/issue-driven-dev https://github.com/owner/repo/issues/123
 ```
 
 **IMPORTANT**: Execute this skill in NORMAL mode (not Plan mode). The skill will
@@ -33,12 +33,20 @@ ARGUMENTS: Issue URL passed from skill invocation
 
 Execute these steps in NORMAL mode (before entering Plan mode):
 
-```text
-1. Parse Issue URL → extract `owner`, `repo`, `issue_number`
-2. Fetch issue details: `gh issue view {url} --json title,body,labels,projectItems`
-3. Read linked issues mentioned in comments
-4. Update project status to "In Progress" (see references/gh-project-api.md)
-5. Call EnterPlanMode tool to enter Plan mode
+```bash
+# 1. Parse Issue URL
+scripts/parse-issue-url.sh {url}
+# Returns: {"owner":"...","repo":"...","number":"..."}
+
+# 2. Fetch issue details
+gh issue view {url} --json title,body,labels,projectItems
+
+# 3. Read linked issues mentioned in comments (if any)
+
+# 4. Update project status to "In Progress"
+scripts/project-status.sh {url} "In Progress"
+
+# 5. Call EnterPlanMode tool to enter Plan mode
 ```
 
 After completing preliminary actions and entering Plan mode, create plan using
@@ -143,9 +151,37 @@ Report findings to user and update as specified.
 
 **Trigger**: User says "PR merged" or "complete the issue"
 
-- [ ] Verify PR is merged
+```bash
+# Verify PR is merged
+scripts/check-pr-merged.sh {pr_url}
+# Must return "merged"
+
+# Update project status to "Done"
+scripts/project-status.sh {issue_url} "Done"
+```
+
+- [ ] Verify PR is merged (must return "merged")
 - [ ] Update project status to "Done"
 - [ ] Post final comment (optional)
+
+---
+
+## Language Detection
+
+Detect appropriate language for each output type based on repository conventions:
+
+```bash
+# For Issue comments - detect from issue body
+scripts/detect-repo-lang.sh {owner}/{repo} issue-comment {issue_url}
+
+# For PR title/body - detect from recent PRs
+scripts/detect-repo-lang.sh {owner}/{repo} pr
+
+# For commit messages - detect from recent commits
+scripts/detect-repo-lang.sh {owner}/{repo} commit
+```
+
+Use detected language for the corresponding output.
 
 ---
 

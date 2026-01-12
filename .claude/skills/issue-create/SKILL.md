@@ -40,10 +40,15 @@ When `--from-plan` is specified:
 
 1. Read current plan file from `~/.claude/plans/` directory
 2. Append plan content to issue body under "## Investigation Results" section
-3. This enables seamless handoff to `issue-workflow`
+3. This enables seamless handoff to `issue-driven-dev`
 
-**Plan file location**: Check system message for active plan file path, or find
-the most recently modified `.md` file in the plans directory.
+**Plan file location**:
+
+```bash
+scripts/get-plan-path.sh
+```
+
+Or check system message for active plan file path.
 
 **Issue body structure with --from-plan**:
 
@@ -55,24 +60,25 @@ the most recently modified `.md` file in the plans directory.
 [Full plan content from plan file]
 ```
 
-## Label Selection Guide
+## Label Selection
 
-Select one or more labels based on issue type:
+Fetch available labels from target repository:
 
-| Label              | Use Case                    |
-| ------------------ | --------------------------- |
-| `bug`              | Something isn't working     |
-| `enhancement`      | New feature or improvement  |
-| `documentation`    | Documentation changes       |
-| `question`         | Questions or investigations |
-| `good first issue` | Beginner-friendly tasks     |
-| `help wanted`      | Extra attention needed      |
+```bash
+scripts/get-labels.sh {owner}/{repo}
+```
 
-Rarely used:
+Select appropriate label(s) from the fetched list.
 
-- `duplicate` - Already exists
-- `invalid` - Not valid
-- `wontfix` - Will not be addressed
+Common labels (may vary by repository):
+
+- `bug` - Something isn't working
+- `enhancement` - New feature or improvement
+- `documentation` - Documentation changes
+- `question` - Questions or investigations
+- `security` - Security vulnerability fix
+- `dependencies` - Dependency updates
+- `meta` - Development process improvements
 
 ## Template Mapping
 
@@ -88,12 +94,14 @@ Auto-select template based on primary label:
 
 ## Fetching Template
 
-Before creating issue, fetch the template to follow its structure:
+Fetch template and detect its language:
 
 ```bash
-gh api repos/{owner}/{repo}/contents/.github/ISSUE_TEMPLATE/{template}.md \
-  | jq -r '.content' | base64 -d
+scripts/get-template.sh {owner} {repo} {template}.md
 ```
+
+Output includes detected language (LANG: ja/en).
+Write issue title and body in the detected language.
 
 ## Issue Creation Command
 
@@ -113,18 +121,18 @@ language as the repository's issue template.
 - If template is in Japanese → Write issue in Japanese
 - If template is in English → Write issue in English
 
-## Handoff to issue-workflow
+## Handoff to issue-driven-dev
 
 After creating an issue with `--from-plan`, suggest:
 
 ```text
 Issue created. To implement this issue:
-/issue-workflow {created_issue_url}
+/issue-driven-dev {created_issue_url}
 ```
 
 ## Notes
 
 - Keep it simple: This is for quick TODO registration
-- Detailed planning happens in `issue-workflow` skill
+- Detailed planning happens in `issue-driven-dev` skill
 - Fetch and follow repository's issue template structure and language
 - `--from-plan` bridges investigation work to formal issue tracking
