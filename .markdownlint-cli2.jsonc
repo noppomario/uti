@@ -1,0 +1,13 @@
+{
+  // Extend rules from .markdownlint.json
+  "config": {
+    "extends": ".markdownlint.json"
+  },
+  // Patterns to ignore
+  "ignores": [
+    "**/node_modules/**",
+    "**/target/**",
+    "**/dist/**",
+    "**/*.sh"
+  ]
+}

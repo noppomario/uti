@@ -45,7 +45,7 @@ When `--from-plan` is specified:
 **Plan file location**:
 
 ```bash
-scripts/get-plan-path.sh
+"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-create/scripts/get-plan-path.sh
 ```
 
 Or check system message for active plan file path.
@@ -65,7 +65,7 @@ Or check system message for active plan file path.
 Fetch available labels from target repository:
 
 ```bash
-scripts/get-labels.sh {owner}/{repo}
+"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-create/scripts/get-labels.sh {owner}/{repo}
 ```
 
 Select appropriate label(s) from the fetched list.
@@ -97,7 +97,7 @@ Auto-select template based on primary label:
 Fetch template and detect its language:
 
 ```bash
-scripts/get-template.sh {owner} {repo} {template}.md
+"$CLAUDE_PROJECT_DIR"/.claude/skills/issue-create/scripts/get-template.sh {owner} {repo} {template}.md
 ```
 
 Output includes detected language (LANG: ja/en).
