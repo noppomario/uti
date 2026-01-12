@@ -1,6 +1,6 @@
 ---
 name: release-preview
-description: Preview changes for the next release. Triggers on "release preview", "changelog preview", "what's in next release", or Japanese equivalents like "リリース内容確認", "次のリリース".
+description: Preview changes for the next release. Triggers on "release preview", "changelog preview", "what's in next release", or wants to prepare a new version for distribution.
 ---
 
 # Release Preview
@@ -15,8 +15,6 @@ Display unreleased changes since the last version tag.
 4. Summarize: feature count, fix count, overall assessment
 
 ## Output Format
-
-Report in Japanese with:
 
 - Categorized change list (Features, Fixes, Refactor, etc.)
 - Commit hash and description for each change
