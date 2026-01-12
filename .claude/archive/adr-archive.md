@@ -1411,3 +1411,82 @@ Use evdev's async EventStream API to enable proper task cancellation:
 
 - Need sub-second recovery time
 - Need per-device reconnection without full restart
+
+---
+
+## ADR-029: D-Bus connection retry for Tauri app
+
+**Date**: 2026-01-12
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After login or system startup, the Tauri app may start before the uti-daemon.
+When this happens, `DoubleTapProxy::new()` fails because the daemon hasn't
+registered its D-Bus bus name yet. The original implementation returned an
+error immediately without retry, leaving the app unable to receive double
+Ctrl signals until manually restarted.
+
+This is the counterpart to ADR-025 (daemon-side sleep/resume recovery).
+
+### Decision
+
+Add exponential backoff retry loop to `listen_dbus()` function:
+
+1. Retry D-Bus session connection, proxy creation, and signal stream acquisition
+2. Use exponential backoff: 1s → 2s → 4s → ... → max 30s
+3. Reset backoff to 1s on successful signal stream acquisition
+4. Automatically reconnect when stream ends (daemon restart)
+
+### Rationale
+
+**Exponential backoff over fixed interval**:
+
+- Reduces log spam when daemon is unavailable for extended periods
+- Quick recovery (1s) when daemon starts shortly after app
+- Caps at 30s to balance responsiveness and resource usage
+
+**Infinite retry over max attempts**:
+
+- App should always be ready to receive signals
+- Daemon may start at any time (user intervention, systemd restart)
+- Matches daemon's "always running" design philosophy
+
+**No Result return type**:
+
+- Function never "fails" in a recoverable way
+- Caller doesn't need to handle errors
+- Simplifies spawn site
+
+### Alternatives Considered
+
+1. **Retry with max attempts, then fail**
+   - Pro: Bounded behavior
+   - Con: App becomes non-functional after max attempts
+
+2. **Fixed 1s interval**
+   - Pro: Simpler implementation
+   - Con: Log spam if daemon unavailable
+
+3. **systemd dependency ordering**
+   - Pro: Guarantees startup order
+   - Con: App not managed by systemd (autostart via .desktop)
+
+### Consequences
+
+**Positive**:
+
+- App works regardless of startup order
+- Automatic recovery from daemon restarts
+- Reduced log spam with exponential backoff
+
+**Negative**:
+
+- Up to 30s delay if daemon starts much later
+- Slightly more complex code than original
+
+**Reconsider when**:
+
+- Need guaranteed sub-second recovery
+- App becomes systemd-managed (can use After= dependency)
