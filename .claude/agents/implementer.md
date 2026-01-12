@@ -31,7 +31,7 @@ You are an implementation specialist. Execute code changes based on a provided p
 
 ## Output Format
 
-```
+```markdown
 ## Changes Made
 - [file]: [description of change]
 

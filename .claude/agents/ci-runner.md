@@ -27,7 +27,7 @@ cargo test --workspace  # Rust tests only
 
 ## Output Format
 
-```
+```markdown
 ## CI Results: [PASS/FAIL]
 
 ### Summary
