@@ -21,7 +21,6 @@ if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
     log "WARNING: $CONFIG_FILE not found, using defaults"
-    CONFIG_DEFAULT_BRANCH=""
     CONFIG_INSTALL_GH=true
 fi
 
@@ -34,62 +33,6 @@ if [ "$CLAUDE_CODE_REMOTE" != "true" ]; then
 fi
 
 log "=== Session setup starting ==="
-
-#---------------------------------------
-# Module: Git branch setup
-#---------------------------------------
-setup_branch() {
-    local target_branch="$1"
-
-    if [ -z "$target_branch" ]; then
-        log "Branch switching disabled"
-        return 0
-    fi
-
-    local current_branch=$(git branch --show-current 2>/dev/null || echo "")
-
-    if [ -z "$current_branch" ]; then
-        log "Not a git repository, skipping branch setup"
-        return 0
-    fi
-
-    if [ "$current_branch" = "$target_branch" ]; then
-        log "Already on $target_branch branch"
-        return 0
-    fi
-
-    # Check if this is a resume session (branch already exists on origin)
-    if git ls-remote --exit-code --heads origin "$current_branch" >/dev/null 2>&1; then
-        log "Resume session detected, syncing with origin/$current_branch..."
-        if git fetch origin "$current_branch" 2>/dev/null; then
-            git reset --hard "origin/$current_branch" 2>/dev/null
-            log "Synced to origin/$current_branch"
-        else
-            log "WARNING: Failed to fetch origin/$current_branch"
-        fi
-        return 0
-    fi
-
-    # New session: rebase work branch onto target branch
-    # This handles Claude Code on Web auto-created branches
-    log "New session, rebasing $current_branch onto $target_branch..."
-
-    if ! git fetch origin "$target_branch" 2>/dev/null; then
-        log "WARNING: Failed to fetch $target_branch"
-        return 0
-    fi
-
-    if ! git reset --hard "origin/$target_branch" 2>/dev/null; then
-        log "WARNING: Failed to reset to origin/$target_branch"
-        return 0
-    fi
-
-    if git push -u origin "$current_branch" --force 2>/dev/null; then
-        log "Work branch $current_branch rebased onto $target_branch"
-    else
-        log "WARNING: Failed to push rebased branch (may need manual push)"
-    fi
-}
 
 #---------------------------------------
 # Module: gh CLI installation
@@ -170,7 +113,6 @@ persist_path() {
 #---------------------------------------
 # Main execution
 #---------------------------------------
-setup_branch "$CONFIG_DEFAULT_BRANCH"
 setup_gh
 
 # Run custom setup if defined
