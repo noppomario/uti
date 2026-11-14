@@ -23,7 +23,7 @@
     "daemon:all": "npm-run-all daemon:format daemon:lint daemon:build daemon:test",
     "gtk:lint": "cargo fmt -p uti-gtk --check && cargo clippy -p uti-gtk --all-targets",
     "gtk:test": "cargo test -p uti-gtk",
-    "gtk:run": "cargo run -p uti-gtk",
+    "gtk:run": "./gtk/run-dev.sh",
     "gtk:all": "npm-run-all gtk:lint gtk:test",
     "gnome:format": "cd gnome-extension && bunx --bun @biomejs/biome format --write .",
     "gnome:lint": "cd gnome-extension && bunx --bun @biomejs/biome check .",

@@ -3,6 +3,7 @@
 mod app;
 mod dbus;
 mod state;
+mod ui;
 
 use relm4::RelmApp;
 use uti_core::dbus::APP_BUS_NAME;

@@ -30,11 +30,6 @@ impl WindowState {
         self.visible
     }
 
-    /// Whether the window is pinned (always on top, no auto-hide).
-    pub fn is_pinned(&self) -> bool {
-        self.pinned
-    }
-
     /// Double Ctrl / panel click. Ignored while pinned.
     pub fn toggle(&mut self) -> Option<WindowCommand> {
         if self.pinned {

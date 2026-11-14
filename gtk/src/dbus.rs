@@ -27,6 +27,26 @@ pub fn on_triggered(
     )
 }
 
+/// Subscribes to `Shell1.ClipboardChanged(s)`.
+pub fn on_clipboard_changed(
+    conn: &gio::DBusConnection,
+    callback: impl Fn(String) + 'static,
+) -> gio::SignalSubscription {
+    conn.subscribe_to_signal(
+        Some(SHELL_BUS_NAME),
+        Some(SHELL_INTERFACE),
+        Some("ClipboardChanged"),
+        Some(SHELL_OBJECT_PATH),
+        None,
+        gio::DBusSignalFlags::NONE,
+        move |signal| {
+            if let Some((text,)) = signal.parameters.get::<(String,)>() {
+                callback(text);
+            }
+        },
+    )
+}
+
 async fn call(
     conn: &gio::DBusConnection,
     service: (&str, &str, &str),
