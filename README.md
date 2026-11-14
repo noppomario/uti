@@ -12,7 +12,6 @@
 [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GTK4](https://img.shields.io/badge/GTK4-4A86CF?logo=gtk&logoColor=white)](https://gtk-rs.org/)
 [![libadwaita](https://img.shields.io/badge/libadwaita-4A86CF?logo=gnome&logoColor=white)](https://gnome.pages.gitlab.gnome.org/libadwaita/)
-[![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)](https://bun.sh/)
 [![Biome](https://img.shields.io/badge/Biome-60A5FA?logo=biome&logoColor=white)](https://biomejs.dev/)
 
 > A modern clipboard manager and app launcher for Linux with double-Ctrl toggle
@@ -104,7 +103,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 | 🦀 App | Rust + gtk4-rs + libadwaita |
 | 🎹 Daemon | Rust + evdev + uinput + D-Bus |
 | 🧩 GNOME extension | GJS |
-| 🔧 Tooling | Bun (task runner), clippy, Biome (extension) |
+| 🔧 Tooling | mise, just, lefthook, clippy, cargo-deny, Biome (extension), rumdl |
 
 ## 📖 Usage
 

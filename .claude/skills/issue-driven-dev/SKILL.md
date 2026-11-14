@@ -90,7 +90,7 @@ Then proceed to Phase 2.
 
 - [ ] Implement changes following Phase 1 plan
   - For large/multi-file changes: use `Task(subagent_type: "implementer")` to isolate
-- [ ] Run tests: `bun run ci:local`
+- [ ] Run tests: `just ci`
   - Use `Task(subagent_type: "ci-runner")` to isolate verbose output
 - [ ] Track deviations from original plan
 

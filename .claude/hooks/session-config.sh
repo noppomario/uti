@@ -13,6 +13,5 @@ CONFIG_INSTALL_GH=true
 # Called at the end of setup if defined
 custom_setup() {
     : # Add custom commands here, e.g.:
-    # bun install
     # source ~/.nvm/nvm.sh && nvm use 20
 }

@@ -7,9 +7,8 @@ Complete setup guide for developing **uti** on Fedora 44.
 ## Prerequisites
 
 - **OS**: Fedora 44 (GNOME 50/Wayland). Ubuntu cannot build the app (no libadwaita 1.9); CI builds in a `fedora:44` container.
-- **Rust**: Install via [mise](https://mise.jdx.dev/) or [rustup](https://rustup.rs/)
-- **Bun**: Install via [mise](https://mise.jdx.dev/) or [bun.sh](https://bun.sh/)
-- **Rust components**: `rustfmt`, `clippy`
+- **Rust**: Install [rustup](https://rustup.rs/); `rust-toolchain.toml` pins the version (Fedora 44's rust, used by COPR/RPM builds) with `rustfmt` and `clippy`
+- **mise**: Install [mise](https://mise.jdx.dev/); `mise.toml` + `mise.lock` pin just, lefthook, biome, cargo-deny, rumdl, git-cliff and actionlint
 
 ---
 
@@ -36,8 +35,9 @@ For architecture documentation with diagrams, see [ARCHITECTURE.md](ARCHITECTURE
 git clone https://github.com/noppomario/uti.git
 cd uti
 
-# Install task runner dependencies
-bun install
+# Install pinned tools and Git hooks
+mise install
+just setup
 
 # Build (first build takes a few minutes)
 cargo build --workspace --release
@@ -48,9 +48,11 @@ cargo build --workspace --release
 ## Verification
 
 ```bash
-# Run full CI checks locally (lint, test, build)
-bun run ci:local
+# Same checks as CI: lint, cargo-deny, test
+just ci
 ```
+
+Other recipes: `just fmt`, `just lint`, `just test`, `just rpm` (see `justfile`). Git hooks (`lefthook.yml`) format staged files on commit, enforce Conventional Commits and run `just lint-rust test` on push; skip once with `LEFTHOOK=0`.
 
 ---
 
@@ -81,7 +83,7 @@ cd daemon
 cargo run
 
 # Terminal 2: Run app
-bun run app:run   # ./app/run-dev.sh [--reset]
+just run          # ./app/run-dev.sh [--reset]
 ```
 
 `app/run-dev.sh` runs the app against a sandbox copy of `~/.config/uti` under `target/uti-dev` (`--reset` recreates it). It sets `UTI_DEV_SANDBOX=1` so apps launched from uti get the real XDG dirs. Stop the installed uti first: only one instance can own the bus name.
@@ -135,30 +137,14 @@ Subsequent builds are much faster (<30 seconds for small changes).
 
 ---
 
-## IDE Setup (VSCode)
-
-Recommended extensions (listed in `.vscode/extensions.json`):
-
-- **Biome**: GNOME extension JavaScript linting and formatting
-- **rust-analyzer**: Rust language support
-
-Settings (`.vscode/settings.json`) are pre-configured:
-
-- Format on save: Enabled
-- Biome for JavaScript
-- rust-analyzer for Rust
-
----
-
 ## Release Process
 
 ### Version Update
 
-Update version in all 6 locations:
+`.github/scripts/bump_version.py X.Y.Z` updates all 5 locations:
 
 | File | Format |
 | ---- | ------ |
-| `package.json` (root) | `"version": "X.Y.Z"` |
 | `app/Cargo.toml` | `version = "X.Y.Z"` |
 | `app/packaging/uti.spec` | `Version:        X.Y.Z` |
 | `daemon/Cargo.toml` | `version = "X.Y.Z"` |
@@ -173,55 +159,36 @@ Update version in all 6 locations:
 %%{init: { 'gitGraph': {'mainBranchName': 'main'}} }%%
 gitGraph
     commit id: "v0.1.0" tag: "v0.1.0"
-    branch develop
-    checkout develop
-    commit id: "feature A"
     branch claude/feature-b
     checkout claude/feature-b
     commit id: "work on B"
-    checkout develop
+    checkout main
     merge claude/feature-b id: "PR merge"
-    commit id: "feature A+B"
     branch release/v0.2.0
     checkout release/v0.2.0
     commit id: "bump version"
     checkout main
     merge release/v0.2.0 id: "release" tag: "v0.2.0"
-    checkout develop
-    merge main id: "sync back"
 ```
 
-- `main`: Stable releases only (protected)
-- `develop`: Latest development (feature PRs merge here)
-- `claude/*`: Feature branches
+- `main`: Only long-lived branch (protected; may contain unreleased work)
+- `claude/*`: Short-lived feature branches, PRs to `main`
+- Stable versions are tags (`vX.Y.Z`) and GitHub Releases
 
 ### Creating a Release
 
-1. Ensure `develop` has all features for release
-2. Run the release workflow:
-
-   ```bash
-   gh workflow run release.yml -f version=X.Y.Z
-   ```
-
-3. GitHub Actions will automatically:
-   - Create release branch from `develop`
-   - Bump version in all locations
-   - Create PR to `main` with auto-merge
-   - Create tag when PR merges
-   - Build and publish release artifacts
-   - Sync `main` back to `develop`
-
-### Manual Tag Push (Alternative)
-
-For manual control, you can still create a tag directly:
+The `release` skill opens the release PR with your `gh`:
 
 ```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
+git switch -c release/vX.Y.Z origin/main
+python .github/scripts/bump_version.py X.Y.Z
+git commit -am "chore: bump version to X.Y.Z"
+git push -u origin release/vX.Y.Z
+gh pr create --base main --fill
+gh pr merge --auto --merge
 ```
 
-This triggers only the build and release jobs (skips version bump).
+When the PR merges, `release.yml` tags the merge commit with `GITHUB_TOKEN` and builds and publishes the release in the same workflow (no PAT needed). Pushing a `vX.Y.Z` tag manually also runs build and release.
 
 ### Release Artifacts
 

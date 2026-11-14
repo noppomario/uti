@@ -1,29 +1,14 @@
+# Updates are proposed monthly, grouped, and only for releases older than
+# 7 days (cooldown). They are reviewed and merged by hand. Tools pinned in
+# mise.toml are not covered: update them with `mise outdated` / `mise lock`.
 version: 2
 updates:
-  # Root bun workspace
-  - package-ecosystem: "bun"
+  - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      bun-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Rust crates (app, daemon, uti-core)
-  - package-ecosystem: "cargo"
-    directories:
-      - "/app"
-      - "/daemon"
-      - "/crates/uti-core"
-    schedule:
-      interval: "monthly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -35,14 +20,19 @@ updates:
           - "minor"
           - "patch"
 
-  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      actions:
+        patterns:
+          - "*"

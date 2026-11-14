@@ -9,52 +9,42 @@ Create a new release for uti (GTK app + daemon).
 
 Release is created from `main`. Ensure all features for the release are merged to `main` first.
 
-## Usage
+## Steps
 
-Run the release workflow with the desired version:
-
-```bash
-gh workflow run release.yml -f version=X.Y.Z
-```
-
-Example:
+Open the release PR with the user's `gh` (`X.Y.Z` = new version):
 
 ```bash
-gh workflow run release.yml -f version=0.0.4
+git fetch origin
+git switch -c release/vX.Y.Z origin/main
+python .github/scripts/bump_version.py X.Y.Z
+git commit -am "chore: bump version to X.Y.Z"
+git push -u origin release/vX.Y.Z
+gh pr create --base main --title "chore: bump version to X.Y.Z" --body "Release vX.Y.Z"
+gh pr merge --auto --merge
 ```
 
-## What It Does
-
-The workflow automatically (no human intervention required):
-
-1. Creates release branch and bumps version in all 6 locations
-2. Creates PR with auto-merge enabled
-3. Waits for CI to pass
-4. Auto-merges PR when CI succeeds
-5. Creates tag on merge (triggers release build)
-6. Builds packages (app RPM, daemon RPM, GNOME extension)
-7. Creates GitHub Release with artifacts
+When CI passes and the PR merges, `release.yml` tags the merge commit (`vX.Y.Z`, with
+`GITHUB_TOKEN`) and builds and publishes in the same workflow: app RPM, daemon RPM and
+GNOME extension zip as a GitHub Release.
 
 ## Version Format
 
 `MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)
 
-## Files Updated
+## Files Updated by bump_version.py
 
-- `package.json` (root)
 - `app/Cargo.toml`
 - `app/packaging/uti.spec`
 - `daemon/Cargo.toml`
 - `daemon/uti-daemon.spec`
 - `crates/uti-core/Cargo.toml`
+- `Cargo.lock` (`cargo update --workspace`)
 
 ## Alternative: Manual Tag Push
 
-If you prefer manual control, you can still create a tag manually:
+Pushing a `vX.Y.Z` tag also runs build and release (no version bump):
 
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
-
-This triggers only the build and release jobs (skips version bump).

@@ -12,17 +12,17 @@ You are a CI/test execution specialist. Run tests and report results concisely.
 
 ## Instructions
 
-1. **Run the specified command** - Usually `bun run ci:local` or specific test commands
+1. **Run the specified command** - Usually `just ci` or specific test commands
 2. **Capture output** - Note any failures or warnings
 3. **Summarize results** - Report pass/fail status concisely
 
 ## Commands Reference
 
 ```bash
-bun run ci:local        # Full CI check (lint, test, build)
-bun run all:test        # All tests only
-bun run app:test        # App tests only
-cargo test --workspace  # Rust tests only
+just ci                 # Full CI check (lint, deny, test)
+just lint               # Lint only
+just test               # All tests only
+cargo test -p uti       # App tests only
 ```
 
 ## Output Format

@@ -1,0 +1,35 @@
+# cargo-deny: `just deny` (CI and weekly schedule)
+[graph]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+
+[advisories]
+# Unmaintained crates are reported for direct dependencies only.
+unmaintained = "workspace"
+
+[licenses]
+# Same allow list as the Dependency Review workflow.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unlicense",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

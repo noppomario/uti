@@ -11,7 +11,7 @@ Display unreleased changes since the last version tag.
 
 1. Get latest version tag: `git tag --sort=-version:refname | head -1`
 2. List commits since tag: `git log --oneline <tag>..HEAD --no-merges`
-3. Generate changelog: `bunx git-cliff --unreleased --strip header`
+3. Generate changelog: `git-cliff --unreleased --strip header` (git-cliff from mise)
 4. Summarize: feature count, fix count, overall assessment
 
 ## Output Format

@@ -1,0 +1,5 @@
+# Same version as Fedora 44's rust, which COPR builds the RPMs with.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -57,7 +57,7 @@ Module-level docs:
 ### JavaScript (GNOME extension)
 
 - Indent: **2 spaces**
-- Formatting enforced by Biome (`bun run gnome:lint`)
+- Formatting enforced by Biome (`just lint-ext`)
 
 ### Rust Style
 
@@ -113,6 +113,8 @@ Use `rustfmt` import grouping:
 - `refactor`: Code refactoring
 - `perf`: Performance improvement
 - `test`: Adding/updating tests
+- `build`: Build system, packaging
+- `ci`: CI workflows
 - `chore`: Tooling, dependencies, config
 
 ### Examples
@@ -135,11 +137,15 @@ Add error handling for evdev device disconnection events.
 
 ### Enforced by clippy
 
-- `cargo clippy --workspace --all-targets` (`bun run rust:lint`)
+- `cargo clippy` with `-D warnings` (`just lint-rust`)
 
 ### Enforced by Biome
 
-- GNOME extension JavaScript only (`bun run gnome:lint`)
+- GNOME extension JavaScript only (`just lint-ext`)
+
+### Enforced by rumdl
+
+- Markdown, rules from `.markdownlint.json` (`just lint-md`)
 
 ## Testing Conventions
 
@@ -215,7 +221,7 @@ cargo watch -x test     # Rust (requires cargo-watch)
 #### Before Commit
 
 ```bash
-bun run ci:local        # Includes all:test
+just ci                 # lint + deny + test
 ```
 
 #### Coverage Check
@@ -239,29 +245,26 @@ cargo tarpaulin         # Rust coverage (requires cargo-tarpaulin)
 - Private helper functions (unless complex)
 - Getters/setters with obvious behavior
 
-## Monorepo Task Naming
+## Tasks (justfile)
 
-Pattern: `[workspace]:[task]`
+`setup`, `fmt`, `lint` (`lint-rust`, `lint-md`, `lint-ext`, `lint-gha`), `deny`, `test`, `ci`,
+`run *args`, `rpm`. For a single crate use `cargo -p <crate>`.
 
-**Workspaces:** `app`, `daemon`, `gnome`, `rust`, `all`
-**Tasks:** `format`, `lint`, `build`, `test`, `run`, `rpm`, `all`
+## Git Hooks (lefthook)
 
-Examples:
-
-```bash
-bun run app:all         # Lint + test the app
-bun run daemon:build    # Build daemon only
-bun run all:lint        # Lint all workspaces
-bun run ci:local        # CI equivalent check
-```
+- pre-commit: formats staged files (rustfmt, biome, rumdl) and re-stages fixes
+- commit-msg: Conventional Commits (`feat fix perf refactor docs test style build ci chore`;
+  Merge/Revert/fixup allowed)
+- pre-push: `just lint-rust test`
+- Skip once with `LEFTHOOK=0`
 
 ## Code Review Checklist
 
 Before committing:
 
-1. ✅ Code formatted (auto on save)
-2. ✅ No linting errors (`bun run all:lint`)
-3. ✅ **Run `bun run ci:local` for significant changes**
+1. ✅ Code formatted (`just fmt`; pre-commit hook formats staged files)
+2. ✅ No linting errors (`just lint`)
+3. ✅ **Run `just ci`**
 4. ✅ Documentation added for public APIs
 5. ✅ Commit message follows convention
 6. ✅ No personal information in changes

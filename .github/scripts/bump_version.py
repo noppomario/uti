@@ -9,8 +9,8 @@ Usage:
 Used by: .github/workflows/release.yml
 """
 
-import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -23,17 +23,6 @@ def get_project_root() -> Path:
             return current
         current = current.parent
     raise RuntimeError("Could not find project root")
-
-
-def update_json_version(file_path: Path, version: str) -> None:
-    """Update version in a JSON file."""
-    with open(file_path) as f:
-        data = json.load(f)
-    data["version"] = version
-    with open(file_path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
-    print(f"  Updated: {file_path.relative_to(get_project_root())}")
 
 
 def update_cargo_version(file_path: Path, version: str) -> None:
@@ -81,11 +70,14 @@ def main():
     root = get_project_root()
     print(f"Bumping version to {version}...")
 
-    update_json_version(root / "package.json", version)
     for cargo in ("app", "daemon", "crates/uti-core"):
         update_cargo_version(root / cargo / "Cargo.toml", version)
     update_rpm_spec_version(root / "app" / "packaging" / "uti.spec", version)
     update_rpm_spec_version(root / "daemon" / "uti-daemon.spec", version)
+
+    # Cargo.lock is committed and builds use --locked.
+    subprocess.run(["cargo", "update", "--workspace"], cwd=root, check=True)
+    print("  Updated: Cargo.lock")
 
     print(f"\nAll files updated to version {version}")
 
