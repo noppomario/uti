@@ -149,7 +149,7 @@ Report findings to user and update as specified.
 **Goal**: Create and submit PR
 
 - [ ] Create branch, commit, push
-- [ ] Create PR: `gh pr create --base develop --title "..." --body "Closes owner/repo#123"`
+- [ ] Create PR: `gh pr create --base main --title "..." --body "Closes owner/repo#123"`
 - [ ] Post PR link to Issue
 
 **STOP**: Wait for user to review and merge PR.

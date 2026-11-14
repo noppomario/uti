@@ -1049,7 +1049,7 @@ Document the rationale for each rule in `.markdownlint.json`.
 ## ADR-022: PR-based sync-develop workflow
 
 **Date**: 2026-01-03
-**Status**: Accepted
+**Status**: Superseded by ADR-029
 **Decision Makers**: Project team
 
 ### Context
@@ -1250,7 +1250,7 @@ Add Prompt tab with auto-paste functionality:
 ## ADR-021: Adopt develop branch workflow (Git-flow simplified)
 
 **Date**: 2026-01-03
-**Status**: Accepted
+**Status**: Superseded by ADR-029
 **Decision Makers**: Project team
 
 ### Context

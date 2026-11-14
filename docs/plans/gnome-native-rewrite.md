@@ -29,7 +29,7 @@ PoC or primary sources before relying on them.
 
 ---
 
-## 2. Framework decision (summary for ADR-029)
+## 2. Framework decision (summary for ADR-030)
 
 ### Decision
 
@@ -289,8 +289,8 @@ Valuable even if the rewrite is delayed.
 
 ### Phase 5: Docs and memory
 
-- [ ] ADR-029 (framework), ADR-030 (D-Bus redesign / extension as shell
-      service), ADR-031 (COPR distribution). Archive superseded ADRs.
+- [ ] ADR-030 (framework), ADR-031 (D-Bus redesign / extension as shell
+      service), ADR-032 (COPR distribution). Archive superseded ADRs.
 - [ ] Update `CLAUDE.md`, `.claude/rules/context.md`, `docs/ARCHITECTURE.md`,
       `docs/DEVELOPMENT.md` (testing strategy changes: Rust unit tests for
       `update()` logic replace React Testing Library).
@@ -321,10 +321,10 @@ Valuable even if the rewrite is delayed.
 
 ---
 
-## 9. Draft ADR-029
+## 9. Draft ADR-030
 
 ```markdown
-## ADR-029: Native GTK4 UI with Relm4 and libadwaita
+## ADR-030: Native GTK4 UI with Relm4 and libadwaita
 
 **Date**: 2026-11-14
 **Status**: Proposed
