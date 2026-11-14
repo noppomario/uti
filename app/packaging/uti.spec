@@ -1,5 +1,5 @@
 Name:           uti
-Version:        0.2.0
+Version:        0.3.0
 Release:        1
 Summary:        Clipboard history, snippets and launcher on double Ctrl
 
