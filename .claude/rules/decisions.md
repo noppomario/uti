@@ -373,6 +373,35 @@ Archive finalized ADRs to `.claude/archive/adr-archive.md`:
 
 ---
 
+## ADR-029: Trunk-based development on main
+
+**Date**: 2026-11-14
+**Status**: Accepted (supersedes ADR-021, ADR-022)
+**Decision Makers**: Project team
+
+### Context
+
+The `develop` / `main` split (ADR-021) added sync PRs after every release and
+drifted when a change landed on `main` directly (#117). With a single
+maintainer it gave no benefit: stable versions are already identified by tags
+and GitHub Releases, which `install.sh` and the updater use.
+
+### Decision
+
+- `main` is the only long-lived branch. Work on short-lived `claude/*`
+  branches and open PRs to `main`.
+- `release.yml` cuts `release/vX.Y.Z` from `main`; merging it tags the release.
+- Remove `develop`, `sync-develop.yml` and Dependabot `target-branch`.
+
+### Consequences
+
+**Positive**: no sync PRs, Dependabot config applies immediately, one diff base.
+
+**Negative**: `main` may contain unreleased work; users must install from
+Releases, not from the branch.
+
+---
+
 ## Template for Future ADRs
 
 ```markdown
