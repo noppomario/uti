@@ -1,5 +1,5 @@
 Name:           uti-daemon
-Version:        0.1.3
+Version:        0.1.4
 Release:        1
 Summary:        uti keyboard daemon for hotkey detection
 
