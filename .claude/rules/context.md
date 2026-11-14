@@ -23,22 +23,22 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 - **Framework**: Tauri 2
 - **Language**: Rust 2021
-- **IPC**: D-Bus session bus
-- **Tray**: StatusNotifierItem protocol
+- **IPC**: D-Bus session bus (owns `io.github.noppomario.uti`)
+- **Tray**: none; the GNOME extension's panel menu calls the app
 - **Application ID**: `io.github.noppomario.uti`
 
 ### Daemon (uti-daemon)
 
 - **Language**: Rust 2021
 - **Input**: evdev (keyboard monitoring)
-- **IPC**: D-Bus (`io.github.noppomario.uti.DoubleTap` interface)
+- **IPC**: D-Bus `io.github.noppomario.uti.Daemon1` (bus `io.github.noppomario.uti.Daemon`)
 - **Permissions**: Requires `input` group for `/dev/input/*` access
 
 ### GNOME Extension (uti for GNOME)
 
 - **Language**: JavaScript (GJS)
 - **UUID**: `uti@noppomario.github.io`
-- **Role**: StatusNotifierHost + window positioning + always-on-top control
+- **Role**: `Shell1` service (positioning, always-on-top, paste, clipboard watch) + panel menu
 - **Settings**: GSettings (`org.gnome.shell.extensions.uti`)
 
 ## Key Technical Decisions
@@ -74,8 +74,7 @@ See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for detailed structure.
 
 ### Naming Conventions
 
-- D-Bus interface: `io.github.noppomario.uti.DoubleTap`
-- D-Bus path: `/io/github/noppomario/uti/DoubleTap`
+- D-Bus interfaces: see `docs/ARCHITECTURE.md` (D-Bus Interfaces)
 - Application ID: `io.github.noppomario.uti`
 - GNOME extension UUID: `uti@noppomario.github.io`
 - GitHub repo: `noppomario/uti`
@@ -210,30 +209,19 @@ bun run all:test               # Parallel execution
 - AUR package for Arch Linux
 - Flatpak
 
-## System Tray
+## Panel Menu
 
-**Status**: Implemented via StatusNotifierItem protocol
-
-- Tray icon with context menu (Show/Hide, Settings, Auto-start, Updates, GitHub, Quit)
-- Left-click toggles window visibility
-- Right-click shows menu
-- **Settings**: Opens separate settings window
-
-**GNOME support**:
-
-- **uti for GNOME** (recommended): Extension acts as StatusNotifierHost
-- **AppIndicator** (alternative): Third-party extension
+The "uti for GNOME" extension shows a panel button (left click toggles) with
+Show/Hide, Settings, Check for Updates, GitHub and Quit. The Tauri SNI tray was
+removed in Phase 1.
 
 ## Known Limitations
 
-1. Single keyboard device detection (first found)
-2. Fixed 300ms double-tap interval
-3. Linux-only (Wayland/X11)
-4. Window position/size not persisted
-5. Window appears in dock/taskbar on Wayland (Tauri limitation, see
-   [#9829](https://github.com/tauri-apps/tauri/issues/9829))
-6. Always-on-top (pin) requires "uti for GNOME" extension on GNOME/Wayland
-   (without extension, pin only disables auto-hide)
+1. Fixed 300ms double-tap interval
+2. Linux-only, GNOME 50 for the extension
+3. Window position/size not persisted
+4. Positioning, always-on-top, hiding from dash and the panel menu require
+   "uti for GNOME" (without it, pin only disables auto-hide)
 
 ## Roadmap
 
