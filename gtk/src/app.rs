@@ -1,15 +1,21 @@
-//! Main popup window component
+//! Main popup window controller
+//!
+//! Widgets send [`Msg`] values over a channel; one local task owns the model
+//! and handles them in order, so no `RefCell` is needed and signal handlers
+//! never re-enter the model. Keyboard focus is decided by [`Nav`]; after
+//! every message the GTK focus is moved to match it.
 
 use std::collections::{HashMap, HashSet};
 
-use relm4::gtk::{self, gdk, gio, glib, prelude::*};
-use relm4::prelude::*;
+use adw::prelude::*;
+use gtk::{gdk, gio, glib};
 use uti_core::clipboard::ClipboardStore;
 use uti_core::config::AppConfig;
 use uti_core::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 
 use crate::dbus;
-use crate::state::list::{self, Action, Key, ListState, Tab, TabTraits};
+use crate::state::list::{self, Key, Tab};
+use crate::state::nav::{Effect, Focus, Nav};
 use crate::state::window::{WindowCommand, WindowState};
 use crate::ui;
 
@@ -23,17 +29,20 @@ pub enum Msg {
     Toggle,
     Show,
     Hide,
-    /// Internal: the extension has the position request; show the window now.
+    /// The extension has the position request; show the window now.
     Present,
     FocusChanged(bool),
     SetPinned(bool),
     OpenSettings,
     CheckUpdates,
     Quit,
+    /// A tab button was clicked.
     SelectTab(Tab),
     SearchChanged(String),
-    SearchKey(Key),
-    ListKey(Key),
+    /// A navigation key, routed by [`Nav`] according to the current focus.
+    Key(Key),
+    /// GTK focus moved (mouse click or Tab key).
+    FocusMoved(Focus),
     FocusSearch,
     /// A row was clicked; visible index in the current tab.
     Activate(usize),
@@ -42,16 +51,16 @@ pub enum Msg {
     ClipboardText(String),
 }
 
-/// Startup options parsed from the command line.
-#[derive(Debug, Default)]
-pub struct Init {
-    pub minimized: bool,
+type Sender = async_channel::Sender<Msg>;
+
+fn send(tx: &Sender, msg: Msg) {
+    // Unbounded: only fails once the model task has ended (app quitting).
+    let _ = tx.try_send(msg);
 }
 
-/// Per-tab list state.
+/// Search query and visible rows of one tab.
 #[derive(Default)]
 struct TabData {
-    list: ListState,
     query: String,
     /// Indices into the backing store for the visible rows.
     visible: Vec<usize>,
@@ -59,134 +68,115 @@ struct TabData {
 
 /// Widgets the model updates directly.
 struct Ui {
+    root: adw::ApplicationWindow,
     stack: gtk::Stack,
-    tab_buttons: Vec<(Tab, gtk::ToggleButton)>,
+    tab_group: adw::ToggleGroup,
     search: gtk::SearchEntry,
     lists: HashMap<Tab, gtk::ListBox>,
     pin: gtk::ToggleButton,
+    footer: gtk::Label,
 }
 
 /// Main window model.
-pub struct App {
-    root: gtk::ApplicationWindow,
+struct App {
+    tx: Sender,
+    ui: Ui,
     window: WindowState,
+    nav: Nav,
     conn: Option<gio::DBusConnection>,
     _subscriptions: Vec<gio::SignalSubscription>,
-    tab: Tab,
     tabs: HashMap<Tab, TabData>,
     history: ClipboardStore,
     snippets: SnippetsStore,
     /// Clipboard item ids starred since the window was shown; removed from
     /// history when it hides (they now live in snippets).
     starred: HashSet<String>,
-    ui: Ui,
+    /// Window height already trimmed to whole rows.
+    rows_fitted: bool,
 }
 
-const LIST_TABS: [Tab; 3] = [Tab::Clipboard, Tab::Snippets, Tab::Launcher];
-
-fn traits(tab: Tab) -> TabTraits {
-    TabTraits {
-        can_star: tab == Tab::Clipboard,
-        right_opens_jump_list: tab == Tab::Launcher,
+/// Window size and CSS class for `theme.size`.
+fn density(size: &str) -> (i32, i32, &'static str) {
+    match size {
+        "minimal" => (320, 600, "density-minimal"),
+        "wide" => (750, 800, "density-wide"),
+        _ => (500, 700, "density-normal"),
     }
 }
 
-impl SimpleComponent for App {
-    type Init = Init;
-    type Input = Msg;
-    type Output = ();
-    type Root = gtk::ApplicationWindow;
-    type Widgets = ();
+/// Builds the main window and starts the message loop.
+pub fn start(app: &adw::Application, minimized: bool) {
+    let (tx, rx) = async_channel::unbounded();
+    let config = AppConfig::load();
+    let ui = build_ui(app, &tx, &config.theme.size);
+    register_actions(app, &tx);
 
-    fn init_root() -> Self::Root {
-        gtk::ApplicationWindow::builder()
-            .title(MAIN_WINDOW_TITLE)
-            .decorated(false)
-            .resizable(false)
-            .default_width(500)
-            .default_height(700)
-            .build()
+    let conn = app.dbus_connection();
+    let mut subscriptions = Vec::new();
+    if let Some(conn) = &conn {
+        let t = tx.clone();
+        subscriptions.push(dbus::on_triggered(conn, move || send(&t, Msg::Toggle)));
+        let t = tx.clone();
+        subscriptions
+            .push(dbus::on_clipboard_changed(conn, move |text| send(&t, Msg::ClipboardText(text))));
+    } else {
+        eprintln!("No D-Bus connection: double Ctrl and extension features disabled");
     }
 
-    fn init(init: Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let ui = build_ui(&root, &sender);
+    let mut history = ClipboardStore::load_default();
+    history.max_items = config.clipboard_history_limit;
 
-        let s = sender.clone();
-        root.connect_is_active_notify(move |w| s.input(Msg::FocusChanged(w.is_active())));
-        let s = sender.clone();
-        root.connect_close_request(move |_| {
-            s.input(Msg::Hide);
-            glib::Propagation::Stop
-        });
-        let window_keys = gtk::EventControllerKey::new();
-        let s = sender.clone();
-        window_keys.connect_key_pressed(move |_, key, _, state| {
-            if state.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::f) {
-                s.input(Msg::FocusSearch);
-                return glib::Propagation::Stop;
-            }
-            glib::Propagation::Proceed
-        });
-        root.add_controller(window_keys);
-
-        let app = relm4::main_application();
-        register_actions(&app, &sender);
-        let s = sender.clone();
-        app.connect_activate(move |_| s.input(Msg::Show));
-
-        let conn = app.dbus_connection();
-        let mut subscriptions = Vec::new();
-        if let Some(conn) = &conn {
-            let s = sender.clone();
-            subscriptions.push(dbus::on_triggered(conn, move || s.input(Msg::Toggle)));
-            let s = sender.clone();
-            subscriptions.push(dbus::on_clipboard_changed(conn, move |text| {
-                s.input(Msg::ClipboardText(text))
-            }));
-        } else {
-            eprintln!("No D-Bus connection: double Ctrl and extension features disabled");
-        }
-
-        let config = AppConfig::load();
-        let mut history = ClipboardStore::load_default();
-        history.max_items = config.clipboard_history_limit;
-
-        let mut model = App {
-            root: root.clone(),
-            window: WindowState::new(),
-            conn,
-            _subscriptions: subscriptions,
-            tab: Tab::Clipboard,
-            tabs: LIST_TABS.iter().map(|t| (*t, TabData::default())).collect(),
-            history,
-            snippets: load_snippets(),
-            starred: HashSet::new(),
-            ui,
-        };
-        model.refresh(Tab::Clipboard);
-        model.refresh(Tab::Snippets);
-        model.select_tab(Tab::Clipboard);
-
-        if !init.minimized {
-            sender.input(Msg::Show);
-        }
-        ComponentParts { model, widgets: () }
+    let mut model = App {
+        tx: tx.clone(),
+        ui,
+        window: WindowState::new(),
+        nav: Nav::new(),
+        conn,
+        _subscriptions: subscriptions,
+        tabs: Tab::ALL.iter().map(|t| (*t, TabData::default())).collect(),
+        history,
+        snippets: load_snippets(),
+        starred: HashSet::new(),
+        rows_fitted: false,
+    };
+    for tab in Tab::ALL {
+        model.refresh(tab);
     }
+    model.show_tab(model.nav.tab());
 
-    fn update(&mut self, msg: Msg, sender: ComponentSender<Self>) {
+    if !minimized {
+        send(&tx, Msg::Show);
+    }
+    glib::spawn_future_local(async move {
+        while let Ok(msg) = rx.recv().await {
+            model.update(msg);
+        }
+    });
+}
+
+impl App {
+    fn update(&mut self, msg: Msg) {
         let command = match msg {
             Msg::Toggle => self.window.toggle(),
             Msg::Show => self.window.show(),
             Msg::Hide => self.window.hide(),
             Msg::FocusChanged(false) => self.window.focus_lost(),
             Msg::FocusChanged(true) => {
-                self.read_clipboard(&sender);
+                self.read_clipboard();
                 None
             },
             Msg::SetPinned(pinned) => self.window.set_pinned(pinned),
             Msg::Present => {
-                self.root.present();
-                self.focus_list();
+                self.ui.root.present();
+                self.sync_focus();
+                if !self.rows_fitted {
+                    self.rows_fitted = true;
+                    let (root, lists, tab) =
+                        (self.ui.root.clone(), self.ui.lists.clone(), self.nav.tab());
+                    // After the first layout, so rows have their real size.
+                    glib::idle_add_local_once(move || fit_to_rows(&root, &lists, tab));
+                }
+                debug_snapshot(&self.ui.root);
                 None
             },
             Msg::OpenSettings => {
@@ -194,38 +184,51 @@ impl SimpleComponent for App {
                 None
             },
             Msg::CheckUpdates => {
-                open_uri(&self.root, RELEASES_URL);
+                open_uri(&self.ui.root, RELEASES_URL);
                 None
             },
             Msg::Quit => {
-                relm4::main_application().quit();
+                if let Some(app) = self.ui.root.application() {
+                    app.quit();
+                }
                 None
             },
             Msg::SelectTab(tab) => {
-                self.select_tab(tab);
-                None
+                let effect = self.nav.select_tab(tab);
+                self.navigate(effect)
             },
             Msg::SearchChanged(query) => {
-                if let Some(data) = self.tabs.get_mut(&self.tab) {
+                let tab = self.nav.tab();
+                if let Some(data) = self.tabs.get_mut(&tab) {
                     if data.query != query {
                         data.query = query;
-                        self.refresh(self.tab);
+                        self.refresh(tab);
                     }
                 }
                 None
             },
-            Msg::SearchKey(key) => {
-                let action = self.tabs.get_mut(&self.tab).and_then(|d| d.list.on_search_key(key));
-                action.and_then(|a| self.perform(a))
+            Msg::Key(key) => {
+                let effect = self.nav.on_key(key);
+                let command = self.navigate(effect);
+                if std::env::var_os("UTI_DEBUG_KEYS").is_some() {
+                    let focused = gtk::prelude::GtkWindowExt::focus(&self.ui.root)
+                        .map(|w| w.type_().name().to_string());
+                    eprintln!(
+                        "DEBUG key={key:?} tab={:?} nav_focus={:?} gtk_focus={focused:?} pinned={}",
+                        self.nav.tab(),
+                        self.nav.focus(),
+                        self.ui.pin.is_active()
+                    );
+                }
+                command
             },
-            Msg::ListKey(key) => {
-                let tab = self.tab;
-                let action =
-                    self.tabs.get_mut(&tab).and_then(|d| d.list.on_list_key(key, traits(tab)));
-                action.and_then(|a| self.perform(a))
+            Msg::FocusMoved(focus) => {
+                self.nav.focus_moved(focus);
+                None
             },
             Msg::FocusSearch => {
-                self.ui.search.grab_focus();
+                self.nav.focus_search();
+                self.sync_focus();
                 None
             },
             Msg::Activate(i) => self.activate(i),
@@ -239,29 +242,88 @@ impl SimpleComponent for App {
             },
         };
         if let Some(command) = command {
-            self.apply(command, &sender);
+            self.apply(command);
         }
     }
-}
 
-impl App {
-    fn apply(&mut self, command: WindowCommand, sender: &ComponentSender<Self>) {
+    /// Applies a navigation effect, then moves GTK focus to [`Nav::focus`].
+    fn navigate(&mut self, effect: Option<Effect>) -> Option<WindowCommand> {
+        let command = match effect {
+            Some(Effect::ShowTab(tab)) => {
+                self.show_tab(tab);
+                None
+            },
+            Some(Effect::Activate(i)) => self.activate(i),
+            Some(Effect::ToggleStar(i)) => {
+                self.toggle_star(i);
+                None
+            },
+            Some(Effect::ClearQuery) => {
+                self.ui.search.set_text("");
+                None
+            },
+            Some(Effect::TogglePin) => self.window.set_pinned(!self.ui.pin.is_active()),
+            // Selection is applied by sync_focus; jump lists come with PR 3.
+            Some(Effect::SelectRow(_) | Effect::OpenJumpList(_)) | None => None,
+        };
+        self.sync_focus();
+        command
+    }
+
+    /// Puts GTK focus where [`Nav`] says it is.
+    fn sync_focus(&self) {
+        // Focus is moved by our own key handling, and GTK only draws focus
+        // rings after its own keyboard navigation; keep them on (the popup
+        // is keyboard-driven).
+        self.ui.root.set_focus_visible(true);
+        match self.nav.focus() {
+            Focus::Search => {
+                self.ui.search.grab_focus();
+            },
+            Focus::Pin => {
+                self.ui.pin.grab_focus();
+            },
+            Focus::List => {
+                let Some(listbox) = self.ui.lists.get(&self.nav.tab()) else {
+                    return;
+                };
+                match listbox.row_at_index(self.nav.selected() as i32) {
+                    Some(row) => {
+                        listbox.select_row(Some(&row));
+                        row.grab_focus();
+                    },
+                    // Empty list: focus the list itself. Keys still reach the
+                    // window-level handler even if nothing takes focus.
+                    None => {
+                        if !listbox.grab_focus() {
+                            gtk::prelude::GtkWindowExt::set_focus(
+                                &self.ui.root,
+                                None::<&gtk::Widget>,
+                            );
+                        }
+                    },
+                }
+            },
+        }
+    }
+
+    fn apply(&mut self, command: WindowCommand) {
         match command {
             WindowCommand::PositionAndPresent => match self.conn.clone() {
                 Some(conn) => {
-                    let s = sender.clone();
-                    relm4::spawn_local(async move {
+                    let tx = self.tx.clone();
+                    glib::spawn_future_local(async move {
                         dbus::position_at_pointer(&conn).await;
-                        s.input(Msg::Present);
+                        send(&tx, Msg::Present);
                     });
                 },
                 None => {
-                    self.root.present();
-                    self.focus_list();
+                    self.ui.root.present();
+                    self.sync_focus();
                 },
             },
             WindowCommand::Hide => {
-                self.root.set_visible(false);
+                self.ui.root.set_visible(false);
                 self.commit_starred();
             },
             WindowCommand::SetAbove(above) => {
@@ -269,49 +331,22 @@ impl App {
                     self.ui.pin.set_active(above);
                 }
                 if let Some(conn) = self.conn.clone() {
-                    relm4::spawn_local(async move { dbus::set_above(&conn, above).await });
+                    glib::spawn_future_local(async move { dbus::set_above(&conn, above).await });
                 }
             },
         }
-    }
-
-    fn perform(&mut self, action: Action) -> Option<WindowCommand> {
-        match action {
-            Action::Select(i) => self.select_row(i),
-            Action::Activate(i) => return self.activate(i),
-            Action::FocusSearch => {
-                self.ui.search.grab_focus();
-            },
-            Action::FocusList => self.focus_list(),
-            Action::ClearQuery => {
-                self.ui.search.set_text("");
-                self.focus_list();
-            },
-            Action::PrevTab => {
-                if let Some(t) = self.tab.prev() {
-                    self.select_tab(t);
-                }
-            },
-            Action::NextTab => {
-                if let Some(t) = self.tab.next() {
-                    self.select_tab(t);
-                }
-            },
-            Action::ToggleStar(i) => self.toggle_star(i),
-            Action::OpenJumpList(_) => {},
-        }
-        None
     }
 
     /// Copies the chosen item and hides the window.
     fn activate(&mut self, visible_index: usize) -> Option<WindowCommand> {
-        let source = *self.tabs.get(&self.tab)?.visible.get(visible_index)?;
-        let text = match self.tab {
+        let tab = self.nav.tab();
+        let source = *self.tabs.get(&tab)?.visible.get(visible_index)?;
+        let text = match tab {
             Tab::Clipboard => self.history.items.get(source)?.text.clone(),
             Tab::Snippets => self.snippets.items.get(source)?.value.clone(),
             Tab::Prompt | Tab::Launcher => return None,
         };
-        self.root.clipboard().set_text(&text);
+        self.ui.root.clipboard().set_text(&text);
         self.window.hide()
     }
 
@@ -324,9 +359,8 @@ impl App {
         let Some(item) = self.history.items.get(source) else {
             return;
         };
-        if self.starred.remove(&item.id) {
-            // Un-starring only clears the mark; the snippet already exists.
-        } else {
+        // Un-starring only clears the mark; the snippet already exists.
+        if !self.starred.remove(&item.id) {
             self.starred.insert(item.id.clone());
             self.snippets.items.push(SnippetItem::new(item.text.clone(), None));
             if let Err(e) = save_snippets(&self.snippets) {
@@ -335,12 +369,8 @@ impl App {
             self.refresh(Tab::Snippets);
         }
         self.refresh(Tab::Clipboard);
-        if let Some(d) = self.tabs.get_mut(&Tab::Clipboard) {
-            d.list.set_selected(visible_index);
-        }
-        if self.tab == Tab::Clipboard {
-            self.select_row(visible_index);
-        }
+        self.nav.set_selected(Tab::Clipboard, visible_index);
+        self.sync_focus();
     }
 
     /// Removes items starred into snippets from history (by id).
@@ -371,31 +401,29 @@ impl App {
     }
 
     /// Fallback when the extension is absent: read the clipboard on focus.
-    fn read_clipboard(&self, sender: &ComponentSender<Self>) {
-        let clipboard = self.root.clipboard();
-        let s = sender.clone();
-        relm4::spawn_local(async move {
+    fn read_clipboard(&self) {
+        let clipboard = self.ui.root.clipboard();
+        let tx = self.tx.clone();
+        glib::spawn_future_local(async move {
             if let Ok(Some(text)) = clipboard.read_text_future().await {
-                s.input(Msg::ClipboardText(text.to_string()));
+                send(&tx, Msg::ClipboardText(text.to_string()));
             }
         });
     }
 
-    fn select_tab(&mut self, tab: Tab) {
-        self.tab = tab;
-        self.ui.stack.set_visible_child_name(ui::page_name(tab));
-        for (t, button) in &self.ui.tab_buttons {
-            if button.is_active() != (*t == tab) {
-                button.set_active(*t == tab);
-            }
+    /// Shows `tab`'s page, tab button state, search text and footer.
+    fn show_tab(&self, tab: Tab) {
+        let name = ui::page_name(tab);
+        self.ui.stack.set_visible_child_name(name);
+        if self.ui.tab_group.active_name().as_deref() != Some(name) {
+            self.ui.tab_group.set_active_name(Some(name));
         }
-        let query = self.tabs.get(&tab).map(|d| d.query.clone()).unwrap_or_default();
-        self.ui.search.set_visible(tab != Tab::Prompt);
+        self.ui.footer.set_markup(ui::key_hints(tab));
         self.ui.search.set_placeholder_text(Some(ui::search_placeholder(tab)));
+        let query = self.tabs.get(&tab).map(|d| d.query.as_str()).unwrap_or_default();
         if self.ui.search.text() != query {
-            self.ui.search.set_text(&query);
+            self.ui.search.set_text(query);
         }
-        self.focus_list();
     }
 
     /// Recomputes the visible rows of `tab` and re-renders its list.
@@ -437,12 +465,15 @@ impl App {
                     })
                     .collect()
             },
-            Tab::Prompt | Tab::Launcher => Vec::new(),
+            // Launcher items come with PR 3.
+            Tab::Prompt | Tab::Launcher => {
+                data.visible.clear();
+                Vec::new()
+            },
         };
-        data.list.set_len(rows.len());
+        self.nav.set_len(tab, rows.len());
 
         listbox.remove_all();
-        let sender_star = self.ui.stack.clone();
         for (index, (text, tooltip, star)) in rows.iter().enumerate() {
             let spec = ui::RowSpec {
                 index,
@@ -450,138 +481,181 @@ impl App {
                 tooltip,
                 star: *star,
             };
-            let stack = sender_star.clone();
-            listbox.append(&ui::build_row(&spec, move |i| {
-                let _ = stack.activate_action("win.star", Some(&(i as u32).to_variant()));
-            }));
+            let tx = self.tx.clone();
+            listbox.append(&ui::build_row(&spec, move |i| send(&tx, Msg::ToggleStar(i))));
         }
-        if let Some(row) = listbox.row_at_index(0) {
-            listbox.select_row(Some(&row));
-        }
-    }
-
-    fn select_row(&self, index: usize) {
-        if let Some(listbox) = self.ui.lists.get(&self.tab) {
-            if let Some(row) = listbox.row_at_index(index as i32) {
-                listbox.select_row(Some(&row));
-                row.grab_focus();
-            }
-        }
-    }
-
-    fn focus_list(&self) {
-        let selected = self.tabs.get(&self.tab).map_or(0, |d| d.list.selected());
-        match self.ui.lists.get(&self.tab) {
-            Some(listbox) if listbox.row_at_index(0).is_some() => self.select_row(selected),
-            Some(listbox) => {
-                listbox.grab_focus();
-            },
-            None => {},
+        if self.nav.tab() == tab && self.ui.root.is_visible() {
+            self.sync_focus();
         }
     }
 }
 
-fn build_ui(root: &gtk::ApplicationWindow, sender: &ComponentSender<App>) -> Ui {
-    let stack = gtk::Stack::builder().vexpand(true).build();
+fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
+    let stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .transition_duration(100)
+        .build();
+    let tab_group = adw::ToggleGroup::builder().homogeneous(true).css_classes(["uti-tabs"]).build();
     let mut lists = HashMap::new();
-    let mut tab_buttons = Vec::new();
-    let tab_bar = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-    tab_bar.add_css_class("linked");
 
+    // Every tab has the same structure (a list with an empty placeholder), so
+    // there is always a focus target.
     for tab in Tab::ALL {
-        let page: gtk::Widget = if LIST_TABS.contains(&tab) && tab != Tab::Launcher {
-            let listbox = gtk::ListBox::builder()
-                .selection_mode(gtk::SelectionMode::Single)
-                .activate_on_single_click(true)
-                .build();
-            let s = sender.clone();
-            listbox
-                .connect_row_activated(move |_, row| s.input(Msg::Activate(row.index() as usize)));
-            let keys = gtk::EventControllerKey::new();
-            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-            let s = sender.clone();
-            keys.connect_key_pressed(move |_, key, _, state| match ui::map_key(key, state) {
-                Some(k) => {
-                    s.input(Msg::ListKey(k));
-                    glib::Propagation::Stop
-                },
-                None => glib::Propagation::Proceed,
-            });
-            listbox.add_controller(keys);
-            lists.insert(tab, listbox.clone());
-            gtk::ScrolledWindow::builder()
-                .hscrollbar_policy(gtk::PolicyType::Never)
-                .child(&listbox)
-                .build()
-                .upcast()
-        } else {
-            // Prompt (PR 4) and Launcher (PR 3) come later.
-            gtk::Label::new(Some(ui::tab_label(tab).1)).upcast()
-        };
+        let listbox = build_list(tab, tx);
+        lists.insert(tab, listbox.clone());
+        let page = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vexpand(true)
+            .child(&listbox)
+            .build();
         stack.add_named(&page, Some(ui::page_name(tab)));
 
-        let (icon, label) = ui::tab_label(tab);
-        let button = gtk::ToggleButton::builder()
-            .icon_name(icon)
-            .tooltip_text(label)
-            .focusable(false)
-            .build();
-        let s = sender.clone();
-        button.connect_clicked(move |_| s.input(Msg::SelectTab(tab)));
-        tab_bar.append(&button);
-        tab_buttons.push((tab, button));
+        let (title, icon) = ui::tab_label(tab);
+        tab_group.add(
+            adw::Toggle::builder()
+                .name(ui::page_name(tab))
+                .icon_name(icon)
+                .tooltip(title)
+                .build(),
+        );
     }
+    let t = tx.clone();
+    tab_group.connect_active_name_notify(move |g| {
+        let name = g.active_name();
+        if let Some(tab) = Tab::ALL.into_iter().find(|t| Some(ui::page_name(*t)) == name.as_deref())
+        {
+            send(&t, Msg::SelectTab(tab));
+        }
+    });
 
     let pin = gtk::ToggleButton::builder()
         .icon_name("view-pin-symbolic")
-        .tooltip_text("Pin window")
-        .focusable(false)
+        .tooltip_text("Keep on Top")
         .build();
-    let s = sender.clone();
-    pin.connect_toggled(move |b| s.input(Msg::SetPinned(b.is_active())));
+    let t = tx.clone();
+    pin.connect_toggled(move |b| send(&t, Msg::SetPinned(b.is_active())));
+
+    let header = adw::HeaderBar::builder()
+        .title_widget(&gtk::Box::new(gtk::Orientation::Horizontal, 0))
+        .show_start_title_buttons(false)
+        .show_end_title_buttons(false)
+        .build();
+    header.pack_start(&tab_group);
+    header.pack_end(&pin);
 
     let search = gtk::SearchEntry::builder().hexpand(true).build();
-    let s = sender.clone();
-    search.connect_search_changed(move |e| s.input(Msg::SearchChanged(e.text().to_string())));
+    let t = tx.clone();
+    search.connect_search_changed(move |e| send(&t, Msg::SearchChanged(e.text().to_string())));
+    let search_bar = gtk::Box::builder()
+        .margin_start(6)
+        .margin_end(6)
+        .margin_top(6)
+        .margin_bottom(6)
+        .build();
+    search_bar.append(&search);
+
+    let footer = gtk::Label::builder()
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .css_classes(["dim-label", "caption", "uti-footer"])
+        .build();
+
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.add_top_bar(&search_bar);
+    toolbar.set_content(Some(&stack));
+    toolbar.add_bottom_bar(&footer);
+    // Opaque footer with a separator, so list rows never show through.
+    toolbar.set_bottom_bar_style(adw::ToolbarStyle::RaisedBorder);
+
+    let (width, height, density_class) = density(size);
+    let root = adw::ApplicationWindow::builder()
+        .application(app)
+        .title(MAIN_WINDOW_TITLE)
+        .resizable(false)
+        .default_width(width)
+        .default_height(height)
+        .content(&toolbar)
+        .build();
+    // add_css_class keeps GTK's own classes (background, csd): replacing them
+    // made the window transparent and square.
+    root.add_css_class("uti-popup");
+    root.add_css_class(density_class);
+
+    let t = tx.clone();
+    root.connect_is_active_notify(move |w| send(&t, Msg::FocusChanged(w.is_active())));
+    let t = tx.clone();
+    root.connect_close_request(move |_| {
+        send(&t, Msg::Hide);
+        glib::Propagation::Stop
+    });
+
+    // Keep Nav in step when focus moves by mouse or the Tab key.
+    let t = tx.clone();
+    let (search_f, pin_f, stack_f) = (search.clone(), pin.clone(), stack.clone());
+    root.connect_focus_widget_notify(move |w| {
+        let Some(widget) = gtk::prelude::GtkWindowExt::focus(w) else {
+            return;
+        };
+        let focus = if widget.is_ancestor(&search_f) || widget == search_f {
+            Focus::Search
+        } else if widget == pin_f {
+            Focus::Pin
+        } else if widget.is_ancestor(&stack_f) {
+            Focus::List
+        } else {
+            return;
+        };
+        send(&t, Msg::FocusMoved(focus));
+    });
+
+    // One window-level key handler (capture phase): every navigation key goes
+    // to Nav, wherever GTK focus is. Typing in the search entry is left alone.
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let s = sender.clone();
-    keys.connect_key_pressed(move |_, key, _, state| match ui::map_key(key, state) {
-        Some(k @ (Key::Down | Key::Enter | Key::Escape | Key::Left | Key::Right)) => {
-            s.input(Msg::SearchKey(k));
-            glib::Propagation::Stop
-        },
-        _ => glib::Propagation::Proceed,
-    });
-    search.add_controller(keys);
-
-    // Star buttons inside rows reach the model through a window action.
-    let star = gio::SimpleAction::new("star", Some(glib::VariantTy::UINT32));
-    let s = sender.clone();
-    star.connect_activate(move |_, v| {
-        if let Some(i) = v.and_then(|v| v.get::<u32>()) {
-            s.input(Msg::ToggleStar(i as usize));
+    let t = tx.clone();
+    let (search_k, root_k) = (search.clone(), root.clone());
+    keys.connect_key_pressed(move |_, key, _, state| {
+        if state.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::f) {
+            send(&t, Msg::FocusSearch);
+            return glib::Propagation::Stop;
         }
+        let Some(k) = ui::map_key(key, state) else {
+            return glib::Propagation::Proceed;
+        };
+        let typing = gtk::prelude::GtkWindowExt::focus(&root_k)
+            .is_some_and(|w| w.is_ancestor(&search_k) || w == search_k)
+            && matches!(k, Key::Digit(_) | Key::Star | Key::Up);
+        if typing {
+            return glib::Propagation::Proceed;
+        }
+        send(&t, Msg::Key(k));
+        glib::Propagation::Stop
     });
-    root.add_action(&star);
-
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    header.append(&tab_bar);
-    header.append(&search);
-    header.append(&pin);
-
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    content.append(&header);
-    content.append(&stack);
-    root.set_child(Some(&content));
+    root.add_controller(keys);
 
     Ui {
+        root,
         stack,
-        tab_buttons,
+        tab_group,
         search,
         lists,
         pin,
+        footer,
     }
+}
+
+fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
+    let listbox = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::Single)
+        .activate_on_single_click(true)
+        .focusable(true)
+        .css_classes(["navigation-sidebar"])
+        .build();
+    listbox.set_placeholder(Some(&ui::empty_page(tab)));
+    let t = tx.clone();
+    listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
+    listbox
 }
 
 /// Opens `uri` in the default handler.
@@ -589,11 +663,64 @@ fn build_ui(root: &gtk::ApplicationWindow, sender: &ComponentSender<App>) -> Ui 
 /// The parent is passed only while it is mapped: exporting a hidden surface
 /// (xdg-foreign, used for the portal) is a Wayland protocol error that makes
 /// Mutter disconnect the app.
-fn open_uri(parent: &gtk::ApplicationWindow, uri: &'static str) {
+fn open_uri(parent: &adw::ApplicationWindow, uri: &'static str) {
     let parent = parent.is_mapped().then_some(parent);
     gtk::UriLauncher::new(uri).launch(parent, None::<&gio::Cancellable>, move |r| {
         if let Err(e) = r {
             eprintln!("Failed to open {uri}: {e}");
+        }
+    });
+}
+
+/// Trims the window height so the list ends on a row boundary instead of
+/// showing half of the next row above the footer. Row height depends on the
+/// theme and font, so it is measured rather than hard-coded.
+fn fit_to_rows(root: &adw::ApplicationWindow, lists: &HashMap<Tab, gtk::ListBox>, tab: Tab) {
+    let Some(listbox) = lists.get(&tab) else {
+        return;
+    };
+    let (Some(first), Some(second)) = (listbox.row_at_index(0), listbox.row_at_index(1)) else {
+        return; // Need two rows to know the pitch.
+    };
+    let Some(scrolled) = listbox.ancestor(gtk::ScrolledWindow::static_type()) else {
+        return;
+    };
+    let (Some(a), Some(b)) = (first.compute_bounds(listbox), second.compute_bounds(listbox)) else {
+        return;
+    };
+    let top = f64::from(a.y());
+    let pitch = f64::from(b.y() - a.y());
+    let gap = pitch - f64::from(a.height());
+    let viewport = f64::from(scrolled.height());
+    if pitch <= 0.0 || viewport <= 0.0 {
+        return;
+    }
+    // Same padding below the last full row as above the first one.
+    let rows = ((viewport - 2.0 * top + gap) / pitch).floor().max(1.0);
+    let fitted = 2.0 * top + rows * pitch - gap;
+    let excess = (viewport - fitted).round() as i32;
+    if excess > 0 {
+        root.set_default_size(root.width(), root.height() - excess);
+    }
+}
+
+/// Development aid: with `UTI_DEBUG_SNAPSHOT=<file.png>`, renders the window
+/// to a PNG shortly after it is shown.
+fn debug_snapshot(root: &adw::ApplicationWindow) {
+    let Ok(path) = std::env::var("UTI_DEBUG_SNAPSHOT") else {
+        return;
+    };
+    let root = root.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+        let (w, h) = (f64::from(root.width()), f64::from(root.height()));
+        let snapshot = gtk::Snapshot::new();
+        gtk::WidgetPaintable::new(Some(&root)).snapshot(&snapshot, w, h);
+        if let (Some(node), Some(renderer)) =
+            (snapshot.to_node(), root.native().and_then(|n| n.renderer()))
+        {
+            if let Err(e) = renderer.render_texture(&node, None).save_to_png(&path) {
+                eprintln!("Snapshot failed: {e}");
+            }
         }
     });
 }
@@ -603,7 +730,7 @@ type ActionSpec = (&'static str, fn() -> Msg);
 
 /// Registers the GActions the extension's panel menu invokes via
 /// `org.freedesktop.Application.ActivateAction`.
-fn register_actions(app: &impl IsA<gio::ActionMap>, sender: &ComponentSender<App>) {
+fn register_actions(app: &adw::Application, tx: &Sender) {
     let actions: [ActionSpec; 6] = [
         ("toggle", || Msg::Toggle),
         ("show", || Msg::Show),
@@ -612,10 +739,29 @@ fn register_actions(app: &impl IsA<gio::ActionMap>, sender: &ComponentSender<App
         ("check-updates", || Msg::CheckUpdates),
         ("quit", || Msg::Quit),
     ];
+    if std::env::var_os("UTI_DEBUG_KEYS").is_some() {
+        // Development aid: inject navigation keys over D-Bus, e.g.
+        // ActivateAction debug-key [<"right">] {}
+        let action = gio::SimpleAction::new("debug-key", Some(glib::VariantTy::STRING));
+        let t = tx.clone();
+        action.connect_activate(move |_, v| {
+            let key = match v.and_then(|v| v.get::<String>()).as_deref() {
+                Some("up") => Key::Up,
+                Some("down") => Key::Down,
+                Some("left") => Key::Left,
+                Some("right") => Key::Right,
+                Some("enter") => Key::Enter,
+                Some("escape") => Key::Escape,
+                _ => return,
+            };
+            send(&t, Msg::Key(key));
+        });
+        app.add_action(&action);
+    }
     for (name, make) in actions {
         let action = gio::SimpleAction::new(name, None);
-        let s = sender.clone();
-        action.connect_activate(move |_, _| s.input(make()));
+        let t = tx.clone();
+        action.connect_activate(move |_, _| send(&t, make()));
         app.add_action(&action);
     }
 }

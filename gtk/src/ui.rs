@@ -1,10 +1,11 @@
 //! Widget construction for the main window (no state logic)
 
-use relm4::gtk::{self, gdk, glib, pango, prelude::*};
+use adw::prelude::*;
+use gtk::{gdk, glib};
 
 use crate::state::list::{Key, Tab};
 
-/// Stack page names, also used as CSS-friendly ids.
+/// View stack page names.
 pub fn page_name(tab: Tab) -> &'static str {
     match tab {
         Tab::Prompt => "prompt",
@@ -14,24 +15,56 @@ pub fn page_name(tab: Tab) -> &'static str {
     }
 }
 
-/// Tab button icon and label.
+/// Tab title and icon.
 pub fn tab_label(tab: Tab) -> (&'static str, &'static str) {
     match tab {
-        Tab::Prompt => ("document-edit-symbolic", "Prompt"),
-        Tab::Clipboard => ("edit-paste-symbolic", "Clipboard"),
-        Tab::Snippets => ("starred-symbolic", "Snippets"),
-        Tab::Launcher => ("system-run-symbolic", "Launcher"),
+        Tab::Prompt => ("Prompt", "document-edit-symbolic"),
+        Tab::Clipboard => ("Clipboard", "edit-paste-symbolic"),
+        Tab::Snippets => ("Snippets", "starred-symbolic"),
+        Tab::Launcher => ("Launcher", "view-app-grid-symbolic"),
     }
 }
 
 /// Search placeholder for a list tab.
 pub fn search_placeholder(tab: Tab) -> &'static str {
     match tab {
-        Tab::Clipboard => "Search history...",
-        Tab::Snippets => "Search snippets...",
-        Tab::Launcher => "Search apps...",
+        Tab::Clipboard => "Search history",
+        Tab::Snippets => "Search snippets",
+        Tab::Launcher => "Search apps",
         Tab::Prompt => "",
     }
+}
+
+/// Footer key hints for a tab (Pango markup).
+pub fn key_hints(tab: Tab) -> &'static str {
+    match tab {
+        Tab::Clipboard => {
+            "<b>↵</b> Copy   <b>1–9</b> Pick   <b>S</b> Keep as Snippet   <b>Ctrl+F</b> Search"
+        },
+        Tab::Snippets => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>Ctrl+F</b> Search",
+        Tab::Launcher => "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Recent Files",
+        Tab::Prompt => "",
+    }
+}
+
+/// Empty-state page shown as the list placeholder.
+pub fn empty_page(tab: Tab) -> adw::StatusPage {
+    let (icon, title, description) = match tab {
+        Tab::Clipboard => {
+            ("edit-paste-symbolic", "No Clipboard History", "Copied text appears here")
+        },
+        Tab::Snippets => {
+            ("starred-symbolic", "No Snippets", "Press S on a clipboard item to keep it")
+        },
+        Tab::Launcher => ("view-app-grid-symbolic", "No Apps", ""),
+        Tab::Prompt => ("document-edit-symbolic", "", ""),
+    };
+    adw::StatusPage::builder()
+        .icon_name(icon)
+        .title(title)
+        .description(description)
+        .css_classes(["compact"])
+        .build()
 }
 
 /// Maps a key press to a list key; `None` for keys the lists ignore.
@@ -73,36 +106,58 @@ pub struct RowSpec<'a> {
 
 /// Builds a list row; `on_star` is called with the row's visible index.
 pub fn build_row(spec: &RowSpec<'_>, on_star: impl Fn(usize) + 'static) -> gtk::ListBoxRow {
-    let line = spec.text.lines().next().unwrap_or_default();
-    let label = gtk::Label::builder()
-        .label(format!("{}: {line}", spec.index + 1))
+    let first_line = spec.text.lines().find(|l| !l.trim().is_empty());
+
+    // Number shortcut hint for 1-9; kept as an empty slot after that so the
+    // text stays aligned.
+    let hint = gtk::Label::builder()
+        .label(if spec.index < 9 {
+            (spec.index + 1).to_string()
+        } else {
+            String::new()
+        })
+        .xalign(0.5)
+        .width_chars(2)
+        .valign(gtk::Align::Center)
+        .css_classes(["dim-label", "numeric", "uti-index"])
+        .build();
+    let title = gtk::Label::builder()
+        .label(first_line.unwrap_or_default().trim())
         .xalign(0.0)
         .hexpand(true)
-        .ellipsize(pango::EllipsizeMode::End)
-        .single_line_mode(true)
+        .valign(gtk::Align::Center)
+        .lines(1)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
         .build();
 
-    let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    row_box.append(&label);
+    let content = gtk::Box::builder().spacing(12).css_classes(["uti-row-box"]).build();
+    content.append(&hint);
+    content.append(&title);
 
     if let Some(starred) = spec.star {
+        let mut classes = vec!["flat", "circular", "uti-star"];
+        if starred {
+            classes.push("starred");
+        }
         let star = gtk::Button::builder()
             .icon_name(if starred {
                 "starred-symbolic"
             } else {
                 "non-starred-symbolic"
             })
-            .tooltip_text("Save as snippet (S)")
-            .css_classes(["flat", "uti-star"])
+            .tooltip_text("Keep as Snippet (S)")
+            .valign(gtk::Align::Center)
+            .css_classes(classes)
             .focusable(false)
             .build();
         let index = spec.index;
         star.connect_clicked(move |_| on_star(index));
-        row_box.append(&star);
+        content.append(&star);
     }
 
     gtk::ListBoxRow::builder()
-        .child(&row_box)
+        .child(&content)
         .tooltip_text(glib::markup_escape_text(spec.tooltip))
+        .css_classes(["uti-row"])
         .build()
 }

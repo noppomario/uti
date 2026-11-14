@@ -1,0 +1,45 @@
+/* Main popup tweaks on top of libadwaita. Colors follow the system
+ * (light / dark and accent); only layout is set here. */
+
+/* Equal-width tab buttons with room to hit. */
+.uti-tabs toggle {
+  min-width: 40px;
+  min-height: 30px;
+}
+
+/* List rows: one height, aligned number column. */
+.uti-row-box {
+  min-height: 36px;
+  padding: 0 6px;
+}
+.uti-index {
+  min-width: 2ch;
+  font-feature-settings: "tnum";
+}
+
+/* Star buttons stay quiet until hovered, selected or starred. */
+row .uti-star {
+  opacity: 0;
+}
+row:hover .uti-star,
+row:selected .uti-star,
+row .uti-star.starred {
+  opacity: 1;
+}
+row .uti-star.starred {
+  color: var(--accent-color);
+}
+
+/* Density: minimal / normal / wide (theme.size). */
+window.density-minimal .uti-row-box {
+  min-height: 28px;
+  font-size: 0.92em;
+}
+window.density-wide .uti-row-box {
+  min-height: 44px;
+}
+
+/* Key hints under the list. */
+.uti-footer {
+  padding: 6px 12px;
+}

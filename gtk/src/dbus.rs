@@ -3,7 +3,7 @@
 //! The extension and the daemon only accept calls from the owner of
 //! `io.github.noppomario.uti`, which is this connection.
 
-use relm4::gtk::{gio, glib, prelude::*};
+use gtk::{gio, glib, prelude::*};
 use uti_core::dbus::{
     DAEMON_BUS_NAME, DAEMON_INTERFACE, DAEMON_OBJECT_PATH, SHELL_BUS_NAME, SHELL_INTERFACE,
     SHELL_OBJECT_PATH,

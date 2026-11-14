@@ -3,6 +3,9 @@
 /// Main window tabs, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
+    /// Retired: a workaround for Japanese input in CLI tools, no longer
+    /// needed. Kept but not wired (absent from [`Tab::ALL`]).
+    #[allow(dead_code)]
     Prompt,
     Clipboard,
     Snippets,
@@ -10,8 +13,8 @@ pub enum Tab {
 }
 
 impl Tab {
-    /// All tabs in display order.
-    pub const ALL: [Tab; 4] = [Tab::Prompt, Tab::Clipboard, Tab::Snippets, Tab::Launcher];
+    /// Tabs shown, in display order.
+    pub const ALL: [Tab; 3] = [Tab::Clipboard, Tab::Snippets, Tab::Launcher];
 
     /// Tab to the left; `None` at the first tab (no wrap-around).
     pub fn prev(self) -> Option<Tab> {
@@ -130,8 +133,8 @@ impl ListState {
                 (i < self.len).then_some(Action::Activate(i))
             },
             Key::Left => Some(Action::PrevTab),
-            Key::Right if traits.right_opens_jump_list => {
-                has_items.then_some(Action::OpenJumpList(self.selected))
+            Key::Right if traits.right_opens_jump_list && has_items => {
+                Some(Action::OpenJumpList(self.selected))
             },
             Key::Right => Some(Action::NextTab),
             Key::Star if traits.can_star && has_items => Some(Action::ToggleStar(self.selected)),
@@ -170,10 +173,16 @@ mod tests {
 
     #[test]
     fn tabs_stop_at_both_ends() {
-        assert_eq!(Tab::Prompt.prev(), None);
-        assert_eq!(Tab::Prompt.next(), Some(Tab::Clipboard));
+        assert_eq!(Tab::Clipboard.prev(), None);
+        assert_eq!(Tab::Clipboard.next(), Some(Tab::Snippets));
         assert_eq!(Tab::Snippets.prev(), Some(Tab::Clipboard));
         assert_eq!(Tab::Launcher.next(), None);
+    }
+
+    #[test]
+    fn retired_prompt_tab_is_not_reachable() {
+        assert!(!Tab::ALL.contains(&Tab::Prompt));
+        assert!(Tab::ALL.iter().all(|t| t.prev() != Some(Tab::Prompt)));
     }
 
     #[test]
@@ -219,7 +228,8 @@ mod tests {
             ..PLAIN
         };
         assert_eq!(l.on_list_key(Key::Right, launcher), Some(OpenJumpList(0)));
-        assert_eq!(list(0).on_list_key(Key::Right, launcher), None);
+        // Nothing to open: Right moves on (to the pin button after the last tab).
+        assert_eq!(list(0).on_list_key(Key::Right, launcher), Some(NextTab));
     }
 
     #[test]
