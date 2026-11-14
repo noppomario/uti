@@ -4,7 +4,9 @@
 
 mod commands;
 
-pub use commands::{hide_for_paste, set_pinned, show_window, toggle_window, type_text};
+pub use commands::{
+    hide_for_paste, set_pinned, show, show_window, toggle, toggle_window, type_text,
+};
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
