@@ -584,8 +584,14 @@ fn build_ui(root: &gtk::ApplicationWindow, sender: &ComponentSender<App>) -> Ui 
     }
 }
 
+/// Opens `uri` in the default handler.
+///
+/// The parent is passed only while it is mapped: exporting a hidden surface
+/// (xdg-foreign, used for the portal) is a Wayland protocol error that makes
+/// Mutter disconnect the app.
 fn open_uri(parent: &gtk::ApplicationWindow, uri: &'static str) {
-    gtk::UriLauncher::new(uri).launch(Some(parent), None::<&gio::Cancellable>, move |r| {
+    let parent = parent.is_mapped().then_some(parent);
+    gtk::UriLauncher::new(uri).launch(parent, None::<&gio::Cancellable>, move |r| {
         if let Err(e) = r {
             eprintln!("Failed to open {uri}: {e}");
         }
