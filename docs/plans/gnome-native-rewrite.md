@@ -1,4 +1,4 @@
-# Plan: GNOME-native rewrite (Tauri -> GTK4 + Relm4 + libadwaita)
+# Plan: GNOME-native rewrite (Tauri -> GTK4 + libadwaita)
 
 **Status**: Draft
 **Date**: 2026-11-14
@@ -33,9 +33,15 @@ PoC or primary sources before relying on them.
 
 ### Decision
 
-- **Main popup window**: Relm4 + plain GTK4 with custom CSS (keeps the
-  midnight / dark / light themes and accent color).
-- **Settings window and dialogs**: Relm4 + libadwaita
+- **Toolkit**: gtk4-rs + libadwaita, no Relm4 (decided in Phase 3: logic
+  lives in pure `state/` modules, so Relm4's component model added nothing
+  but a 0.x dependency and a bundled tokio runtime). Same approach as GNOME's
+  own Rust apps.
+- **Main popup window**: libadwaita (`AdwApplicationWindow`, `AdwHeaderBar`,
+  `AdwToggleGroup` tabs, `AdwStatusPage` empty states). Colors follow the
+  system (light / dark, accent); the midnight / dark / light themes are
+  dropped. `theme.size` stays as a density / window-size setting.
+- **Settings window and dialogs**: libadwaita
   (`AdwPreferencesDialog`, `AdwSwitchRow`, `AdwSpinRow`, `AdwComboRow`,
   `AdwEntryRow`, `AdwAlertDialog`, `AdwAboutDialog`). Settings is an independent
   window, not transient for the popup (Phase 0).
@@ -47,12 +53,13 @@ PoC or primary sources before relying on them.
 | ----- | ------- | -------- |
 | gtk4 | 0.11.5 | 2026-09-20 |
 | libadwaita | 0.9.2 | 2026-07-07 |
-| relm4 / relm4-components | 0.11.0 | 2026-04-08 (CHANGES.md says 2026-05-10) |
 | zbus (daemon only) | 6.3.0 | - |
 | ksni (non-GNOME tray, optional) | 0.3.7 | 2026-10-20 |
 
-- Build with Relm4 feature `gnome_50` (`adw/v1_9`). Fedora 44 ships
+- Build with gtk4 feature `gnome_50` and libadwaita `v1_9`. Fedora 44 ships
   GNOME Shell 50.6, libadwaita 1.9.4, gtk4 4.22.5.
+- Font rendering is set to `Manual` (desktop hinting): GTK's `Automatic`
+  mode made digit and capital tops look cut off at scale 1.
 
 ### Alternatives rejected
 
@@ -81,7 +88,7 @@ These stay in the daemon and the GNOME extension (section 3).
 ```text
 uti-daemon (evdev)  --signal Triggered-->  uti app  <--method calls-->  GNOME extension
   double-Ctrl only                          owns state                  clipboard watch
-                                            (GTK4/Relm4)                position / above
+                                            (GTK4/adw)                   position / above
                                                                         panel menu
                                                                         paste (virtual kbd)
 ```
@@ -151,7 +158,7 @@ which may be the settings window or a dialog.
 crates/
   uti-core/        # pure logic, no GTK: config, clipboard history, snippets,
                    # launcher config + recent files, D-Bus names, atomic writes
-app/               # uti binary: Relm4 components, CSS themes, gettext i18n
+app/               # uti binary: GTK4 / libadwaita UI, pure state/ modules
 daemon/            # uti-daemon: evdev + Daemon1 signal (+ uinput fallback)
 gnome-extension/   # uti for GNOME: Shell1 service, panel menu, clipboard watch
 packaging/         # RPM specs, COPR config, desktop file, metainfo, icons
@@ -269,12 +276,12 @@ Valuable even if the rewrite is delayed.
       Shared D-Bus names live in `uti_core::dbus`; no separate `uti-dbus` crate.
 - [x] Atomic writes, `0600`, XDG data dir migration, stable IDs.
 
-### Phase 3: GTK4 / Relm4 app
+### Phase 3: GTK4 / libadwaita app
 
-- [ ] Main window: tab bar, search, clipboard / snippets / launcher / prompt
-      tabs, keyboard navigation, jump list, pin button.
-- [ ] Themes: midnight / dark / light CSS, size variants, accent color
-      (default from `AdwStyleManager` accent when unset).
+- [ ] Main window: tab bar, search, clipboard / snippets / launcher tabs,
+      keyboard navigation (`state::nav`), jump list, pin button, key-hint
+      footer. The Prompt tab is retired (kept in code, not wired).
+- [x] Look: libadwaita, system colors and accent; density from `theme.size`.
 - [ ] Settings window with libadwaita rows; i18n via gettext (en / ja),
       migrate strings from `app/src/settings/i18n`.
 - [ ] Launcher via `gio::AppInfo` (5.2.1, 5.2.2).
@@ -301,8 +308,9 @@ Valuable even if the rewrite is delayed.
 ## 7. Testing strategy
 
 - `uti-core`: unit tests, target 90%+ for `DoubleTapDetector` and stores.
-- Relm4 components: test `update()` as pure state transitions; keep widgets
-  thin.
+- GTK app: test `state/` (window, list, nav) as pure state transitions; keep
+  widgets thin. `UTI_DEBUG_SNAPSHOT` / `UTI_DEBUG_KEYS` render the window to
+  PNG and inject keys over D-Bus for manual checks.
 - D-Bus: integration tests on a private session bus (`dbus-run-session`).
 - Extension: manual test checklist per GNOME version (nested shell:
   `dbus-run-session gnome-shell --devkit --wayland --no-x11 --wayland-display NAME`,
@@ -316,7 +324,6 @@ Valuable even if the rewrite is delayed.
 | ---- | ---------- |
 | Extension API changes every GNOME release | Keep extension small; versioned D-Bus interface; per-release test checklist |
 | Clutter virtual keyboard paste not viable | Keep uinput fallback in daemon (with caller check) |
-| Relm4 0.x breaking changes | Pin minor version; keep logic in `uti-core` |
 | Loss of frontend test coverage during rewrite | Move logic to Rust first (Phase 2) so tests exist before UI rewrite |
 | Users relying on `input` group | Offer normal shortcut via extension as alternative |
 
@@ -325,7 +332,7 @@ Valuable even if the rewrite is delayed.
 ## 9. Draft ADR-030
 
 ```markdown
-## ADR-030: Native GTK4 UI with Relm4 and libadwaita
+## ADR-030: Native GTK4 UI with libadwaita
 
 **Date**: 2026-11-14
 **Status**: Proposed
@@ -340,14 +347,14 @@ modifier tap) are solved outside the UI framework anyway.
 
 ### Decision
 
-Rewrite the app with gtk4-rs + Relm4. Use libadwaita for the settings window
-and dialogs; use plain GTK4 + custom CSS for the main popup.
+Rewrite the app with gtk4-rs + libadwaita (no Relm4) for both the popup and
+the settings window. Follow the system style instead of custom themes.
 
 ### Rationale
 
 - Native hide/show, IME, HiDPI, accent color and dark mode on GNOME.
 - System libraries already on Fedora; smaller package.
-- Elm-style components keep state transitions testable in Rust.
+- Pure `state/` modules keep state transitions testable in Rust.
 
 ### Alternatives Considered
 
@@ -360,8 +367,8 @@ and dialogs; use plain GTK4 + custom CSS for the main popup.
 **Positive**: single language (Rust + GJS extension), native look, simpler
 build, no webview.
 
-**Negative**: full UI rewrite; React tests discarded; Relm4 is pre-1.0;
-GNOME-only.
+**Negative**: full UI rewrite; React tests discarded; custom color themes
+dropped; GNOME-only.
 
 **Reconsider when**: Windows/macOS/KDE support becomes a concrete goal
 (re-evaluate Slint).

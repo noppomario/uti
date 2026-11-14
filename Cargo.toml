@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/uti-core", "daemon", "app/src-tauri"]
+members = ["crates/uti-core", "daemon", "app/src-tauri", "gtk"]
 resolver = "2"
 
 [profile.release]

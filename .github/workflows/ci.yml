@@ -91,3 +91,28 @@ jobs:
           path: target/release/bundle/rpm/*.rpm
           retention-days: 7
           if-no-files-found: warn
+
+  gtk:
+    name: GTK Checks
+    runs-on: ubuntu-latest
+    # Ubuntu's GTK4 / libadwaita are older than GNOME 50, so build in Fedora.
+    container: fedora:44
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main-gtk' || format('gtk-{0}', github.ref) }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+    steps:
+      - name: Install toolchain and GTK
+        run: dnf install -y --setopt=install_weak_deps=False git cargo rustfmt clippy gcc gtk4-devel libadwaita-devel
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Format
+        run: cargo fmt -p uti-gtk --check
+
+      - name: Lint
+        run: cargo clippy -p uti-gtk --all-targets
+
+      - name: Test
+        run: cargo test -p uti-gtk

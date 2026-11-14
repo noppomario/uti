@@ -86,13 +86,26 @@ impl ClipboardStore {
     ///
     /// Moves the pre-v0.3 file from `~/.config/uti/clipboard.json` first.
     pub fn load_default() -> Self {
-        if let Err(e) = crate::paths::migrate_file(
+        Self::load_migrating(
             &crate::paths::legacy_clipboard_history(),
             &crate::paths::clipboard_history(),
-        ) {
+        )
+    }
+
+    /// Loads `path`, first moving `legacy` there if needed. A migrated file is
+    /// saved right away so the generated ids are persisted.
+    pub fn load_migrating(legacy: &Path, path: &Path) -> Self {
+        let migrated = crate::paths::migrate_file(legacy, path).unwrap_or_else(|e| {
             eprintln!("Failed to migrate clipboard history: {}", e);
+            false
+        });
+        let store = Self::load(path);
+        if migrated {
+            if let Err(e) = store.save(path) {
+                eprintln!("Failed to save migrated clipboard history: {}", e);
+            }
         }
-        Self::load(&crate::paths::clipboard_history())
+        store
     }
 
     /// Adds a new item to the clipboard history
@@ -288,5 +301,20 @@ mod tests {
 
         let texts: Vec<_> = store.items.iter().map(|i| i.text.as_str()).collect();
         assert_eq!(texts, vec!["second"]);
+    }
+
+    #[test]
+    fn migrated_history_is_saved_with_ids() {
+        let dir = TempDir::new().unwrap();
+        let legacy = dir.path().join("config/clipboard.json");
+        let path = dir.path().join("data/clipboard.json");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(&legacy, r#"{"items":[{"text":"a","timestamp":1}],"max_items":50}"#).unwrap();
+
+        let store = ClipboardStore::load_migrating(&legacy, &path);
+
+        assert!(!legacy.exists());
+        let on_disk = ClipboardStore::load(&path);
+        assert_eq!(on_disk.items[0].id, store.items[0].id);
     }
 }
