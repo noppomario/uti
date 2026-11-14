@@ -37,8 +37,9 @@ PoC or primary sources before relying on them.
   midnight / dark / light themes and accent color).
 - **Settings window and dialogs**: Relm4 + libadwaita
   (`AdwPreferencesDialog`, `AdwSwitchRow`, `AdwSpinRow`, `AdwComboRow`,
-  `AdwEntryRow`, `AdwAlertDialog`, `AdwAboutDialog`).
-- **Async**: tokio (bundled with Relm4) + zbus 5.
+  `AdwEntryRow`, `AdwAlertDialog`, `AdwAboutDialog`). Settings is an independent
+  window, not transient for the popup (Phase 0).
+- **D-Bus**: app uses gio via `GApplication` (see 3.1); daemon uses tokio + zbus 6.
 
 ### Versions checked (crates.io, 2026-11)
 
@@ -47,7 +48,7 @@ PoC or primary sources before relying on them.
 | gtk4 | 0.11.5 | 2026-09-20 |
 | libadwaita | 0.9.2 | 2026-07-07 |
 | relm4 / relm4-components | 0.11.0 | 2026-04-08 (CHANGES.md says 2026-05-10) |
-| zbus | 5.x | - |
+| zbus (daemon only) | 6.3.0 | - |
 | ksni (non-GNOME tray, optional) | 0.3.7 | 2026-10-20 |
 
 - Build with Relm4 feature `gnome_50` (`adw/v1_9`). Fedora 44 ships
@@ -65,8 +66,8 @@ PoC or primary sources before relying on them.
 ### What no framework solves on GNOME/Wayland
 
 - Clipboard **monitoring**: Mutter implements neither `ext-data-control-v1`
-  nor `wlr-data-control` (secondary sources; **[UNVERIFIED]** for GNOME 50
-  against gitlab.gnome.org).
+  nor `wlr-data-control`; the extension's `Meta.Selection` watch works
+  (Phase 0, C1).
 - Window **positioning** and **always-on-top**: not available to clients.
 - **Double modifier tap**: GlobalShortcuts portal is combination-based; no
   double-tap concept **[UNVERIFIED]** for modifier-only triggers.
@@ -92,16 +93,18 @@ services the app calls via D-Bus methods. No more peer-to-peer signal races.
 
 | Owner | Bus name | Interface | Members |
 | ----- | -------- | --------- | ------- |
-| daemon | `io.github.noppomario.uti.Daemon` | `io.github.noppomario.uti.Daemon1` | signal `Triggered()` |
-| app | `io.github.noppomario.uti` | `io.github.noppomario.uti.App1` | `Toggle()`, `Show()`, `Hide()`, `OpenSettings()`, `Quit()`, property `Pinned` |
-| extension | `io.github.noppomario.uti.Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer()`, `SetAbove(b)`, `Paste(plain: b, submit: b)`, signal `ClipboardChanged(s text)` |
+| daemon | `io.github.noppomario.uti.Daemon` (today the daemon owns `io.github.noppomario.uti`; must move off it before the GTK app ships) | `io.github.noppomario.uti.Daemon1` | signal `Triggered()` |
+| app | `io.github.noppomario.uti` | GActions via `org.freedesktop.Application` | `toggle`, `show`, `hide`, `open-settings`, `quit`, stateful `pinned` |
+| extension | `io.github.noppomario.uti.Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(activate: b)`, `SetAbove(b)`, `Paste(plain: b, submit: b)`, signal `ClipboardChanged(s text)` |
 
 Notes:
 
-- The app owns `io.github.noppomario.uti` -> doubles as the **single-instance**
-  mechanism (`GApplication` already does this with the app ID).
+- `GApplication` owns `io.github.noppomario.uti` (single instance). The app must
+  use its connection (`Application::dbus_connection()`) for all D-Bus calls; a
+  separate zbus connection can neither take the name nor pass the caller check.
 - Methods that trigger input (`Paste`) must check the caller's unique name
-  matches the owner of `io.github.noppomario.uti`.
+  matches the owner of `io.github.noppomario.uti`. This only proves name
+  ownership; optionally also check the peer's `/proc/<pid>/exe`.
 - Version interfaces (`...1`) so the extension and app can be updated
   independently.
 - Keep the old `DoubleTap` interface emitting for one release for migration,
@@ -111,13 +114,11 @@ Notes:
 
 1. daemon emits `Triggered`.
 2. app receives it; if pinned, ignore. If visible, hide. Otherwise:
-3. app calls `Shell1.PositionAtPointer()` (extension moves the window by
-   matching the main window, see 3.4), then `present()`.
+3. app calls `Shell1.PositionAtPointer()`, then `present()`. The extension keeps
+   the request pending and moves the window on its actor's `first-frame`
+   (the frame rect is 0x0 before that), then `hide_from_window_list()`.
 4. No `sleep(50ms)` / `timeout_add(100ms)` coordination.
-
-**[UNVERIFIED]** ordering: whether the window must be mapped before
-`move_frame()` works. PoC must test "present then position" vs
-"position then present" and possibly use `Meta.Window` `shown` signal.
+5. app hides itself on `is-active` = false unless pinned.
 
 ### 3.3 Responsibilities
 
@@ -126,8 +127,8 @@ Notes:
 | Double Ctrl | daemon (evdev) | daemon (evdev), fixed detector (5.1) |
 | Optional normal shortcut | none | extension `Main.wm.addKeybinding` (lets users avoid `input` group) |
 | Clipboard history capture | JS polls `readText()` every 1 s | extension listens to `Meta.Selection` `owner-changed`, reads text via `St.Clipboard`, emits `ClipboardChanged` |
-| Paste into target app | daemon uinput Ctrl+Shift+V + Enter | extension Clutter virtual keyboard **[UNVERIFIED]**; keep uinput as fallback |
-| Positioning / always-on-top | extension reacts to broadcast signals | extension methods called by app |
+| Paste into target app | daemon uinput Ctrl+Shift+V + Enter | extension Clutter virtual keyboard (`notify_keyval`, layout-independent) after focus leaves uti; keep uinput as fallback |
+| Positioning / always-on-top / hide from dash | extension reacts to broadcast signals | extension methods called by app |
 | Tray | Tauri SNI + extension acts as `StatusNotifierWatcher` | extension shows its own `PanelMenu.Button`, menu actions call `App1` methods. **Drop SNI on GNOME.** |
 | Updates | in-app RPM download + `pkexec` | COPR repo with GPG signing; `dnf upgrade`. Remove updater. |
 | Autostart | tauri-plugin-autostart | XDG autostart `.desktop` file, or systemd user unit tied to `graphical-session.target` |
@@ -138,11 +139,9 @@ The current `_findUtiWindow` matches the first window with WM_CLASS `uti`,
 which may be the settings window or a dialog.
 
 - Main window: app ID `io.github.noppomario.uti`, fixed title (e.g. `uti`).
-- Settings / dialogs: transient-for main or distinct titles.
-- Extension matches `get_gtk_application_id()` / `get_wm_class()` **and**
-  title, or the app passes an identifier via `PositionAtPointer`.
-  **[UNVERIFIED]** which Meta.Window property is most reliable for GTK4 on
-  Wayland.
+- Settings / dialogs: distinct titles.
+- Extension matches `get_gtk_application_id()` **and** `get_title()`. Both are
+  `null` at `window-created`; check at `first-frame`.
 
 ---
 
@@ -152,7 +151,7 @@ which may be the settings window or a dialog.
 crates/
   uti-core/        # pure logic, no GTK: config, clipboard history, snippets,
                    # launcher (desktop entries, recent files), double-tap detector
-  uti-dbus/        # zbus proxies/interfaces shared by app and daemon
+  uti-dbus/        # D-Bus names and interface XML shared by app, daemon, tests
 app/               # uti binary: Relm4 components, CSS themes, gettext i18n
 daemon/            # uti-daemon: evdev + Daemon1 signal (+ uinput fallback)
 gnome-extension/   # uti for GNOME: Shell1 service, panel menu, clipboard watch
@@ -186,7 +185,7 @@ move into `uti-core` with their tests largely intact.
 4. **Layout assumption**: `daemon/src/uinput.rs` emits keycodes for
    Ctrl+Shift+V + Enter (~L86, L102). Wrong on non-QWERTY layouts; Enter is
    always sent. Make paste combo and "submit" configurable.
-5. Bump `zbus` 4 -> 5, `evdev` 0.12 -> 0.13.
+5. Bump `zbus` 4 -> 6, `evdev` 0.12 -> 0.13.
 
 ### 5.2 App (carry over into rewrite)
 
@@ -208,8 +207,8 @@ move into `uti-core` with their tests largely intact.
    `$XDG_DATA_HOME/uti/` (or `$XDG_STATE_HOME`) with migration from
    `~/.config/uti/clipboard.json`.
 6. **Sensitive content**: skip clipboard entries offered with
-   `x-kde-passwordManagerHint` (password managers). **[UNVERIFIED]** that this
-   MIME type is visible via `Meta.Selection` in the extension.
+   `x-kde-passwordManagerHint` (password managers); visible via
+   `Meta.Selection.get_mimetypes()` (Phase 0, C2).
 7. **Index-based removal** (`remove_clipboard_item`,
    `clipboard/commands.rs` ~L37): use stable IDs.
 8. Remove dead stub `paste_item`.
@@ -249,25 +248,17 @@ Each phase is shippable on its own. Follow TDD for every phase.
 
 ### Phase 0: PoC (throwaway, 1-2 days)
 
-Validate the **[UNVERIFIED]** items before committing to the design:
-
-- [ ] Relm4 window: hide / present / focus behavior on GNOME 50 Wayland,
-      undecorated + rounded corners + shadow, startup latency.
-- [ ] Extension `PositionAtPointer` + `make_above()` on a GTK4 window; order
-      of present vs move.
-- [ ] Extension clipboard watch via `Meta.Selection` `owner-changed` while
-      uti is unfocused; MIME types visible (password hint).
-- [ ] Extension paste via Clutter virtual keyboard
-      (`Clutter.get_default_backend().get_default_seat().create_virtual_device(...)`)
-      into a GTK app, a browser and a terminal.
-- [ ] IME (ibus / fcitx5) in the search entry and Prompt tab.
+Done 2026-11-14: no blocker. Results and design changes in
+[phase0-findings.md](phase0-findings.md) (already applied to this plan).
+Open: clipboard watch and paste in a GTK editor / terminal, real-session run
+of the extension.
 
 ### Phase 1: Component redesign (still on Tauri)
 
 Valuable even if the rewrite is delayed.
 
 - [ ] New D-Bus interfaces (3.1) with compatibility period.
-- [ ] Daemon: `DoubleTapDetector` state machine + tests; hotplug; zbus 5.
+- [ ] Daemon: `DoubleTapDetector` state machine + tests; hotplug; zbus 6.
 - [ ] Extension: `shell-version` `["50"]` (5.4.6), drop SNI watcher, own
       panel menu, async D-Bus, method-based positioning, clipboard watch.
 - [ ] App: consume `ClipboardChanged` instead of polling.
@@ -313,7 +304,8 @@ Valuable even if the rewrite is delayed.
   thin.
 - D-Bus: integration tests on a private session bus (`dbus-run-session`).
 - Extension: manual test checklist per GNOME version (nested shell:
-  `dbus-run-session gnome-shell --devkit` on GNOME 50 **[UNVERIFIED]** flag).
+  `dbus-run-session gnome-shell --devkit --wayland --no-x11 --wayland-display NAME`,
+  needs `mutter-devkit`; no ibus inside, dconf shared with the real session).
 
 ---
 
