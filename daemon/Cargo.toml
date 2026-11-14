@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
+uti-core = { path = "../crates/uti-core", default-features = false }
 evdev = { version = "0.13", features = ["tokio"] }
 zbus = { version = "6", default-features = false, features = ["tokio", "service", "proxy"] }
 tokio = { version = "1", features = ["full"] }
