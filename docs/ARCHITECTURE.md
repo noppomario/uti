@@ -9,10 +9,11 @@ uti is a clipboard manager and app launcher that is invoked by pressing Ctrl twi
 ```mermaid
 flowchart LR
     KB[Keyboard] -->|evdev read| DAEMON[uti-daemon]
-    DAEMON -->|D-Bus signal| APP[uti]
-    DAEMON -->|D-Bus signal| EXT[uti for GNOME]
-    APP --> WIN[Window]
-    EXT -->|position| WIN
+    DAEMON -->|Daemon1.Triggered| APP[uti]
+    APP -->|Shell1 methods| EXT[uti for GNOME]
+    EXT -->|ActivateAction| APP
+    EXT -->|position / above / paste| WIN[Window]
+    APP --> WIN
 
     style KB fill:#e0e0e0,stroke:#666
     style WIN fill:#e0e0e0,stroke:#666
@@ -21,13 +22,15 @@ flowchart LR
     style EXT fill:#4a9eff,stroke:#2171c7,color:#fff
 ```
 
+The app owns state; the daemon and the extension are services it calls.
+
 ## Requirements
 
 - **Linux** with D-Bus session bus and glibc
 - **systemd** for daemon service management
 - User in `input` group for keyboard access
 
-**Optional**: "uti for GNOME" extension enables tray icon, cursor positioning, and always-on-top control on **GNOME/Wayland**. Without it, window appears at screen center and pin button only disables auto-hide.
+**Optional**: "uti for GNOME" extension enables the panel menu, cursor positioning, always-on-top, hiding from dash / Alt+Tab, and paste on **GNOME/Wayland**. Without it, window appears at screen center and pin button only disables auto-hide.
 
 ---
 
@@ -41,19 +44,13 @@ virtual keyboard for auto-paste functionality.
 | Property | Value |
 | -------- | ----- |
 | Language | Rust |
-| Input | evdev (`/dev/input/event*`), D-Bus signals |
-| Output | D-Bus signal, uinput (`/dev/uinput`) |
+| Input | evdev (`/dev/input/event*`, hotplug via inotify) |
+| Output | `Daemon1.Triggered`, uinput (`/dev/uinput`) |
 | Permissions | `input` group membership |
 | Service | `uti-daemon.service` (systemd user) |
 
-**D-Bus Interface:**
-
-- Name: `io.github.noppomario.uti`
-- Interface: `io.github.noppomario.uti.DoubleTap`
-- Path: `/io/github/noppomario/uti/DoubleTap`
-- Signals:
-  - `Triggered()` - emitted on double Ctrl press
-  - `SetAlwaysOnTop(enabled: bool)` - emitted by uti app when pin state changes
+A tap is a short Ctrl press with no other key in between; two taps within
+300 ms trigger (`daemon/src/detector.rs`).
 
 ### uti (Tauri App)
 
@@ -63,7 +60,7 @@ Main application with clipboard history and app launcher UI.
 | -------- | ----- |
 | Frontend | React 19 + TypeScript |
 | Backend | Rust + Tauri 2 |
-| IPC | D-Bus (receive), StatusNotifierItem (tray) |
+| IPC | D-Bus: owns `io.github.noppomario.uti`, serves `ActivateAction`, calls `Shell1` / `Daemon1` |
 | Config | `~/.config/uti/config.json` |
 | Launcher | `~/.config/uti/launcher.json` |
 | Clipboard | `~/.config/uti/clipboard.json` |
@@ -86,15 +83,18 @@ Main application with clipboard history and app launcher UI.
 
 GNOME Shell extension that provides:
 
-1. **Tray icon display** - Acts as StatusNotifierHost to show Tauri's tray
-2. **Cursor positioning** - Moves window to cursor location on toggle
-3. **Always-on-top control** - Handles `SetAlwaysOnTop` signal to set window layer via `Meta.Window.make_above()` (Mutter ignores app-level always-on-top requests on Wayland)
+1. **Panel menu** - Show/Hide, Settings, Check for Updates, GitHub, Quit (calls the app's `ActivateAction`)
+2. **Cursor positioning** - Moves the main window to the pointer on its first frame
+3. **Always-on-top** - `Meta.Window.make_above()` (Mutter ignores app-level requests on Wayland)
+4. **Hide from dash / Alt+Tab** - `Meta.Window.hide_from_window_list()`
+5. **Paste** - Clutter virtual keyboard after focus leaves uti
+6. **Clipboard watch** - `Meta.Selection` owner changes, emitted as `ClipboardChanged`
 
 | Property | Value |
 | -------- | ----- |
 | UUID | `uti@noppomario.github.io` |
 | Settings | GSettings (`org.gnome.shell.extensions.uti`) |
-| Protocol | StatusNotifierItem/DBusMenu |
+| Shell versions | 50 |
 
 ---
 
@@ -111,53 +111,14 @@ sequenceDiagram
         participant App as uti
         participant Ext as GNOME Extension
     end
-    participant DBus as D-Bus
     participant Mutter
 
-    Daemon->>DBus: Emit DoubleTap.Triggered
-    par Broadcast
-        DBus->>App: Signal received
-        DBus->>Ext: Signal received
-    end
-    App->>App: Toggle window visibility
-    Ext->>Ext: Get cursor position
-    Ext->>Mutter: Move window to cursor
-```
-
-### Tray Icon Sequence
-
-```mermaid
-sequenceDiagram
-    box rgb(74, 158, 255) uti components
-        participant App as uti
-        participant Ext as GNOME Extension
-    end
-    participant DBus as D-Bus
-
-    App->>DBus: Register StatusNotifierItem
-    Ext->>DBus: Watch for SNI names
-    DBus->>Ext: uti SNI appeared
-    Ext->>DBus: Get icon and menu
-    Ext->>Ext: Display in GNOME Panel
-```
-
-### Pin State Toggle Sequence
-
-```mermaid
-sequenceDiagram
-    participant User
-    box rgb(74, 158, 255) uti components
-        participant App as uti
-        participant Ext as GNOME Extension
-    end
-    participant DBus as D-Bus
-    participant Mutter
-
-    User->>App: Click pin button
-    App->>App: Store pin state
-    App->>DBus: Emit SetAlwaysOnTop(true)
-    DBus->>Ext: Signal received
-    Ext->>Mutter: make_above()
+    Daemon->>App: Daemon1.Triggered
+    App->>Ext: Shell1.PositionAtPointer
+    Ext->>Ext: Keep request pending
+    App->>App: Show window
+    Mutter->>Ext: first-frame of main window
+    Ext->>Mutter: move_frame + hide_from_window_list
 ```
 
 ### Prompt Auto-Paste Sequence
@@ -167,52 +128,32 @@ sequenceDiagram
     participant User
     box rgb(74, 158, 255) uti components
         participant App as uti
+        participant Ext as GNOME Extension
         participant Daemon as uti-daemon
     end
-    participant DBus as D-Bus
     participant Target as Active Window
 
     User->>App: Ctrl+Enter in Prompt tab
-    App->>App: Copy to clipboard
-    App->>App: Hide window
-    App->>DBus: Emit TypeText
-    DBus->>Daemon: Signal received
-    Daemon->>Target: Ctrl+V via uinput
+    App->>App: Copy to clipboard, hide window
+    App->>Ext: Shell1.Paste(plain, submit)
+    Ext->>Ext: Wait until focus leaves uti
+    Ext->>Target: Ctrl+Shift+V, Enter (virtual keyboard)
+    Note over App,Daemon: If Shell1 fails, App calls Daemon1.Paste (uinput)
 ```
 
 ---
 
 ## D-Bus Interfaces
 
-### DoubleTap Interface
+| Owner | Bus name | Object path | Interface | Members |
+| ----- | -------- | ----------- | --------- | ------- |
+| uti-daemon | `io.github.noppomario.uti.Daemon` | `/io/github/noppomario/uti/Daemon` | `io.github.noppomario.uti.Daemon1` | signal `Triggered()`, method `Paste(b plain, b submit)` |
+| uti | `io.github.noppomario.uti` | `/io/github/noppomario/uti` | `org.freedesktop.Application` | `ActivateAction(s, av, a{sv})`: `toggle`, `show`, `hide`, `settings`, `check-updates`, `quit` |
+| GNOME Extension | `io.github.noppomario.uti.Shell` | `/io/github/noppomario/uti/Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(b activate)`, `SetAbove(b)`, `Paste(b plain, b submit)`, signal `ClipboardChanged(s)` |
 
-Shared interface for daemon-to-app and app-to-extension communication:
-
-```xml
-<interface name="io.github.noppomario.uti.DoubleTap">
-  <signal name="Triggered"/>
-  <signal name="SetAlwaysOnTop">
-    <arg name="enabled" type="b"/>
-  </signal>
-  <signal name="TypeText"/>
-</interface>
-```
-
-| Signal | Sender | Receiver | Purpose |
-| ------ | ------ | -------- | ------- |
-| `Triggered` | uti-daemon | uti, GNOME Extension | Double Ctrl press detected |
-| `SetAlwaysOnTop` | uti | GNOME Extension | Pin state changed |
-| `TypeText` | uti | uti-daemon | Trigger auto-paste via Ctrl+V |
-
-### StatusNotifierItem (App → Extension)
-
-The Tauri app registers as a StatusNotifierItem on the session bus:
-
-- Bus name: `org.kde.StatusNotifierItem-{pid}-1`
-- Object path: `/StatusNotifierItem`
-- Interfaces: `org.kde.StatusNotifierItem`, `org.freedesktop.DBusMenu`
-
-The extension acts as a StatusNotifierHost, watching for this name and proxying the icon and menu to the GNOME panel.
+`Daemon1.Paste` and all `Shell1` methods reject callers that do not own
+`io.github.noppomario.uti` (`AccessDenied`). The daemon still emits the legacy
+`io.github.noppomario.uti.DoubleTap.Triggered` for one release.
 
 ---
 

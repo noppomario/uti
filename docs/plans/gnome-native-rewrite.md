@@ -94,7 +94,7 @@ services the app calls via D-Bus methods. No more peer-to-peer signal races.
 | Owner | Bus name | Interface | Members |
 | ----- | -------- | --------- | ------- |
 | daemon | `io.github.noppomario.uti.Daemon` (today the daemon owns `io.github.noppomario.uti`; must move off it before the GTK app ships) | `io.github.noppomario.uti.Daemon1` | signal `Triggered()` |
-| app | `io.github.noppomario.uti` | GActions via `org.freedesktop.Application` | `toggle`, `show`, `hide`, `open-settings`, `quit`, stateful `pinned` |
+| app | `io.github.noppomario.uti` | GActions via `org.freedesktop.Application` | `toggle`, `show`, `hide`, `settings`, `check-updates`, `quit` (Phase 3 adds stateful `pinned`) |
 | extension | `io.github.noppomario.uti.Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(activate: b)`, `SetAbove(b)`, `Paste(plain: b, submit: b)`, signal `ClipboardChanged(s text)` |
 
 Notes:
@@ -257,11 +257,12 @@ of the extension.
 
 Valuable even if the rewrite is delayed.
 
-- [ ] New D-Bus interfaces (3.1) with compatibility period.
-- [ ] Daemon: `DoubleTapDetector` state machine + tests; hotplug; zbus 6.
-- [ ] Extension: `shell-version` `["50"]` (5.4.6), drop SNI watcher, own
-      panel menu, async D-Bus, method-based positioning, clipboard watch.
-- [ ] App: consume `ClipboardChanged` instead of polling.
+- [x] New D-Bus interfaces (3.1); legacy `DoubleTap.Triggered` kept one release.
+- [x] Daemon: `DoubleTapDetector` state machine + tests; hotplug; zbus 6 (#183).
+- [x] Extension: `shell-version` `["50"]` (5.4.6), drop SNI watcher, own
+      panel menu, async D-Bus, method-based positioning, clipboard watch (#184).
+- [x] App (Tauri): wired to the new contract, SNI tray removed (#185).
+- [ ] App: consume `ClipboardChanged` instead of polling (deferred to Phase 3).
 
 ### Phase 2: Extract `uti-core` and `uti-dbus`
 
