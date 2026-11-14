@@ -4,9 +4,10 @@ version = "0.1.4"
 edition = "2021"
 
 [dependencies]
-evdev = { version = "0.12", features = ["tokio"] }
-zbus = "4"
+evdev = { version = "0.13", features = ["tokio"] }
+zbus = { version = "6", default-features = false, features = ["tokio", "service", "proxy"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
+inotify = "0.11"
 env_logger = "0.11"
 log = "0.4"

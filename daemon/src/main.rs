@@ -1,333 +1,245 @@
-//! Double Ctrl Hotkey Daemon
+//! uti keyboard daemon
 //!
-//! This daemon monitors keyboard input devices for double Ctrl key presses
-//! and sends D-Bus signals to notify the Tauri application.
-//!
-//! It also listens for TypeText signals to simulate keyboard input.
+//! Watches all keyboards (including ones plugged in later) for a double Ctrl
+//! tap and announces it on D-Bus as `io.github.noppomario.uti.Daemon1.Triggered`.
+//! Also offers `Daemon1.Paste` as a uinput fallback for the GNOME extension's
+//! paste; only the owner of the app's bus name may call it.
 
+mod detector;
 mod uinput;
 
-use evdev::{Device, EventType, Key};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use detector::{DoubleTapDetector, KeyEvent};
+use evdev::{Device, EventType, KeyCode};
 use futures_util::StreamExt;
-use log::{debug, error, info};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
-use zbus::Connection;
+use inotify::{Inotify, WatchMask};
+use log::{debug, error, info, warn};
+use tokio::sync::mpsc;
+use uinput::{VirtualKeyboard, VIRTUAL_KEYBOARD_NAME};
+use zbus::message::Header;
+use zbus::object_server::SignalEmitter;
+use zbus::{fdo, Connection};
 
-/// Maximum time interval between two Ctrl presses to be considered a double tap
-const DOUBLE_TAP_INTERVAL: Duration = Duration::from_millis(300);
+const BUS_NAME: &str = "io.github.noppomario.uti.Daemon";
+const OBJECT_PATH: &str = "/io/github/noppomario/uti/Daemon";
+/// Bus name owned by the uti app; only its owner may request a paste.
+const APP_BUS_NAME: &str = "io.github.noppomario.uti";
+/// Legacy signal kept for one release so older extensions/apps keep working.
+const LEGACY_PATH: &str = "/io/github/noppomario/uti/DoubleTap";
+const LEGACY_INTERFACE: &str = "io.github.noppomario.uti.DoubleTap";
+const INPUT_DIR: &str = "/dev/input";
 
-/// Sends a D-Bus signal to notify listeners of a double Ctrl press event
+/// Maps a raw key event to a detector event; `None` for irrelevant events.
 ///
-/// # Arguments
-///
-/// * `conn` - The D-Bus connection to use for sending the signal
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the signal was sent successfully, or a `zbus::Error` if it failed.
-///
-/// # Examples
-///
-/// ```no_run
-/// # use zbus::Connection;
-/// # async fn example() -> zbus::Result<()> {
-/// let conn = Connection::session().await?;
-/// notify_double_ctrl(&conn).await?;
-/// # Ok(())
-/// # }
-/// ```
-async fn notify_double_ctrl(conn: &Connection) -> zbus::Result<()> {
-    conn.emit_signal(
-        None::<()>,
-        "/io/github/noppomario/uti/DoubleTap",
-        "io.github.noppomario.uti.DoubleTap",
-        "Triggered",
-        &(),
-    )
-    .await?;
-    info!("D-Bus signal sent: Triggered");
-    Ok(())
+/// Auto-repeat (`value == 2`) and releases of non-Ctrl keys are ignored.
+fn classify(code: KeyCode, value: i32) -> Option<KeyEvent> {
+    let is_ctrl = code == KeyCode::KEY_LEFTCTRL || code == KeyCode::KEY_RIGHTCTRL;
+    match (is_ctrl, value) {
+        (true, 1) => Some(KeyEvent::CtrlDown),
+        (true, 0) => Some(KeyEvent::CtrlUp),
+        (false, 1) => Some(KeyEvent::OtherDown),
+        _ => None,
+    }
 }
 
-/// Listens for TypeText D-Bus signals and simulates paste
-///
-/// When a TypeText signal is received, this function uses the virtual keyboard
-/// to simulate Ctrl+Shift+V to paste the content from clipboard.
-///
-/// # Arguments
-///
-/// * `conn` - The D-Bus connection to listen on
-async fn listen_for_type_text(conn: Arc<Connection>) {
-    info!("Setting up TypeText signal listener...");
+/// Returns true for real keyboards, excluding uti's own virtual keyboard.
+fn is_keyboard(name: Option<&str>, has_key_a: bool) -> bool {
+    has_key_a && name != Some(VIRTUAL_KEYBOARD_NAME)
+}
 
-    // Create a rule to match TypeText signals
-    let rule = zbus::MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .interface("io.github.noppomario.uti.DoubleTap")
-        .unwrap()
-        .member("TypeText")
-        .unwrap()
-        .build();
+fn is_event_node(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|n| n.to_string_lossy().starts_with("event"))
+}
 
-    // Subscribe to matching signals
-    let mut stream = match zbus::MessageStream::for_match_rule(rule, &conn, None).await {
-        Ok(stream) => stream,
-        Err(e) => {
-            error!("Failed to create message stream for TypeText: {}", e);
+/// Tracks monitored device nodes and spawns one reader task per keyboard.
+#[derive(Clone)]
+struct Devices {
+    active: Arc<Mutex<HashSet<PathBuf>>>,
+    tx: mpsc::UnboundedSender<KeyEvent>,
+}
+
+impl Devices {
+    /// Starts monitoring `path` if it is a keyboard not monitored yet.
+    fn try_add(&self, path: PathBuf) {
+        if !is_event_node(&path) || self.active.lock().unwrap().contains(&path) {
             return;
         }
-    };
-
-    info!("TypeText signal listener started");
-
-    // Create virtual keyboard once
-    let mut virtual_kb = match uinput::VirtualKeyboard::new() {
-        Ok(kb) => kb,
-        Err(e) => {
-            error!("Failed to create virtual keyboard: {}", e);
-            error!("TypeText functionality will be disabled");
-            return;
-        }
-    };
-
-    while let Some(msg) = stream.next().await {
-        match msg {
-            Ok(_) => {
-                debug!("Received TypeText signal");
-                // Simulate Ctrl+Shift+V paste
-                if let Err(e) = virtual_kb.paste() {
-                    error!("Failed to simulate paste: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Error receiving TypeText signal: {}", e);
-            }
-        }
-    }
-}
-
-/// Finds all available keyboard devices
-///
-/// Searches through `/dev/input/event*` devices to find keyboards by checking
-/// if the device supports the 'A' key.
-///
-/// # Returns
-///
-/// Returns a list of keyboard device paths.
-fn find_keyboard_devices() -> std::io::Result<Vec<std::path::PathBuf>> {
-    let mut keyboards = Vec::new();
-
-    for entry in std::fs::read_dir("/dev/input")? {
-        let path = entry?.path();
-        if let Some(name) = path.file_name() {
-            if name.to_string_lossy().starts_with("event") {
-                if let Ok(device) = Device::open(&path) {
-                    if device
-                        .supported_keys()
-                        .is_some_and(|keys| keys.contains(Key::KEY_A))
-                    {
-                        keyboards.push(path);
-                    }
-                }
-            }
-        }
-    }
-
-    if keyboards.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "No keyboard found",
-        ));
-    }
-
-    Ok(keyboards)
-}
-
-/// Monitors a single keyboard device for double Ctrl presses
-///
-/// # Arguments
-///
-/// * `device_path` - Path to the keyboard device
-/// * `device_name` - Name of the keyboard device
-/// * `last_ctrl_release` - Shared state for tracking last Ctrl release time
-/// * `conn` - D-Bus connection for sending signals
-async fn monitor_device(
-    device_path: std::path::PathBuf,
-    device_name: String,
-    last_ctrl_release: Arc<Mutex<Option<Instant>>>,
-    conn: Arc<Connection>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let device = Device::open(&device_path)?;
-    let mut stream = device.into_event_stream()?;
-    info!("[{}] Monitoring started (async)", device_name);
-
-    loop {
-        match stream.next_event().await {
-            Ok(event) => {
-                // Log all key events for debugging (debug level)
-                if event.event_type() == EventType::KEY {
-                    let key = Key::new(event.code());
-                    debug!(
-                        "[{}] Key event: {:?} value={} (type={:?})",
-                        device_name,
-                        key,
-                        event.value(),
-                        event.event_type()
-                    );
-                }
-
-                if event.event_type() != EventType::KEY {
-                    continue;
-                }
-
-                let key = Key::new(event.code());
-                if key != Key::KEY_LEFTCTRL && key != Key::KEY_RIGHTCTRL {
-                    continue;
-                }
-
-                let key_name = if key == Key::KEY_LEFTCTRL {
-                    "LEFT"
-                } else {
-                    "RIGHT"
-                };
-
-                // Key press event (value == 1)
-                if event.value() == 1 {
-                    debug!("[{}] Ctrl key pressed ({})", device_name, key_name);
-                }
-
-                // Key release event (value == 0)
-                if event.value() == 0 {
-                    let now = Instant::now();
-                    let mut last_release = last_ctrl_release.lock().await;
-
-                    if let Some(last) = *last_release {
-                        let interval = now.duration_since(last);
-                        debug!(
-                            "[{}] Ctrl key released ({}) - {}ms since last release",
-                            device_name,
-                            key_name,
-                            interval.as_millis()
-                        );
-
-                        if interval < DOUBLE_TAP_INTERVAL {
-                            info!("[{}] Double Ctrl detected!", device_name);
-                            if let Err(e) = notify_double_ctrl(&conn).await {
-                                error!("[{}] Failed to send D-Bus signal: {}", device_name, e);
-                            }
-                            *last_release = None;
-                            continue;
-                        }
-                    } else {
-                        debug!(
-                            "[{}] Ctrl key released ({}) - first press",
-                            device_name, key_name
-                        );
-                    }
-
-                    *last_release = Some(now);
-                }
-            }
-            Err(e) => {
-                // ENODEV (errno 19): Device disconnected (sleep/resume or unplug)
-                // All errors from EventStream are likely fatal, exit the task
-                if e.raw_os_error() == Some(19) {
-                    error!(
-                        "[{}] Device disconnected (ENODEV), exiting monitor task",
-                        device_name
-                    );
-                } else {
-                    error!("[{}] Fatal error: {}, exiting monitor task", device_name, e);
-                }
-                return Err(e.into());
-            }
-        }
-    }
-}
-
-/// Main daemon entry point
-///
-/// Initializes the keyboard device monitoring, connects to D-Bus, and spawns
-/// monitoring tasks for all keyboard devices.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - No keyboard device is found
-/// - Failed to connect to D-Bus session bus
-/// - Failed to spawn monitoring tasks
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logger (default to INFO level if RUST_LOG not set)
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-
-    info!("Double Ctrl daemon starting...");
-
-    let keyboards = find_keyboard_devices()?;
-    info!("Found {} keyboard device(s):", keyboards.len());
-
-    for (i, path) in keyboards.iter().enumerate() {
-        if let Ok(dev) = Device::open(path) {
-            info!(
-                "  [{}] {} - {}",
-                i,
-                path.display(),
-                dev.name().unwrap_or("unknown")
-            );
-        }
-    }
-
-    let conn = Arc::new(Connection::session().await?);
-
-    // Request the bus name so other applications can connect to us
-    conn.request_name("io.github.noppomario.uti").await?;
-    info!("Connected to D-Bus session bus");
-    info!("Registered bus name: io.github.noppomario.uti");
-    info!("Monitoring all keyboard devices for double Ctrl press...");
-
-    // Shared state for last Ctrl release time across all keyboards
-    let last_ctrl_release = Arc::new(Mutex::new(None));
-
-    // Spawn a monitoring task for each keyboard device
-    let mut tasks = tokio::task::JoinSet::new();
-
-    for path in keyboards {
-        let device_name = if let Ok(dev) = Device::open(&path) {
-            dev.name().unwrap_or("unknown").to_string()
-        } else {
-            path.display().to_string()
+        let Ok(device) = Device::open(&path) else {
+            return; // Not readable (yet); udev may fix permissions (IN_ATTRIB).
         };
+        let has_key_a = device
+            .supported_keys()
+            .is_some_and(|k| k.contains(KeyCode::KEY_A));
+        let name = device.name().unwrap_or("unknown").to_owned();
+        if !is_keyboard(Some(&name), has_key_a) {
+            return;
+        }
+        let stream = match device.into_event_stream() {
+            Ok(s) => s,
+            Err(e) => return warn!("[{name}] cannot stream events: {e}"),
+        };
+        self.active.lock().unwrap().insert(path.clone());
+        info!("[{name}] monitoring {}", path.display());
 
-        let last_release_clone = Arc::clone(&last_ctrl_release);
-        let conn_clone = Arc::clone(&conn);
-
-        tasks.spawn(async move {
-            if let Err(e) =
-                monitor_device(path, device_name.clone(), last_release_clone, conn_clone).await
-            {
-                error!("[{}] Monitoring task failed: {}", device_name, e);
+        let this = self.clone();
+        tokio::spawn(async move {
+            let mut stream = stream;
+            loop {
+                match stream.next_event().await {
+                    Ok(ev) if ev.event_type() == EventType::KEY => {
+                        if let Some(k) = classify(KeyCode::new(ev.code()), ev.value()) {
+                            if this.tx.send(k).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        info!("[{name}] stopped: {e}");
+                        break;
+                    }
+                }
             }
+            this.active.lock().unwrap().remove(&path);
         });
     }
 
-    // Spawn TypeText signal listener
-    let conn_for_type_text = Arc::clone(&conn);
-    tasks.spawn(async move {
-        listen_for_type_text(conn_for_type_text).await;
-    });
-
-    // Exit when any task completes (device disconnect triggers systemd restart)
-    if let Some(result) = tasks.join_next().await {
-        match result {
-            Ok(()) => info!("A monitoring task exited, shutting down for restart"),
-            Err(e) => error!("A monitoring task panicked: {}", e),
+    fn scan(&self) {
+        match std::fs::read_dir(INPUT_DIR) {
+            Ok(entries) => entries.flatten().for_each(|e| self.try_add(e.path())),
+            Err(e) => error!("cannot read {INPUT_DIR}: {e}"),
         }
     }
+}
 
-    // Return error to trigger systemd restart
-    Err("Device monitoring stopped, daemon exiting for restart".into())
+/// Watches `/dev/input` for new device nodes.
+async fn watch_hotplug(devices: Devices) -> std::io::Result<()> {
+    let inotify = Inotify::init()?;
+    inotify
+        .watches()
+        .add(INPUT_DIR, WatchMask::CREATE | WatchMask::ATTRIB)?;
+    let mut events = inotify.into_event_stream([0u8; 4096])?;
+    while let Some(event) = events.next().await {
+        if let Some(name) = event?.name {
+            debug!("hotplug: {}", name.to_string_lossy());
+            devices.try_add(Path::new(INPUT_DIR).join(name));
+        }
+    }
+    Ok(())
+}
+
+/// `io.github.noppomario.uti.Daemon1`
+struct Daemon1 {
+    keyboard: Arc<Mutex<Option<VirtualKeyboard>>>,
+}
+
+#[zbus::interface(name = "io.github.noppomario.uti.Daemon1")]
+impl Daemon1 {
+    /// Simulates a paste in the focused window (uinput fallback).
+    async fn paste(
+        &self,
+        plain: bool,
+        submit: bool,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] conn: &Connection,
+    ) -> fdo::Result<()> {
+        let sender = header.sender().map(|s| s.to_string());
+        let owner = fdo::DBusProxy::new(conn)
+            .await?
+            .get_name_owner(zbus::names::BusName::try_from(APP_BUS_NAME)?)
+            .await
+            .ok()
+            .map(|o| o.to_string());
+        if sender.is_none() || sender != owner {
+            warn!("Paste denied for {sender:?} (owner {owner:?})");
+            return Err(fdo::Error::AccessDenied(format!(
+                "caller does not own {APP_BUS_NAME}"
+            )));
+        }
+
+        let keyboard = Arc::clone(&self.keyboard);
+        tokio::task::spawn_blocking(move || match keyboard.lock().unwrap().as_mut() {
+            Some(kb) => kb.paste(plain, submit).map_err(|e| e.to_string()),
+            None => Err("virtual keyboard unavailable".into()),
+        })
+        .await
+        .map_err(|e| fdo::Error::Failed(e.to_string()))?
+        .map_err(fdo::Error::Failed)
+    }
+
+    /// Emitted on a double Ctrl tap.
+    #[zbus(signal)]
+    async fn triggered(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
+}
+
+async fn announce(conn: &Connection) {
+    match SignalEmitter::new(conn, OBJECT_PATH) {
+        Ok(emitter) => {
+            if let Err(e) = Daemon1::triggered(&emitter).await {
+                error!("failed to emit Triggered: {e}");
+            }
+        }
+        Err(e) => error!("invalid object path: {e}"),
+    }
+    let legacy = conn
+        .emit_signal(None::<()>, LEGACY_PATH, LEGACY_INTERFACE, "Triggered", &())
+        .await;
+    if let Err(e) = legacy {
+        error!("failed to emit legacy Triggered: {e}");
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    info!("uti-daemon starting");
+
+    let keyboard = match VirtualKeyboard::new() {
+        Ok(kb) => Some(kb),
+        Err(e) => {
+            warn!("virtual keyboard unavailable, Paste disabled: {e}");
+            None
+        }
+    };
+
+    let conn = zbus::connection::Builder::session()
+        .name(BUS_NAME)
+        .serve_at(
+            OBJECT_PATH,
+            Daemon1 {
+                keyboard: Arc::new(Mutex::new(keyboard)),
+            },
+        )
+        .build()
+        .await?;
+    info!("D-Bus ready as {BUS_NAME}");
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let devices = Devices {
+        active: Arc::default(),
+        tx,
+    };
+    devices.scan();
+    let hotplug = devices.clone();
+    tokio::spawn(async move {
+        if let Err(e) = watch_hotplug(hotplug).await {
+            error!("hotplug watch failed, new keyboards will be ignored: {e}");
+        }
+    });
+
+    let mut detector = DoubleTapDetector::new();
+    while let Some(event) = rx.recv().await {
+        if detector.feed(event, Instant::now()) {
+            info!("double Ctrl detected");
+            announce(&conn).await;
+        }
+    }
+    Err("event channel closed".into())
 }
 
 #[cfg(test)]
@@ -335,119 +247,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_double_tap_interval_constant() {
-        // Verify the double tap interval is set to 300ms
-        assert_eq!(DOUBLE_TAP_INTERVAL, Duration::from_millis(300));
+    fn classify_ctrl_press_and_release() {
+        assert_eq!(classify(KeyCode::KEY_LEFTCTRL, 1), Some(KeyEvent::CtrlDown));
+        assert_eq!(classify(KeyCode::KEY_RIGHTCTRL, 0), Some(KeyEvent::CtrlUp));
     }
 
     #[test]
-    fn test_double_tap_detection_within_threshold() {
-        // Arrange
-        let first_press = Instant::now();
-        let second_press = first_press + Duration::from_millis(250);
-
-        // Act
-        let interval = second_press.duration_since(first_press);
-
-        // Assert
-        assert!(
-            interval < DOUBLE_TAP_INTERVAL,
-            "250ms should be within the 300ms threshold"
-        );
+    fn classify_ignores_repeat_and_other_releases() {
+        assert_eq!(classify(KeyCode::KEY_LEFTCTRL, 2), None);
+        assert_eq!(classify(KeyCode::KEY_C, 0), None);
+        assert_eq!(classify(KeyCode::KEY_C, 1), Some(KeyEvent::OtherDown));
     }
 
     #[test]
-    fn test_double_tap_detection_exceeds_threshold() {
-        // Arrange
-        let first_press = Instant::now();
-        let second_press = first_press + Duration::from_millis(350);
-
-        // Act
-        let interval = second_press.duration_since(first_press);
-
-        // Assert
-        assert!(
-            interval > DOUBLE_TAP_INTERVAL,
-            "350ms should exceed the 300ms threshold"
-        );
+    fn own_virtual_keyboard_is_not_monitored() {
+        assert!(!is_keyboard(Some(VIRTUAL_KEYBOARD_NAME), true));
+        assert!(is_keyboard(Some("Topre REALFORCE 112JP"), true));
+        assert!(!is_keyboard(Some("Logitech MX Anywhere 3"), false));
     }
 
     #[test]
-    fn test_double_tap_detection_exact_threshold() {
-        // Arrange
-        let first_press = Instant::now();
-        let second_press = first_press + DOUBLE_TAP_INTERVAL;
-
-        // Act
-        let interval = second_press.duration_since(first_press);
-
-        // Assert
-        assert!(
-            interval >= DOUBLE_TAP_INTERVAL,
-            "300ms should not be considered a double tap (must be strictly less)"
-        );
-    }
-
-    #[test]
-    fn test_find_keyboard_devices_path_format() {
-        // This test verifies that the function looks for event devices
-        // In CI/test environments without /dev/input access, this is expected to fail
-        let result = find_keyboard_devices();
-
-        match result {
-            Ok(keyboards) => {
-                // If keyboards are found, paths should start with /dev/input/event
-                for path in keyboards {
-                    let path_str = path.to_string_lossy();
-                    assert!(
-                        path_str.starts_with("/dev/input/event"),
-                        "Keyboard device path should be /dev/input/eventN, got: {}",
-                        path_str
-                    );
-                }
-            }
-            Err(e) => {
-                // In test environment, it's acceptable to not have keyboard access
-                // Just verify the error is what we expect
-                assert!(
-                    e.kind() == std::io::ErrorKind::NotFound
-                        || e.kind() == std::io::ErrorKind::PermissionDenied,
-                    "Expected NotFound or PermissionDenied, got: {:?}",
-                    e.kind()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_enodev_error_detection() {
-        // ENODEV is errno 19 on Linux
-        const ENODEV: i32 = 19;
-
-        // Create an error with ENODEV errno
-        let error = std::io::Error::from_raw_os_error(ENODEV);
-
-        // Verify we can detect ENODEV via raw_os_error
-        assert_eq!(
-            error.raw_os_error(),
-            Some(19),
-            "ENODEV should have raw_os_error of 19"
-        );
-
-        // Note: ENODEV maps to Uncategorized (not Other) in modern Rust,
-        // which is why we must use raw_os_error() for detection
-    }
-
-    #[test]
-    fn test_enodev_vs_other_errors() {
-        // Test that we can distinguish ENODEV from other errors
-        let enodev = std::io::Error::from_raw_os_error(19); // ENODEV
-        let enoent = std::io::Error::from_raw_os_error(2); // ENOENT (No such file)
-        let eacces = std::io::Error::from_raw_os_error(13); // EACCES (Permission denied)
-
-        // Only ENODEV should match our check
-        assert!(enodev.raw_os_error() == Some(19));
-        assert!(enoent.raw_os_error() != Some(19));
-        assert!(eacces.raw_os_error() != Some(19));
+    fn only_event_nodes_are_considered() {
+        assert!(is_event_node(Path::new("/dev/input/event13")));
+        assert!(!is_event_node(Path::new("/dev/input/mice")));
+        assert!(!is_event_node(Path::new("/dev/input/by-id")));
     }
 }
