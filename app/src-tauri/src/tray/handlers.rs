@@ -1,22 +1,9 @@
 //! Tray menu event handlers
 
 use crate::settings::window_size;
-use crate::updater;
+use crate::updater::open_update_dialog;
 use tauri::{menu::MenuEvent, AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
-
-/// Payload for update dialog window
-#[derive(Clone)]
-struct UpdateDialogPayload {
-    title: String,
-    message: String,
-    kind: String, // "info" | "error"
-}
-
-/// URL-encode a string for use in query parameters
-fn urlencoding(s: &str) -> String {
-    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
-}
 
 /// Handle tray menu events
 ///
@@ -95,68 +82,7 @@ fn handle_autostart(app: &AppHandle) {
 
 /// Check for updates and show dialog
 fn handle_check_update(app: &AppHandle) {
-    let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let app_handle = app.clone();
-
-    tauri::async_runtime::spawn(async move {
-        let payload = match updater::check_for_updates(&current_version).await {
-            Ok(result) => {
-                if result.update_available {
-                    UpdateDialogPayload {
-                        title: "Update Available".to_string(),
-                        message: format!(
-                            "Update available: {} -> {}\n\nRun 'uti update' in terminal to install.",
-                            result.current_version, result.latest_version
-                        ),
-                        kind: "info".to_string(),
-                    }
-                } else {
-                    UpdateDialogPayload {
-                        title: "No Update".to_string(),
-                        message: "You are running the latest version.".to_string(),
-                        kind: "info".to_string(),
-                    }
-                }
-            }
-            Err(e) => UpdateDialogPayload {
-                title: "Update Check Failed".to_string(),
-                message: format!("{}", e),
-                kind: "error".to_string(),
-            },
-        };
-
-        // Close existing dialog window if any
-        if let Some(existing) = app_handle.get_webview_window("dialog") {
-            let _ = existing.close();
-        }
-
-        // Create new dialog window with URL parameters
-        let url = format!(
-            "update-dialog.html?title={}&message={}&kind={}",
-            urlencoding(&payload.title),
-            urlencoding(&payload.message),
-            urlencoding(&payload.kind)
-        );
-
-        match WebviewWindowBuilder::new(&app_handle, "dialog", WebviewUrl::App(url.into()))
-            .title("uti")
-            .inner_size(420.0, 200.0)
-            .resizable(false)
-            .decorations(false)
-            .transparent(true)
-            .center()
-            .visible(true)
-            .focused(true)
-            .build()
-        {
-            Ok(dialog_window) => {
-                println!("Dialog window created: {:?}", dialog_window.label());
-            }
-            Err(e) => {
-                eprintln!("Failed to create dialog window: {:?}", e);
-            }
-        }
-    });
+    open_update_dialog(app.clone());
 }
 
 /// Open GitHub repository

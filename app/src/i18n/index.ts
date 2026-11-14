@@ -1,7 +1,8 @@
 /**
- * i18n configuration for settings window
+ * i18n configuration
  *
  * Initializes react-i18next with English and Japanese translations.
+ * Used by settings window and update dialog.
  * Language is loaded from config and can be changed at runtime.
  */
 

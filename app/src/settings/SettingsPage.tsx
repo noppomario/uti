@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DialogLayout } from '../components/DialogLayout';
 import type { AppConfig } from '../config';
-import i18n from './i18n';
+import i18n from '../i18n';
 import { getSectionIcon, ICON_SIZE } from './icons';
 import { SettingsSection } from './SettingsSection';
 import { settingsSchema } from './schema';
@@ -104,10 +104,10 @@ export function SettingsPage() {
         break;
       }
       case 'checkForUpdates':
-        await invoke('check_for_updates_with_dialog');
+        await invoke('open_update_dialog');
         break;
       case 'openGitHub':
-        await invoke('open_github');
+        await invoke('open_url', { url: 'https://github.com/noppomario/uti' });
         break;
     }
   };

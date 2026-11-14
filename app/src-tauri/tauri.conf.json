@@ -1,6 +1,6 @@
 {
   "productName": "uti",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "identifier": "io.github.noppomario.uti",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -70,6 +70,8 @@
             "dialog"
           ],
           "permissions": [
+            "core:event:allow-listen",
+            "core:event:allow-emit",
             "core:window:allow-close",
             "core:window:allow-start-dragging"
           ]

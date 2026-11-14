@@ -66,7 +66,7 @@ export function DialogLayout({ title, children, footer, onClose }: DialogLayoutP
       </div>
 
       {/* Content area */}
-      <div className="flex-1 overflow-hidden">{children}</div>
+      <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
 
       {/* Optional footer */}
       {footer && (
