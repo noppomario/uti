@@ -16,6 +16,8 @@ pub enum Focus {
     List,
     Search,
     Pin,
+    /// The Launcher jump list (recent files) next to the list.
+    JumpList,
 }
 
 /// What the UI must do after a key press, besides moving focus.
@@ -31,13 +33,9 @@ pub enum Effect {
     OpenJumpList(usize),
     ClearQuery,
     TogglePin,
-}
-
-fn traits(tab: Tab) -> TabTraits {
-    TabTraits {
-        can_star: tab == Tab::Clipboard,
-        right_opens_jump_list: tab == Tab::Launcher,
-    }
+    JumpSelect(usize),
+    JumpActivate(usize),
+    CloseJumpList,
 }
 
 /// Focus and selection state of the main window.
@@ -46,6 +44,9 @@ pub struct Nav {
     tab: Tab,
     focus: Focus,
     lists: HashMap<Tab, ListState>,
+    /// Per tab: which visible rows have a jump list.
+    jumpable: HashMap<Tab, Vec<bool>>,
+    jump: ListState,
 }
 
 impl Default for Nav {
@@ -54,6 +55,8 @@ impl Default for Nav {
             tab: Tab::Clipboard,
             focus: Focus::List,
             lists: Tab::ALL.iter().map(|t| (*t, ListState::default())).collect(),
+            jumpable: HashMap::new(),
+            jump: ListState::default(),
         }
     }
 }
@@ -77,6 +80,11 @@ impl Nav {
         self.lists.get(&self.tab).map_or(0, ListState::selected)
     }
 
+    /// Selected row of the open jump list.
+    pub fn jump_selected(&self) -> usize {
+        self.jump.selected()
+    }
+
     /// Visible row count of `tab` changed (resets its selection).
     pub fn set_len(&mut self, tab: Tab, len: usize) {
         if let Some(list) = self.lists.get_mut(&tab) {
@@ -88,6 +96,48 @@ impl Nav {
     pub fn set_selected(&mut self, tab: Tab, index: usize) {
         if let Some(list) = self.lists.get_mut(&tab) {
             list.set_selected(index);
+        }
+    }
+
+    /// Which visible rows of `tab` have a jump list.
+    pub fn set_jumpable(&mut self, tab: Tab, rows: Vec<bool>) {
+        self.jumpable.insert(tab, rows);
+    }
+
+    /// The jump list asked for by [`Effect::OpenJumpList`] is shown.
+    pub fn jump_list_opened(&mut self, len: usize) {
+        self.jump.set_len(len);
+        self.focus = Focus::JumpList;
+    }
+
+    fn traits(&self, tab: Tab) -> TabTraits {
+        let selected = self.lists.get(&tab).map_or(0, ListState::selected);
+        TabTraits {
+            can_star: tab == Tab::Clipboard,
+            right_opens_jump_list: self
+                .jumpable
+                .get(&tab)
+                .and_then(|rows| rows.get(selected))
+                .copied()
+                .unwrap_or(false),
+        }
+    }
+
+    fn on_jump_key(&mut self, key: Key) -> Option<Effect> {
+        match key {
+            Key::Left | Key::Escape => {
+                self.focus = Focus::List;
+                Some(Effect::CloseJumpList)
+            },
+            Key::Up | Key::Down => match self.jump.on_list_key(key, TabTraits::default())? {
+                Action::Select(i) => Some(Effect::JumpSelect(i)),
+                _ => None, // Up at the top stays in the jump list.
+            },
+            Key::Enter | Key::Digit(_) => match self.jump.on_list_key(key, TabTraits::default())? {
+                Action::Activate(i) => Some(Effect::JumpActivate(i)),
+                _ => None,
+            },
+            Key::Right | Key::Star => None,
         }
     }
 
@@ -114,6 +164,10 @@ impl Nav {
     /// Handles a key; the caller then applies the effect and syncs focus.
     pub fn on_key(&mut self, key: Key) -> Option<Effect> {
         let tab = self.tab;
+        if self.focus == Focus::JumpList {
+            return self.on_jump_key(key);
+        }
+        let traits = self.traits(tab);
         let list = self.lists.get_mut(&tab)?;
         let action = match self.focus {
             Focus::Pin => {
@@ -127,7 +181,8 @@ impl Nav {
                 };
             },
             Focus::Search => list.on_search_key(key)?,
-            Focus::List => list.on_list_key(key, traits(tab))?,
+            Focus::List => list.on_list_key(key, traits)?,
+            Focus::JumpList => unreachable!("handled above"),
         };
         match action {
             Action::Select(i) => Some(Effect::SelectRow(i)),
@@ -240,10 +295,49 @@ mod tests {
     }
 
     #[test]
-    fn launcher_right_opens_jump_list_when_it_has_items() {
+    fn launcher_right_opens_jump_list_only_for_items_with_history() {
         let mut n = nav_with(&[(Tab::Launcher, 2)]);
+        n.set_jumpable(Tab::Launcher, vec![true, false]);
         n.select_tab(Tab::Launcher);
         assert_eq!(n.on_key(Key::Right), Some(OpenJumpList(0)));
+        assert_eq!(n.focus(), Focus::List);
+
+        n.on_key(Key::Down);
+        assert_eq!(n.on_key(Key::Right), None);
+        assert_eq!(n.focus(), Focus::Pin);
+    }
+
+    #[test]
+    fn jump_list_keys() {
+        let mut n = nav_with(&[(Tab::Launcher, 1)]);
+        n.set_jumpable(Tab::Launcher, vec![true]);
+        n.select_tab(Tab::Launcher);
+        n.on_key(Key::Right);
+        n.jump_list_opened(3);
+        assert_eq!(n.focus(), Focus::JumpList);
+        assert_eq!(n.on_key(Key::Down), Some(JumpSelect(1)));
+        assert_eq!(n.on_key(Key::Up), Some(JumpSelect(0)));
+        assert_eq!(n.on_key(Key::Up), None);
+        assert_eq!(n.focus(), Focus::JumpList);
+        assert_eq!(n.on_key(Key::Digit(3)), Some(JumpActivate(2)));
+        assert_eq!(n.on_key(Key::Enter), Some(JumpActivate(0)));
+        assert_eq!(n.on_key(Key::Left), Some(CloseJumpList));
+        assert_eq!((n.tab(), n.focus()), (Tab::Launcher, Focus::List));
+    }
+
+    #[test]
+    fn escape_closes_jump_list_and_tab_change_resets_it() {
+        let mut n = nav_with(&[(Tab::Launcher, 1)]);
+        n.set_jumpable(Tab::Launcher, vec![true]);
+        n.select_tab(Tab::Launcher);
+        n.on_key(Key::Right);
+        n.jump_list_opened(0);
+        assert_eq!(n.on_key(Key::Escape), Some(CloseJumpList));
+        assert_eq!(n.focus(), Focus::List);
+
+        n.on_key(Key::Right);
+        n.jump_list_opened(2);
+        n.select_tab(Tab::Clipboard);
         assert_eq!(n.focus(), Focus::List);
     }
 

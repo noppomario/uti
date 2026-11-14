@@ -18,5 +18,5 @@ fi
 cargo build -p uti-gtk
 # GTK_THEME (set by some parent apps) replaces libadwaita's stylesheet.
 unset GTK_THEME
-XDG_CONFIG_HOME="$sandbox/config" XDG_DATA_HOME="$sandbox/data" \
+UTI_DEV_SANDBOX=1 XDG_CONFIG_HOME="$sandbox/config" XDG_DATA_HOME="$sandbox/data" \
   exec "$root/target/debug/uti-gtk" "$@"

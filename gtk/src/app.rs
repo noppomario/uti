@@ -11,9 +11,12 @@ use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use uti_core::clipboard::ClipboardStore;
 use uti_core::config::AppConfig;
+use uti_core::launcher::recent_files::RecentFile;
+use uti_core::launcher::{load_launcher_config, LauncherConfig};
 use uti_core::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 
 use crate::dbus;
+use crate::state::launcher::{rank_apps, AppText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::nav::{Effect, Focus, Nav};
 use crate::state::window::{WindowCommand, WindowState};
@@ -47,8 +50,23 @@ pub enum Msg {
     /// A row was clicked; visible index in the current tab.
     Activate(usize),
     ToggleStar(usize),
+    /// Jump list button of a visible Launcher row.
+    OpenJumpList(usize),
     /// New clipboard text (extension signal or read on focus).
     ClipboardText(String),
+    /// Installed applications changed.
+    AppsChanged,
+    /// A jump list row was clicked.
+    JumpActivated(usize),
+}
+
+/// A visible Launcher row.
+#[derive(Debug, Clone, Copy)]
+enum LauncherRow {
+    /// Index into `launcher.json` commands.
+    Command(usize),
+    /// Index into the installed-app index.
+    App(usize),
 }
 
 type Sender = async_channel::Sender<Msg>;
@@ -73,6 +91,8 @@ struct Ui {
     tab_group: adw::ToggleGroup,
     search: gtk::SearchEntry,
     lists: HashMap<Tab, gtk::ListBox>,
+    jump_list: gtk::ListBox,
+    jump_pane: gtk::ScrolledWindow,
     pin: gtk::ToggleButton,
     footer: gtk::Label,
 }
@@ -93,6 +113,18 @@ struct App {
     starred: HashSet<String>,
     /// Window height already trimmed to whole rows.
     rows_fitted: bool,
+    launcher: LauncherConfig,
+    /// Installed apps shown in launcher search, loaded once and refreshed
+    /// by `AppInfoMonitor` (no rescans per keystroke).
+    apps: Vec<gio::AppInfo>,
+    launcher_rows: Vec<LauncherRow>,
+    /// Command whose jump list is open, and its files.
+    jump: Option<(usize, Vec<RecentFile>)>,
+}
+
+/// Installed apps that should appear in launchers.
+fn load_apps() -> Vec<gio::AppInfo> {
+    gio::AppInfo::all().into_iter().filter(|a| a.should_show()).collect()
 }
 
 /// Window size and CSS class for `theme.size`.
@@ -138,7 +170,13 @@ pub fn start(app: &adw::Application, minimized: bool) {
         snippets: load_snippets(),
         starred: HashSet::new(),
         rows_fitted: false,
+        launcher: load_launcher_config(),
+        apps: load_apps(),
+        launcher_rows: Vec::new(),
+        jump: None,
     };
+    let t = tx.clone();
+    gio::AppInfoMonitor::get().connect_changed(move |_| send(&t, Msg::AppsChanged));
     for tab in Tab::ALL {
         model.refresh(tab);
     }
@@ -240,6 +278,16 @@ impl App {
                 self.add_history(text);
                 None
             },
+            Msg::AppsChanged => {
+                self.apps = load_apps();
+                self.refresh(Tab::Launcher);
+                None
+            },
+            Msg::OpenJumpList(i) => {
+                self.nav.set_selected(Tab::Launcher, i);
+                self.navigate(Some(Effect::OpenJumpList(i)))
+            },
+            Msg::JumpActivated(j) => self.launch_jump(j),
         };
         if let Some(command) = command {
             self.apply(command);
@@ -264,7 +312,17 @@ impl App {
             },
             Some(Effect::TogglePin) => self.window.set_pinned(!self.ui.pin.is_active()),
             // Selection is applied by sync_focus; jump lists come with PR 3.
-            Some(Effect::SelectRow(_) | Effect::OpenJumpList(_)) | None => None,
+            Some(Effect::OpenJumpList(i)) => {
+                self.open_jump_list(i);
+                None
+            },
+            Some(Effect::JumpActivate(j)) => self.launch_jump(j),
+            Some(Effect::CloseJumpList) => {
+                self.close_jump_list();
+                None
+            },
+            // Selections are applied by sync_focus.
+            Some(Effect::SelectRow(_) | Effect::JumpSelect(_)) | None => None,
         };
         self.sync_focus();
         command
@@ -282,6 +340,14 @@ impl App {
             },
             Focus::Pin => {
                 self.ui.pin.grab_focus();
+            },
+            Focus::JumpList => {
+                if let Some(row) = self.ui.jump_list.row_at_index(self.nav.jump_selected() as i32) {
+                    self.ui.jump_list.select_row(Some(&row));
+                    row.grab_focus();
+                } else {
+                    self.ui.jump_list.grab_focus();
+                }
             },
             Focus::List => {
                 let Some(listbox) = self.ui.lists.get(&self.nav.tab()) else {
@@ -344,7 +410,8 @@ impl App {
         let text = match tab {
             Tab::Clipboard => self.history.items.get(source)?.text.clone(),
             Tab::Snippets => self.snippets.items.get(source)?.value.clone(),
-            Tab::Prompt | Tab::Launcher => return None,
+            Tab::Launcher => return self.launch_row(visible_index),
+            Tab::Prompt => return None,
         };
         self.ui.root.clipboard().set_text(&text);
         self.window.hide()
@@ -411,8 +478,75 @@ impl App {
         });
     }
 
+    /// Launches the visible Launcher row and hides the window.
+    fn launch_row(&mut self, visible_index: usize) -> Option<WindowCommand> {
+        match *self.launcher_rows.get(visible_index)? {
+            LauncherRow::Command(c) => {
+                let item = self.launcher.commands.get(c)?;
+                spawn(&item.command, &item.args, None);
+            },
+            LauncherRow::App(a) => {
+                let app = self.apps.get(a)?;
+                let context = gtk::prelude::WidgetExt::display(&self.ui.root).app_launch_context();
+                if dev_sandbox() {
+                    for var in SANDBOX_VARS {
+                        context.unsetenv(var);
+                    }
+                }
+                if let Err(e) = app.launch(&[], Some(&context)) {
+                    eprintln!("Failed to launch {}: {e}", app.name());
+                }
+            },
+        }
+        self.window.hide()
+    }
+
+    /// Opens the jump list (recent files) of the visible Launcher row.
+    fn open_jump_list(&mut self, visible_index: usize) {
+        let Some(LauncherRow::Command(c)) = self.launcher_rows.get(visible_index).copied() else {
+            return;
+        };
+        let Some(source) = self.launcher.commands.get(c).and_then(|i| i.history_source.as_ref())
+        else {
+            return;
+        };
+        let files = source.recent_files();
+        self.ui.jump_list.remove_all();
+        for (index, file) in files.iter().enumerate() {
+            let spec = ui::RowSpec {
+                index,
+                text: &file.name,
+                tooltip: &file.path,
+                star: None,
+                jump: false,
+            };
+            self.ui.jump_list.append(&ui::build_row(&spec, |_| {}, |_| {}));
+        }
+        self.nav.jump_list_opened(files.len());
+        self.jump = Some((c, files));
+        self.ui.jump_pane.set_visible(true);
+        self.ui.footer.set_markup(ui::JUMP_LIST_HINTS);
+    }
+
+    fn close_jump_list(&mut self) {
+        self.jump = None;
+        self.ui.jump_pane.set_visible(false);
+        self.ui.footer.set_markup(ui::key_hints(self.nav.tab()));
+    }
+
+    /// Opens a recent file with its command and hides the window.
+    fn launch_jump(&mut self, index: usize) -> Option<WindowCommand> {
+        let (c, files) = self.jump.as_ref()?;
+        let item = self.launcher.commands.get(*c)?;
+        let file = files.get(index)?;
+        spawn(&item.command, &item.args, Some(&file.path));
+        self.close_jump_list();
+        self.window.hide()
+    }
+
     /// Shows `tab`'s page, tab button state, search text and footer.
     fn show_tab(&self, tab: Tab) {
+        self.ui.jump_pane.set_visible(false);
         let name = ui::page_name(tab);
         self.ui.stack.set_visible_child_name(name);
         if self.ui.tab_group.active_name().as_deref() != Some(name) {
@@ -465,13 +599,58 @@ impl App {
                     })
                     .collect()
             },
-            // Launcher items come with PR 3.
-            Tab::Prompt | Tab::Launcher => {
+            Tab::Launcher => {
+                self.launcher_rows = if data.query.trim().is_empty() {
+                    (0..self.launcher.commands.len()).map(LauncherRow::Command).collect()
+                } else {
+                    let names: Vec<(String, String)> = self
+                        .apps
+                        .iter()
+                        .map(|a| {
+                            let desc = a.description().map(|d| d.to_string()).unwrap_or_default();
+                            (a.name().to_string(), desc)
+                        })
+                        .collect();
+                    let texts: Vec<AppText<'_>> = names
+                        .iter()
+                        .map(|(name, description)| AppText { name, description })
+                        .collect();
+                    rank_apps(&texts, &data.query).into_iter().map(LauncherRow::App).collect()
+                };
+                data.visible = (0..self.launcher_rows.len()).collect();
+                self.launcher_rows
+                    .iter()
+                    .map(|row| match *row {
+                        LauncherRow::Command(c) => {
+                            let item = &self.launcher.commands[c];
+                            (item.name.clone(), item.command.clone(), None)
+                        },
+                        LauncherRow::App(a) => {
+                            let app = &self.apps[a];
+                            let tip = app.description().map(|d| d.to_string()).unwrap_or_default();
+                            (app.name().to_string(), tip, None)
+                        },
+                    })
+                    .collect()
+            },
+            Tab::Prompt => {
                 data.visible.clear();
                 Vec::new()
             },
         };
         self.nav.set_len(tab, rows.len());
+        let jumpable: Vec<bool> = if tab == Tab::Launcher {
+            self.launcher_rows
+                .iter()
+                .map(|row| match *row {
+                    LauncherRow::Command(c) => self.launcher.commands[c].history_source.is_some(),
+                    LauncherRow::App(_) => false,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.nav.set_jumpable(tab, jumpable.clone());
 
         listbox.remove_all();
         for (index, (text, tooltip, star)) in rows.iter().enumerate() {
@@ -480,9 +659,14 @@ impl App {
                 text,
                 tooltip,
                 star: *star,
+                jump: jumpable.get(index).copied().unwrap_or(false),
             };
-            let tx = self.tx.clone();
-            listbox.append(&ui::build_row(&spec, move |i| send(&tx, Msg::ToggleStar(i))));
+            let (tx, tx2) = (self.tx.clone(), self.tx.clone());
+            listbox.append(&ui::build_row(
+                &spec,
+                move |i| send(&tx, Msg::ToggleStar(i)),
+                move |i| send(&tx2, Msg::OpenJumpList(i)),
+            ));
         }
         if self.nav.tab() == tab && self.ui.root.is_visible() {
             self.sync_focus();
@@ -500,14 +684,46 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
 
     // Every tab has the same structure (a list with an empty placeholder), so
     // there is always a focus target.
+    let jump_list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::Single)
+        .activate_on_single_click(true)
+        .focusable(true)
+        .css_classes(["navigation-sidebar"])
+        .build();
+    jump_list.set_placeholder(Some(
+        &gtk::Label::builder()
+            .label("No recent files")
+            .css_classes(["dim-label"])
+            .build(),
+    ));
+    let t = tx.clone();
+    jump_list
+        .connect_row_activated(move |_, row| send(&t, Msg::JumpActivated(row.index() as usize)));
+    let jump_pane = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hexpand(true)
+        .child(&jump_list)
+        .visible(false)
+        .build();
+
     for tab in Tab::ALL {
         let listbox = build_list(tab, tx);
         lists.insert(tab, listbox.clone());
-        let page = gtk::ScrolledWindow::builder()
+        let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
+            .hexpand(true)
             .child(&listbox)
             .build();
+        let page: gtk::Widget = if tab == Tab::Launcher {
+            // The jump list opens beside the launcher list (half width each).
+            let split = gtk::Box::builder().homogeneous(true).build();
+            split.append(&scrolled);
+            split.append(&jump_pane);
+            split.upcast()
+        } else {
+            scrolled.upcast()
+        };
         stack.add_named(&page, Some(ui::page_name(tab)));
 
         let (title, icon) = ui::tab_label(tab);
@@ -592,7 +808,8 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
 
     // Keep Nav in step when focus moves by mouse or the Tab key.
     let t = tx.clone();
-    let (search_f, pin_f, stack_f) = (search.clone(), pin.clone(), stack.clone());
+    let (search_f, pin_f, stack_f, jump_f) =
+        (search.clone(), pin.clone(), stack.clone(), jump_list.clone());
     root.connect_focus_widget_notify(move |w| {
         let Some(widget) = gtk::prelude::GtkWindowExt::focus(w) else {
             return;
@@ -601,6 +818,9 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
             Focus::Search
         } else if widget == pin_f {
             Focus::Pin
+        } else if widget == jump_f || widget.is_ancestor(&jump_f) {
+            // Checked before the stack: the jump list lives inside it.
+            Focus::JumpList
         } else if widget.is_ancestor(&stack_f) {
             Focus::List
         } else {
@@ -640,6 +860,8 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
         tab_group,
         search,
         lists,
+        jump_list,
+        jump_pane,
         pin,
         footer,
     }
@@ -656,6 +878,32 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
     let t = tx.clone();
     listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
     listbox
+}
+
+/// Starts `command args.. [extra]` without a shell. GSubprocess reaps the
+/// child, so no zombies are left behind.
+fn spawn(command: &str, args: &[String], extra: Option<&str>) {
+    let mut argv: Vec<&std::ffi::OsStr> = vec![command.as_ref()];
+    argv.extend(args.iter().map(std::ffi::OsStr::new));
+    argv.extend(extra.map(std::ffi::OsStr::new));
+    let launcher = gio::SubprocessLauncher::new(gio::SubprocessFlags::NONE);
+    if dev_sandbox() {
+        for var in SANDBOX_VARS {
+            launcher.unsetenv(var);
+        }
+    }
+    if let Err(e) = launcher.spawn(&argv) {
+        eprintln!("Failed to start {command}: {e}");
+    }
+}
+
+/// XDG variables `gtk/run-dev.sh` points at its sandbox.
+const SANDBOX_VARS: [&str; 2] = ["XDG_CONFIG_HOME", "XDG_DATA_HOME"];
+
+/// Whether the app runs from `gtk/run-dev.sh`; launched apps then get the
+/// session's XDG directories back instead of the sandbox.
+fn dev_sandbox() -> bool {
+    std::env::var_os("UTI_DEV_SANDBOX").is_some()
 }
 
 /// Opens `uri` in the default handler.
