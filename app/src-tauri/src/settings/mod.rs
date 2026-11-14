@@ -3,7 +3,7 @@
 //! Handles window dimensions for different themes and modes,
 //! and provides commands for autostart functionality.
 
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
 /// Window size constants for each theme
@@ -132,4 +132,30 @@ pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Opens the settings window, or focuses it if already open
+pub fn open_settings_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.set_focus();
+        return;
+    }
+
+    // Custom title bar (matches main window style)
+    let (width, height) = window_size::SETTINGS;
+    match WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+        .title("uti - Settings")
+        .inner_size(width, height)
+        .min_inner_size(width, height)
+        .resizable(true)
+        .decorations(false)
+        .transparent(true)
+        .center()
+        .visible(true)
+        .focused(true)
+        .build()
+    {
+        Ok(_) => println!("Settings window created"),
+        Err(e) => eprintln!("Failed to create settings window: {:?}", e),
+    }
 }

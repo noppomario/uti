@@ -1,17 +1,16 @@
 //! Tauri Application Backend
 //!
-//! This module handles D-Bus signal reception and window visibility toggling
-//! for the uti desktop utility.
+//! Wires the window, Tauri commands and D-Bus (see `dbus`) together.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cli;
 mod clipboard;
 mod config;
+mod dbus;
 mod launcher;
 mod settings;
 mod snippets;
-mod tray;
 mod updater;
 mod utils;
 mod window;
@@ -32,105 +31,11 @@ use settings::{apply_window_size, get_autostart_status, set_autostart, set_windo
 use snippets::{add_snippet, get_snippets, load_snippets};
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use updater::{check_for_updates_full, open_update_dialog, perform_update_gui};
 use utils::{get_version, open_url};
 use window::{hide_for_paste, set_pinned, show_window, toggle_window, type_text, PinState};
-use zbus::Connection;
-
-/// Listens for D-Bus signals from the daemon and forwards them to the frontend.
-///
-/// Uses exponential backoff retry (1s -> 2s -> 4s -> ... -> max 30s) for:
-/// - D-Bus session connection
-/// - Proxy creation (daemon may not be running yet)
-/// - Signal stream acquisition
-///
-/// Automatically reconnects when the stream ends (e.g., daemon restart).
-async fn listen_dbus(window: tauri::WebviewWindow) {
-    use futures_util::stream::StreamExt;
-    use std::time::Duration;
-    use zbus::proxy;
-
-    /// D-Bus proxy interface for receiving DoubleTap signals
-    #[proxy(
-        interface = "io.github.noppomario.uti.DoubleTap",
-        default_path = "/io/github/noppomario/uti/DoubleTap"
-    )]
-    trait DoubleTap {
-        /// Signal emitted when double Ctrl press is detected
-        #[zbus(signal, name = "Triggered")]
-        fn triggered(&self) -> zbus::Result<()>;
-    }
-
-    let mut retry_delay = Duration::from_secs(1);
-    let max_delay = Duration::from_secs(30);
-
-    loop {
-        // Connect to D-Bus session bus
-        let conn = match Connection::session().await {
-            Ok(c) => {
-                println!("Connected to D-Bus session bus");
-                c
-            }
-            Err(e) => {
-                eprintln!(
-                    "D-Bus connection failed: {}, retrying in {:?}...",
-                    e, retry_delay
-                );
-                tokio::time::sleep(retry_delay).await;
-                retry_delay = (retry_delay * 2).min(max_delay);
-                continue;
-            }
-        };
-
-        // Create proxy (may fail if daemon not running)
-        let proxy = match DoubleTapProxy::new(&conn, "io.github.noppomario.uti").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!(
-                    "D-Bus proxy creation failed: {}, retrying in {:?}...",
-                    e, retry_delay
-                );
-                tokio::time::sleep(retry_delay).await;
-                retry_delay = (retry_delay * 2).min(max_delay);
-                continue;
-            }
-        };
-
-        // Get signal stream - success, reset retry delay
-        let mut stream = match proxy.receive_triggered().await {
-            Ok(s) => {
-                println!("Listening for D-Bus signals...");
-                retry_delay = Duration::from_secs(1);
-                s
-            }
-            Err(e) => {
-                eprintln!(
-                    "Failed to receive signals: {}, retrying in {:?}...",
-                    e, retry_delay
-                );
-                tokio::time::sleep(retry_delay).await;
-                retry_delay = (retry_delay * 2).min(max_delay);
-                continue;
-            }
-        };
-
-        // Process signals until stream ends
-        while let Some(_signal) = stream.next().await {
-            println!("D-Bus signal received!");
-            let _ = window.emit("double-ctrl-pressed", ());
-        }
-
-        // Stream ended (connection lost), retry with backoff
-        eprintln!(
-            "D-Bus signal stream ended, reconnecting in {:?}...",
-            retry_delay
-        );
-        tokio::time::sleep(retry_delay).await;
-        retry_delay = (retry_delay * 2).min(max_delay);
-    }
-}
 
 /// Main application entry point
 fn main() {
@@ -222,10 +127,14 @@ fn run_gui(start_minimized: bool) {
                 window.hide().ok();
             }
 
-            // Setup tray icon
-            if let Err(e) = tray::setup_tray(app) {
-                eprintln!("Failed to setup tray: {}", e);
+            // Single D-Bus connection: owns the app name, serves
+            // org.freedesktop.Application and carries all outgoing calls.
+            let bus = tauri::async_runtime::block_on(dbus::AppBus::connect(app.handle().clone()));
+            if let Some(conn) = bus.connection().cloned() {
+                let window_clone = window.clone();
+                tauri::async_runtime::spawn(dbus::listen_triggered(conn, window_clone));
             }
+            app.manage(bus);
 
             // Auto-hide window when it loses focus (unless pinned)
             let window_for_blur = window.clone();
@@ -237,11 +146,6 @@ fn run_gui(start_minimized: bool) {
                         println!("Window lost focus, hiding");
                     }
                 }
-            });
-
-            let window_clone = window.clone();
-            tauri::async_runtime::spawn(async move {
-                listen_dbus(window_clone).await;
             });
 
             Ok(())

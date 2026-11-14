@@ -2,48 +2,58 @@
 //!
 //! Provides window control commands for the frontend.
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{State, WebviewWindow};
-use zbus::Connection;
 
 use super::PinState;
+use crate::dbus::AppBus;
 
-/// Toggles the window visibility state
-#[tauri::command]
-pub fn toggle_window(window: WebviewWindow, pin_state: State<'_, PinState>) {
-    // Ignore toggle when window is pinned to prevent unexpected behavior
-    if pin_state.is_pinned.load(Ordering::SeqCst) {
-        println!("Window is pinned, toggle_window ignored");
+/// Returns true when running under GNOME (the extension handles positioning).
+fn is_gnome() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|v| v.to_uppercase().contains("GNOME"))
+        .unwrap_or(false)
+}
+
+/// Shows and focuses the main window.
+///
+/// On GNOME, `Shell1.PositionAtPointer` is called first: the extension moves
+/// the window on its first frame, so it must know before the window is shown.
+/// Elsewhere the window is centered.
+pub async fn show(window: &WebviewWindow, bus: &AppBus) {
+    if is_gnome() {
+        bus.position_at_pointer().await;
+    } else if let Err(e) = window.center() {
+        eprintln!("Failed to center window: {}", e);
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+    println!("Window shown");
+}
+
+/// Toggles the main window, ignoring the request while pinned.
+pub async fn toggle(window: &WebviewWindow, pinned: &AtomicBool, bus: &AppBus) {
+    if pinned.load(Ordering::SeqCst) {
+        println!("Window is pinned, toggle ignored");
         return;
     }
-
-    let is_visible = window.is_visible().unwrap_or(false);
-    println!("Current window state: visible={}", is_visible);
-
-    if is_visible {
+    if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
         println!("Window hidden");
     } else {
-        // On GNOME, the extension handles positioning at cursor location.
-        // On other environments, center the window as fallback.
-        let is_gnome = std::env::var("XDG_CURRENT_DESKTOP")
-            .map(|v| v.to_uppercase().contains("GNOME"))
-            .unwrap_or(false);
-
-        if is_gnome {
-            // Wait for GNOME extension to position the window before showing.
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        } else {
-            match window.center() {
-                Ok(_) => println!("Window centered on screen"),
-                Err(e) => eprintln!("Failed to center window: {}", e),
-            }
-        }
-
-        let _ = window.show();
-        let _ = window.set_focus();
-        println!("Window shown");
+        show(window, bus).await;
     }
+}
+
+/// Toggles the window visibility state
+#[tauri::command]
+pub async fn toggle_window(
+    window: WebviewWindow,
+    pin_state: State<'_, PinState>,
+    bus: State<'_, AppBus>,
+) -> Result<(), String> {
+    toggle(&window, &pin_state.is_pinned, &bus).await;
+    Ok(())
 }
 
 /// Force hide window for paste operation (ignores PIN state)
@@ -66,23 +76,13 @@ pub fn show_window(window: WebviewWindow) {
 pub async fn set_pinned(
     window: WebviewWindow,
     pin_state: State<'_, PinState>,
+    bus: State<'_, AppBus>,
     pinned: bool,
 ) -> Result<(), String> {
     pin_state.is_pinned.store(pinned, Ordering::SeqCst);
 
-    // Emit D-Bus signal for GNOME extension to handle always-on-top
-    if let Ok(conn) = Connection::session().await {
-        let _ = conn
-            .emit_signal(
-                None::<()>,
-                "/io/github/noppomario/uti/DoubleTap",
-                "io.github.noppomario.uti.DoubleTap",
-                "SetAlwaysOnTop",
-                &(pinned,),
-            )
-            .await;
-        println!("D-Bus SetAlwaysOnTop signal emitted: {}", pinned);
-    }
+    // GNOME/Wayland: only the compositor can keep a window above
+    bus.set_above(pinned).await;
 
     // Also call Tauri API (works on non-GNOME environments)
     window
@@ -92,28 +92,9 @@ pub async fn set_pinned(
     Ok(())
 }
 
-/// Emits a TypeText D-Bus signal to trigger auto-paste via daemon
+/// Pastes the clipboard into the focused window (extension, then daemon fallback)
 #[tauri::command]
-pub async fn type_text() {
-    match Connection::session().await {
-        Ok(conn) => {
-            if let Err(e) = conn
-                .emit_signal(
-                    None::<()>,
-                    "/io/github/noppomario/uti/DoubleTap",
-                    "io.github.noppomario.uti.DoubleTap",
-                    "TypeText",
-                    &(),
-                )
-                .await
-            {
-                eprintln!("Failed to emit TypeText signal: {}", e);
-            } else {
-                println!("TypeText signal emitted");
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to connect to D-Bus: {}", e);
-        }
-    }
+pub async fn type_text(bus: State<'_, AppBus>) -> Result<(), String> {
+    bus.paste(true, true).await;
+    Ok(())
 }
