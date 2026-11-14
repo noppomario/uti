@@ -16,6 +16,7 @@ use uti_core::launcher::{load_launcher_config, LauncherConfig};
 use uti_core::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 
 use crate::dbus;
+use crate::settings;
 use crate::state::launcher::{rank_apps, AppText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::nav::{Effect, Focus, Nav};
@@ -58,6 +59,8 @@ pub enum Msg {
     AppsChanged,
     /// A jump list row was clicked.
     JumpActivated(usize),
+    Setting(settings::Event),
+    SettingsClosed,
 }
 
 /// A visible Launcher row.
@@ -120,6 +123,8 @@ struct App {
     launcher_rows: Vec<LauncherRow>,
     /// Command whose jump list is open, and its files.
     jump: Option<(usize, Vec<RecentFile>)>,
+    config: AppConfig,
+    settings: Option<adw::ApplicationWindow>,
 }
 
 /// Installed apps that should appear in launchers.
@@ -174,6 +179,8 @@ pub fn start(app: &adw::Application, minimized: bool) {
         apps: load_apps(),
         launcher_rows: Vec::new(),
         jump: None,
+        config,
+        settings: None,
     };
     let t = tx.clone();
     gio::AppInfoMonitor::get().connect_changed(move |_| send(&t, Msg::AppsChanged));
@@ -218,7 +225,15 @@ impl App {
                 None
             },
             Msg::OpenSettings => {
-                eprintln!("Settings window is not implemented yet");
+                self.open_settings();
+                None
+            },
+            Msg::Setting(event) => {
+                self.apply_setting(event);
+                None
+            },
+            Msg::SettingsClosed => {
+                self.settings = None;
                 None
             },
             Msg::CheckUpdates => {
@@ -499,6 +514,99 @@ impl App {
             },
         }
         self.window.hide()
+    }
+
+    /// Shows the settings window, creating it on first use.
+    fn open_settings(&mut self) {
+        if self.settings.is_none() {
+            let Some(app) = self.ui.root.application().and_downcast::<adw::Application>() else {
+                return;
+            };
+            let window = settings::new_window(&app);
+            let t = self.tx.clone();
+            window.connect_close_request(move |_| {
+                send(&t, Msg::SettingsClosed);
+                glib::Propagation::Proceed
+            });
+            self.populate_settings(&window);
+            self.settings = Some(window);
+        }
+        if let Some(window) = &self.settings {
+            window.present();
+            debug_snapshot(window);
+        }
+    }
+
+    fn populate_settings(&self, window: &adw::ApplicationWindow) {
+        let t = self.tx.clone();
+        settings::populate(
+            window,
+            &self.config,
+            std::rc::Rc::new(move |e| send(&t, Msg::Setting(e))),
+        );
+    }
+
+    /// Applies and saves a settings change.
+    fn apply_setting(&mut self, event: settings::Event) {
+        match event {
+            settings::Event::Language(lang) => {
+                if lang == self.config.language {
+                    return;
+                }
+                self.config.language = lang;
+                // Rebuilt after the combo's handler returns.
+                if let Some(window) = self.settings.clone() {
+                    let t = self.tx.clone();
+                    let config = self.config.clone();
+                    glib::idle_add_local_once(move || {
+                        settings::populate(
+                            &window,
+                            &config,
+                            std::rc::Rc::new(move |e| send(&t, Msg::Setting(e))),
+                        );
+                    });
+                }
+            },
+            settings::Event::Size(size) => {
+                self.config.theme.size = size;
+                self.apply_size();
+            },
+            settings::Event::HistoryLimit(limit) => {
+                // Trimmed on the next add, like the startup sync.
+                self.config.clipboard_history_limit = limit.max(1);
+                self.history.max_items = self.config.clipboard_history_limit;
+            },
+            settings::Event::Reload => {
+                self.config = AppConfig::load();
+                self.history.max_items = self.config.clipboard_history_limit;
+                self.apply_size();
+                self.launcher = load_launcher_config();
+                self.snippets = load_snippets();
+                self.close_jump_list();
+                for tab in Tab::ALL {
+                    self.refresh(tab);
+                }
+                if let Some(window) = self.settings.clone() {
+                    self.populate_settings(&window);
+                }
+                return; // Nothing changed on disk.
+            },
+        }
+        if let Err(e) = self.config.save() {
+            eprintln!("{e}");
+        }
+    }
+
+    /// Resizes the main window for `theme.size`.
+    fn apply_size(&mut self) {
+        let (width, height, class) = density(&self.config.theme.size);
+        for (_, _, other) in ["minimal", "normal", "wide"].map(density) {
+            self.ui.root.remove_css_class(other);
+        }
+        self.ui.root.add_css_class(class);
+        self.ui.root.set_default_size(width, height);
+        // Trim again on the next show, with the new row height.
+        self.rows_fitted = false;
     }
 
     /// Opens the jump list (recent files) of the visible Launcher row.

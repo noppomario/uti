@@ -1,7 +1,10 @@
 //! uti: clipboard history, snippets and launcher popup for GNOME.
 
 mod app;
+mod autostart;
 mod dbus;
+mod i18n;
+mod settings;
 mod state;
 mod ui;
 
