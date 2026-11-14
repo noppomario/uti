@@ -127,7 +127,7 @@ pub fn open_launcher_config() -> Result<(), String> {
   "commands": []
 }
 "#;
-        std::fs::write(&path, default_content)
+        uti_core::fs::write_atomic(&path, default_content.as_bytes())
             .map_err(|e| format!("Failed to create launcher config: {}", e))?;
     }
 
@@ -169,7 +169,7 @@ pub fn open_snippets_config() -> Result<(), String> {
   "items": []
 }
 "#;
-        std::fs::write(&path, default_content)
+        uti_core::fs::write_atomic(&path, default_content.as_bytes())
             .map_err(|e| format!("Failed to create snippets config: {}", e))?;
     }
 
