@@ -1,0 +1,10 @@
+[package]
+name = "uti-gtk"
+version = "0.2.0"
+edition = "2021"
+publish = false
+description = "uti main application (GTK4 / Relm4)"
+
+[dependencies]
+relm4 = { version = "0.11", features = ["gnome_50", "libadwaita"] }
+uti-core = { path = "../crates/uti-core" }
