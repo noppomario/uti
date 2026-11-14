@@ -16,23 +16,21 @@ updates:
           - "minor"
           - "patch"
 
-  # app/ (Tauri + React) is intentionally not tracked while the GNOME-native
-  # rewrite is in progress (docs/plans/gnome-native-rewrite.md). Re-add the
-  # new app crate in Phase 3.
-
-  # Daemon (daemon/) - Cargo
+  # Rust crates (app, daemon, uti-core)
   - package-ecosystem: "cargo"
-    directory: "/daemon"
+    directories:
+      - "/app"
+      - "/daemon"
+      - "/crates/uti-core"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "daemon"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      daemon-minor-patch:
+      cargo-minor-patch:
         update-types:
           - "minor"
           - "patch"

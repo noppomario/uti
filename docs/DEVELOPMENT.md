@@ -1,12 +1,12 @@
 # Development Environment Setup
 
-Complete setup guide for developing **uti** on Fedora 43.
+Complete setup guide for developing **uti** on Fedora 44.
 
 ---
 
 ## Prerequisites
 
-- **OS**: Fedora 43 (GNOME/Wayland)
+- **OS**: Fedora 44 (GNOME 50/Wayland). Ubuntu cannot build the app (no libadwaita 1.9); CI builds in a `fedora:44` container.
 - **Rust**: Install via [mise](https://mise.jdx.dev/) or [rustup](https://rustup.rs/)
 - **Bun**: Install via [mise](https://mise.jdx.dev/) or [bun.sh](https://bun.sh/)
 - **Rust components**: `rustfmt`, `clippy`
@@ -15,40 +15,11 @@ Complete setup guide for developing **uti** on Fedora 43.
 
 ## System Dependencies
 
-Install required development libraries for Tauri 2, D-Bus, and evdev:
-
 ```bash
-sudo dnf install -y \
-  webkit2gtk4.1-devel \
-  gtk3-devel \
-  libappindicator-gtk3-devel \
-  librsvg2-devel \
-  pango-devel \
-  atk-devel \
-  gdk-pixbuf2-devel \
-  openssl-devel \
-  dbus-devel \
-  libevdev-devel \
-  gcc \
-  gcc-c++ \
-  make \
-  pkg-config \
-  rpm-build \
-  libxdo-devel
+sudo dnf install -y cargo gcc gtk4-devel libadwaita-devel rpm-build
 ```
 
-**What these provide:**
-
-- **webkit2gtk4.1-devel**: Web rendering for Tauri UI
-- **gtk3-devel, pango-devel, atk-devel, gdk-pixbuf2-devel**: GTK3 stack
-- **libappindicator-gtk3-devel**: System tray support
-- **librsvg2-devel**: SVG rendering
-- **dbus-devel**: D-Bus IPC communication
-- **libevdev-devel**: Keyboard device monitoring
-- **openssl-devel**: Cryptography
-- **gcc, gcc-c++, make, pkg-config**: Build toolchain
-- **rpm-build**: RPM packaging
-- **libxdo-devel**: Window automation
+`rpm-build` is only needed for packaging.
 
 ---
 
@@ -65,12 +36,11 @@ For architecture documentation with diagrams, see [ARCHITECTURE.md](ARCHITECTURE
 git clone https://github.com/noppomario/uti.git
 cd uti
 
-# Install dependencies
+# Install task runner dependencies
 bun install
-cd app && bun install && cd ..
 
-# Build (first build takes ~5 minutes)
-cargo build --release
+# Build (first build takes a few minutes)
+cargo build --workspace --release
 ```
 
 ---
@@ -78,13 +48,8 @@ cargo build --release
 ## Verification
 
 ```bash
-# Run full CI checks locally
+# Run full CI checks locally (lint, test, build)
 bun run ci:local
-
-# Expected output:
-# ✓ Lint checks passed
-# ✓ Type checks passed
-# ✓ Build completed
 ```
 
 ---
@@ -115,9 +80,20 @@ groups
 cd daemon
 cargo run
 
-# Terminal 2: Run Tauri app
-cd app
-bun run tauri:dev
+# Terminal 2: Run app
+bun run app:run   # ./app/run-dev.sh [--reset]
+```
+
+`app/run-dev.sh` runs the app against a sandbox copy of `~/.config/uti` under `target/uti-dev` (`--reset` recreates it). It sets `UTI_DEV_SANDBOX=1` so apps launched from uti get the real XDG dirs. Stop the installed uti first: only one instance can own the bus name.
+
+### Debug Aids
+
+- `UTI_DEBUG_SNAPSHOT=file.png`: render the main or settings window to PNG after it is shown
+- `UTI_DEBUG_KEYS=1`: add a `debug-key` action that injects a key press:
+
+```bash
+gdbus call --session -d io.github.noppomario.uti -o /io/github/noppomario/uti \
+  -m org.freedesktop.Application.ActivateAction debug-key '[<"right">]' '{}'
 ```
 
 ### Why input group?
@@ -134,16 +110,10 @@ bun run tauri:dev
 
 ## Troubleshooting
 
-### "webkit2gtk-4.1 not found"
+### "gtk4" or "libadwaita-1" not found by pkg-config
 
 ```bash
-sudo dnf install webkit2gtk4.1-devel
-```
-
-### "libevdev not found"
-
-```bash
-sudo dnf install libevdev-devel
+sudo dnf install gtk4-devel libadwaita-devel
 ```
 
 ### "permission denied" when running daemon
@@ -160,7 +130,7 @@ cargo run  # No sudo needed
 
 ### Slow first build
 
-First Rust build downloads and compiles all dependencies (~5 minutes).
+First Rust build downloads and compiles all dependencies (a few minutes).
 Subsequent builds are much faster (<30 seconds for small changes).
 
 ---
@@ -169,14 +139,13 @@ Subsequent builds are much faster (<30 seconds for small changes).
 
 Recommended extensions (listed in `.vscode/extensions.json`):
 
-- **Biome**: TypeScript/React linting and formatting
+- **Biome**: GNOME extension JavaScript linting and formatting
 - **rust-analyzer**: Rust language support
-- **Tauri**: Tauri development tools
 
 Settings (`.vscode/settings.json`) are pre-configured:
 
 - Format on save: Enabled
-- Biome for TypeScript/React
+- Biome for JavaScript
 - rust-analyzer for Rust
 
 ---
@@ -190,11 +159,11 @@ Update version in all 6 locations:
 | File | Format |
 | ---- | ------ |
 | `package.json` (root) | `"version": "X.Y.Z"` |
-| `app/package.json` | `"version": "X.Y.Z"` |
-| `app/src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
-| `app/src-tauri/Cargo.toml` | `version = "X.Y.Z"` |
+| `app/Cargo.toml` | `version = "X.Y.Z"` |
+| `app/packaging/uti.spec` | `Version:        X.Y.Z` |
 | `daemon/Cargo.toml` | `version = "X.Y.Z"` |
 | `daemon/uti-daemon.spec` | `Version:        X.Y.Z` |
+| `crates/uti-core/Cargo.toml` | `version = "X.Y.Z"` |
 
 **Note**: All components share the same version number for unified releases.
 
@@ -258,7 +227,7 @@ This triggers only the build and release jobs (skips version bump).
 
 Each release includes:
 
-- `uti-X.Y.Z-1.x86_64.rpm` - Tauri GUI application
+- `uti-X.Y.Z-1.x86_64.rpm` - GTK application
 - `uti-daemon-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
 - `gnome-extension.zip` - GNOME Shell extension (uti for GNOME)
 
@@ -266,7 +235,7 @@ Each release includes:
 
 ## Additional Resources
 
-- [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)
+- [gtk4-rs book](https://gtk-rs.org/gtk4-rs/stable/latest/book/)
 - [Project Memory](../CLAUDE.md)
 - [Code Conventions](../.claude/rules/conventions.md)
 - [Architectural Decisions](../.claude/rules/decisions.md)

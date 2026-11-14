@@ -5,7 +5,7 @@ description: Release workflow for uti project. Use when user says "release", "cr
 
 # Release Workflow
 
-Create a new release for uti (Tauri app + daemon).
+Create a new release for uti (GTK app + daemon).
 
 Release is created from `main`. Ensure all features for the release are merged to `main` first.
 
@@ -27,12 +27,12 @@ gh workflow run release.yml -f version=0.0.4
 
 The workflow automatically (no human intervention required):
 
-1. Creates release branch and bumps version in all 7 locations
+1. Creates release branch and bumps version in all 6 locations
 2. Creates PR with auto-merge enabled
 3. Waits for CI to pass
 4. Auto-merges PR when CI succeeds
 5. Creates tag on merge (triggers release build)
-6. Builds packages (Tauri RPM, daemon RPM, GNOME extension)
+6. Builds packages (app RPM, daemon RPM, GNOME extension)
 7. Creates GitHub Release with artifacts
 
 ## Version Format
@@ -42,9 +42,8 @@ The workflow automatically (no human intervention required):
 ## Files Updated
 
 - `package.json` (root)
-- `app/package.json`
-- `app/src-tauri/tauri.conf.json`
-- `app/src-tauri/Cargo.toml`
+- `app/Cargo.toml`
+- `app/packaging/uti.spec`
 - `daemon/Cargo.toml`
 - `daemon/uti-daemon.spec`
 - `crates/uti-core/Cargo.toml`

@@ -10,19 +10,12 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
 ## Technology Stack
 
-### Frontend
+### App (uti)
 
-- **Framework**: React 19
-- **Language**: TypeScript 5.7
-- **Styling**: Tailwind CSS v4
-- **Build**: Vite 6 + esbuild
-- **Linter/Formatter**: Biome 2.3 (Rust-based, 25-100x faster than ESLint+Prettier)
-- **i18n**: react-i18next (settings window only)
-
-### Backend
-
-- **Framework**: Tauri 2
+- **Toolkit**: gtk4-rs 0.11 (`gnome_50`) + libadwaita 0.9 (`v1_9`), no Relm4
 - **Language**: Rust 2021
+- **Styling**: `app/data/style.css`; colors follow the system (libadwaita light/dark + accent)
+- **i18n**: `app/data/i18n/{en,ja}.json` via `include_str!` (settings window only)
 - **IPC**: D-Bus session bus (owns `io.github.noppomario.uti`)
 - **Tray**: none; the GNOME extension's panel menu calls the app
 - **Application ID**: `io.github.noppomario.uti`
@@ -58,8 +51,9 @@ See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for detailed structure.
 
 **Key directories:**
 
-- `app/` - Tauri frontend (React + TypeScript)
-- `app/src-tauri/` - Rust backend
+- `app/` - GTK4 / libadwaita app (`uti` crate and binary)
+- `app/src/state/` - Pure, unit-tested UI state logic
+- `app/packaging/` - RPM spec, desktop file, metainfo, icons
 - `daemon/` - uti-daemon (evdev + D-Bus)
 - `gnome-extension/` - GNOME Shell extension
 
@@ -99,9 +93,8 @@ See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for detailed structure.
 
 **Validation**:
 
-- `theme.color`: "midnight", "dark", or "light" (default: "dark")
-- `theme.size`: "minimal", "normal", or "wide" (default: "normal")
-- `theme.accentColor`: Hex color string (optional, uses theme default if not set)
+- `theme.color`, `theme.accentColor`: ignored (colors follow the system)
+- `theme.size`: "minimal", "normal", or "wide" (default: "normal"); sets window size/density
 - `clipboardHistoryLimit`: Must be > 0 (default: 50)
 - `language`: "en" or "ja" (default: "en")
 
@@ -115,7 +108,6 @@ with mode 0600 (`uti_core::fs::write_atomic`).
 **Implementation**:
 
 - Rust: `AppConfig::load()` at startup
-- TypeScript: `getConfig()` async function
 
 **Snippets storage file**: `~/.config/uti/snippets.json`
 
@@ -136,12 +128,11 @@ with mode 0600 (`uti_core::fs::write_atomic`).
 ### Required Tools
 
 - Rust (latest stable)
-- Bun (latest)
+- Bun (latest, task runner)
+- `gtk4-devel`, `libadwaita-devel` (Fedora 44; Ubuntu lacks libadwaita 1.9)
 - VSCode with recommended extensions:
   - rust-analyzer
-  - tauri-vscode
-  - biomejs.biome
-  - bradlc.vscode-tailwindcss
+  - biomejs.biome (GNOME extension JS)
   - editorconfig.editorconfig
 
 ### Format on Save
@@ -151,18 +142,17 @@ Enabled in `.vscode/settings.json` for all file types.
 ### Build Scripts
 
 ```bash
-bun run dev         # Development mode
-bun run build       # Type check + build (safe)
-bun run build:fast  # Skip type check (ultra fast)
-bun run check:fix   # Biome lint + format + auto-fix
+bun run app:run     # Run app in a config sandbox (app/run-dev.sh)
+bun run app:rpm     # Build app RPM
+bun run all:format  # rustfmt + Biome (extension)
 ```
 
 ## Testing & Quality
 
 ### Test Framework
 
-- **Frontend**: Vitest + React Testing Library + happy-dom
 - **Rust**: Standard `cargo test` framework
+- **App**: UI logic is tested as pure state transitions in `app/src/state/`
 - **Methodology**: Test-Driven Development (TDD) required for all new code
 
 ### TDD Workflow (Red-Green-Refactor)
@@ -174,17 +164,13 @@ bun run check:fix   # Biome lint + format + auto-fix
 ### Test Execution
 
 ```bash
-# Frontend tests
-cd app && bun run test          # Run once
-cd app && bun run test:watch    # Watch mode (TDD)
-cd app && bun run test:coverage # Coverage report
-
-# Rust tests
 cargo test --workspace          # All Rust tests
+cargo test -p uti               # App only
 cd daemon && cargo test         # Daemon only
+cargo tarpaulin                 # Coverage (requires cargo-tarpaulin)
 
 # All tests (from root)
-bun run all:test               # Parallel execution
+bun run all:test
 ```
 
 ### CI Integration
@@ -196,7 +182,7 @@ bun run all:test               # Parallel execution
 ### Test Priorities
 
 1. **Daemon**: Keyboard event detection (300ms double-tap logic)
-2. **Frontend**: Window control UI components
+2. **App**: Window/list/navigation state (`app/src/state/`)
 3. **Integration**: D-Bus communication end-to-end
 
 ## Deployment
@@ -205,7 +191,8 @@ bun run all:test               # Parallel execution
 
 - Manual installation via `install.sh`
 - systemd user service for daemon
-- RPM packages for Fedora
+- RPM packages for Fedora (`uti`, `uti-daemon`), built in a `fedora:44` container
+- No updater: install new RPMs from Releases
 
 ### Future
 
@@ -216,8 +203,8 @@ bun run all:test               # Parallel execution
 ## Panel Menu
 
 The "uti for GNOME" extension shows a panel button (left click toggles) with
-Show/Hide, Settings, Check for Updates, GitHub and Quit. The Tauri SNI tray was
-removed in Phase 1.
+Show/Hide, Settings, Check for Updates (opens GitHub Releases), GitHub and Quit.
+The app has no tray icon.
 
 ## Known Limitations
 

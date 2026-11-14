@@ -52,14 +52,14 @@ virtual keyboard for auto-paste functionality.
 A tap is a short Ctrl press with no other key in between; two taps within
 300 ms trigger (`daemon/src/detector.rs`).
 
-### uti (Tauri App)
+### uti (GTK App)
 
-Main application with clipboard history and app launcher UI.
+Main application with Clipboard, Snippets and Launcher tabs, plus a settings window.
 
 | Property | Value |
 | -------- | ----- |
-| Frontend | React 19 + TypeScript |
-| Backend | Rust + Tauri 2 |
+| Toolkit | Rust + gtk4-rs 0.11 + libadwaita 0.9 (`app/`) |
+| Structure | `app.rs` controller (`Msg` loop), `ui.rs`, `dbus.rs`, `settings.rs`, `state/` (pure logic) |
 | IPC | D-Bus: owns `io.github.noppomario.uti`, serves `ActivateAction`, calls `Shell1` / `Daemon1` |
 | Config | `~/.config/uti/config.json` |
 | Launcher | `~/.config/uti/launcher.json` |
@@ -75,7 +75,7 @@ Main application with clipboard history and app launcher UI.
 
 **Launcher Features:**
 
-- Configurable application commands with keyboard navigation
+- Configurable application commands and installed app search (`gio::AppInfo`) with keyboard navigation
 - Jump lists showing recent files from system history (recently-used.xbel)
 - VSCode recent files support via SQLite database
 
@@ -122,6 +122,8 @@ sequenceDiagram
 ```
 
 ### Prompt Auto-Paste Sequence
+
+The Prompt tab is retired in the GTK app (code kept, not wired), so nothing currently calls `Paste`.
 
 ```mermaid
 sequenceDiagram
