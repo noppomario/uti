@@ -52,12 +52,8 @@ pub fn load_snippets() -> SnippetsStore {
 pub fn save_snippets(store: &SnippetsStore) -> Result<(), std::io::Error> {
     let path = SnippetsStore::get_storage_path();
 
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
     let json = serde_json::to_string_pretty(store)?;
-    fs::write(&path, json)?;
+    crate::fs::write_atomic(&path, json.as_bytes())?;
     println!("Saved {} snippets to: {:?}", store.items.len(), path);
     Ok(())
 }

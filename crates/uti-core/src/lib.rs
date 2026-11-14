@@ -6,6 +6,8 @@
 pub mod clipboard;
 pub mod config;
 pub mod dbus;
+pub mod fs;
 #[cfg(feature = "launcher")]
 pub mod launcher;
+pub mod paths;
 pub mod snippets;

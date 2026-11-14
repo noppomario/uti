@@ -150,8 +150,7 @@ which may be the settings window or a dialog.
 ```text
 crates/
   uti-core/        # pure logic, no GTK: config, clipboard history, snippets,
-                   # launcher (desktop entries, recent files), double-tap detector
-  uti-dbus/        # D-Bus names and interface XML shared by app, daemon, tests
+                   # launcher config + recent files, D-Bus names, atomic writes
 app/               # uti binary: Relm4 components, CSS themes, gettext i18n
 daemon/            # uti-daemon: evdev + Daemon1 signal (+ uinput fallback)
 gnome-extension/   # uti for GNOME: Shell1 service, panel menu, clipboard watch
@@ -264,10 +263,11 @@ Valuable even if the rewrite is delayed.
 - [x] App (Tauri): wired to the new contract, SNI tray removed (#185).
 - [ ] App: consume `ClipboardChanged` instead of polling (deferred to Phase 3).
 
-### Phase 2: Extract `uti-core` and `uti-dbus`
+### Phase 2: Extract `uti-core`
 
-- [ ] Move config / clipboard / snippets / launcher logic and tests.
-- [ ] Atomic writes, `0600`, XDG data dir migration, stable IDs.
+- [x] Move config / clipboard / snippets / launcher logic and tests (#195).
+      Shared D-Bus names live in `uti_core::dbus`; no separate `uti-dbus` crate.
+- [x] Atomic writes, `0600`, XDG data dir migration, stable IDs.
 
 ### Phase 3: GTK4 / Relm4 app
 

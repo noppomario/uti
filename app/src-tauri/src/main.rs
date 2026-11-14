@@ -16,9 +16,7 @@ mod utils;
 mod window;
 
 use clap::Parser;
-use clipboard::{
-    add_clipboard_item, get_clipboard_history, paste_item, remove_clipboard_item, ClipboardStore,
-};
+use clipboard::{add_clipboard_item, get_clipboard_history, remove_clipboard_item, ClipboardStore};
 use config::{
     open_config_folder, open_launcher_config, open_snippets_config, read_config, reload_config,
     save_config, AppConfig,
@@ -57,7 +55,7 @@ fn run_gui(start_minimized: bool) {
 
     // Load clipboard store from file, respecting config limit
     let path = ClipboardStore::get_storage_path();
-    let mut store = ClipboardStore::load(&path);
+    let mut store = ClipboardStore::load_default();
 
     // Apply config limit (in case it changed since last save)
     if store.max_items != app_config.clipboard_history_limit {
@@ -89,7 +87,6 @@ fn run_gui(start_minimized: bool) {
             get_clipboard_history,
             add_clipboard_item,
             remove_clipboard_item,
-            paste_item,
             // Config commands
             read_config,
             save_config,

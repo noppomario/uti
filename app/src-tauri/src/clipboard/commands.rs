@@ -44,10 +44,3 @@ pub fn remove_clipboard_item(index: usize, store: State<Mutex<ClipboardStore>>) 
         }
     }
 }
-
-/// Sets the system clipboard to the specified text
-#[tauri::command]
-pub async fn paste_item(text: String) -> Result<(), String> {
-    println!("Would paste: {}", text);
-    Ok(())
-}

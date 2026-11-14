@@ -6,7 +6,7 @@
 use super::ClipboardItem;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClipboardStore {
@@ -47,7 +47,7 @@ impl ClipboardStore {
     /// # Arguments
     ///
     /// * `path` - Path to the JSON storage file
-    pub fn load(path: &PathBuf) -> Self {
+    pub fn load(path: &Path) -> Self {
         if !path.exists() {
             return Self::new();
         }
@@ -69,14 +69,30 @@ impl ClipboardStore {
     /// # Errors
     ///
     /// Returns error if file write fails
-    pub fn save(&self, path: &PathBuf) -> Result<(), std::io::Error> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
+    pub fn save(&self, path: &Path) -> Result<(), std::io::Error> {
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(path, json)?;
+        crate::fs::write_atomic(path, json.as_bytes())?;
         Ok(())
+    }
+
+    /// Removes the item with `id`; returns whether one was removed.
+    pub fn remove_by_id(&mut self, id: &str) -> bool {
+        let before = self.items.len();
+        self.items.retain(|item| item.id != id);
+        self.items.len() != before
+    }
+
+    /// Loads the history from its XDG data location
+    ///
+    /// Moves the pre-v0.3 file from `~/.config/uti/clipboard.json` first.
+    pub fn load_default() -> Self {
+        if let Err(e) = crate::paths::migrate_file(
+            &crate::paths::legacy_clipboard_history(),
+            &crate::paths::clipboard_history(),
+        ) {
+            eprintln!("Failed to migrate clipboard history: {}", e);
+        }
+        Self::load(&crate::paths::clipboard_history())
     }
 
     /// Adds a new item to the clipboard history
@@ -102,10 +118,9 @@ impl ClipboardStore {
 
     /// Gets the storage file path
     ///
-    /// Uses XDG Base Directory specification: ~/.config/uti/clipboard.json
+    /// `$XDG_DATA_HOME/uti/clipboard.json` (see [`crate::paths`])
     pub fn get_storage_path() -> PathBuf {
-        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-        config_dir.join("uti").join("clipboard.json")
+        crate::paths::clipboard_history()
     }
 }
 
@@ -230,5 +245,48 @@ mod tests {
 
         let store = ClipboardStore::load(&path);
         assert_eq!(store.items.len(), 0);
+    }
+
+    #[test]
+    fn legacy_items_without_id_get_unique_ids() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("clipboard.json");
+        fs::write(
+            &path,
+            r#"{"items":[{"text":"a","timestamp":1},{"text":"b","timestamp":2}],"max_items":50}"#,
+        )
+        .unwrap();
+
+        let store = ClipboardStore::load(&path);
+
+        assert_eq!(store.items.len(), 2);
+        assert!(!store.items[0].id.is_empty());
+        assert_ne!(store.items[0].id, store.items[1].id);
+    }
+
+    #[test]
+    fn ids_survive_save_and_load() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("clipboard.json");
+        let mut store = ClipboardStore::new();
+        store.add("x".to_string());
+        let id = store.items[0].id.clone();
+        store.save(&path).unwrap();
+
+        assert_eq!(ClipboardStore::load(&path).items[0].id, id);
+    }
+
+    #[test]
+    fn remove_by_id_removes_only_that_item() {
+        let mut store = ClipboardStore::new();
+        store.add("first".to_string());
+        store.add("second".to_string());
+        let first_id = store.items[1].id.clone();
+
+        assert!(store.remove_by_id(&first_id));
+        assert!(!store.remove_by_id(&first_id));
+
+        let texts: Vec<_> = store.items.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(texts, vec!["second"]);
     }
 }

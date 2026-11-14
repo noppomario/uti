@@ -2,5 +2,5 @@
 
 mod commands;
 
-pub use commands::{add_clipboard_item, get_clipboard_history, paste_item, remove_clipboard_item};
+pub use commands::{add_clipboard_item, get_clipboard_history, remove_clipboard_item};
 pub use uti_core::clipboard::*;

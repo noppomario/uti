@@ -15,10 +15,17 @@ use serde::{Deserialize, Serialize};
 /// and timestamp for LRU ordering.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ClipboardItem {
+    /// Stable identifier (UUID v4); generated for legacy entries without one
+    #[serde(default = "new_id")]
+    pub id: String,
     /// The text content of the clipboard item
     pub text: String,
     /// Unix timestamp when this item was copied
     pub timestamp: u64,
+}
+
+fn new_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 impl ClipboardItem {
@@ -38,6 +45,7 @@ impl ClipboardItem {
     /// ```
     pub fn new(text: String) -> Self {
         Self {
+            id: new_id(),
             text,
             timestamp: Self::current_timestamp(),
         }
@@ -51,7 +59,11 @@ impl ClipboardItem {
     /// * `timestamp` - Unix timestamp
     #[allow(dead_code)]
     pub fn with_timestamp(text: String, timestamp: u64) -> Self {
-        Self { text, timestamp }
+        Self {
+            id: new_id(),
+            text,
+            timestamp,
+        }
     }
 
     /// Gets the current Unix timestamp
@@ -82,9 +94,10 @@ mod tests {
     }
 
     #[test]
-    fn test_items_are_equal_if_text_and_timestamp_match() {
+    fn test_items_with_same_content_are_distinct_entries() {
         let item1 = ClipboardItem::with_timestamp("test".to_string(), 123);
         let item2 = ClipboardItem::with_timestamp("test".to_string(), 123);
-        assert_eq!(item1, item2);
+        assert_ne!(item1.id, item2.id);
+        assert_ne!(item1, item2);
     }
 }

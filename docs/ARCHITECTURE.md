@@ -63,7 +63,7 @@ Main application with clipboard history and app launcher UI.
 | IPC | D-Bus: owns `io.github.noppomario.uti`, serves `ActivateAction`, calls `Shell1` / `Daemon1` |
 | Config | `~/.config/uti/config.json` |
 | Launcher | `~/.config/uti/launcher.json` |
-| Clipboard | `~/.config/uti/clipboard.json` |
+| Clipboard | `~/.local/share/uti/clipboard.json` (moved from `~/.config/uti/` on first start) |
 | Snippets | `~/.config/uti/snippets.json` |
 
 **Snippets Feature:**
@@ -167,6 +167,6 @@ sequenceDiagram
 | `~/.config/systemd/user/uti-daemon.service` | Daemon service |
 | `~/.config/uti/config.json` | User configuration |
 | `~/.config/uti/launcher.json` | Launcher commands |
-| `~/.config/uti/clipboard.json` | Clipboard history |
+| `~/.local/share/uti/clipboard.json` | Clipboard history |
 | `~/.config/uti/snippets.json` | Pinned snippets |
 | `~/.local/share/gnome-shell/extensions/uti@noppomario.github.io/` | GNOME extension |

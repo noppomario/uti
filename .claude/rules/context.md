@@ -105,6 +105,10 @@ See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for detailed structure.
 - `clipboardHistoryLimit`: Must be > 0 (default: 50)
 - `language`: "en" or "ja" (default: "en")
 
+**Clipboard history**: `~/.local/share/uti/clipboard.json` (`$XDG_DATA_HOME`);
+moved from `~/.config/uti/` on first start. All files are written atomically
+with mode 0600 (`uti_core::fs::write_atomic`).
+
 **Auto-migration**: On startup, `clipboard.json` max_items syncs with
 `clipboardHistoryLimit`
 

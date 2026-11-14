@@ -188,7 +188,7 @@ impl AppConfig {
         let contents = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-        std::fs::write(&path, contents)
+        crate::fs::write_atomic(&path, contents.as_bytes())
             .map_err(|e| format!("Failed to write config file: {}", e))?;
 
         println!("Config saved to: {:?}", path);
