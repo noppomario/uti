@@ -29,6 +29,25 @@ pub enum HistorySource {
     Vscode { path: String },
 }
 
+impl HistorySource {
+    /// Recent files for this source, newest first.
+    ///
+    /// The system XBEL needs `appName` to filter by; without it nothing is
+    /// returned.
+    pub fn recent_files(&self) -> Vec<recent_files::RecentFile> {
+        match self {
+            Self::RecentlyUsed {
+                app_name: None,
+                path: None,
+            } => Vec::new(),
+            Self::RecentlyUsed { app_name, path } => {
+                recent_files::get_recent_files_from_xbel(app_name.as_deref(), path.as_deref())
+            },
+            Self::Vscode { path } => recent_files::get_recent_files_from_vscode(path),
+        }
+    }
+}
+
 /// A command entry in the launcher configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -211,5 +230,14 @@ mod tests {
             },
             _ => panic!("Expected RecentlyUsed with path only"),
         }
+    }
+
+    #[test]
+    fn system_xbel_without_app_name_returns_nothing() {
+        let source = HistorySource::RecentlyUsed {
+            app_name: None,
+            path: None,
+        };
+        assert!(source.recent_files().is_empty());
     }
 }

@@ -47,6 +47,9 @@ pub fn key_hints(tab: Tab) -> &'static str {
     }
 }
 
+/// Footer key hints while the Launcher jump list is open.
+pub const JUMP_LIST_HINTS: &str = "<b>↵</b> Open   <b>1–9</b> Pick   <b>←</b> Back";
+
 /// Empty-state page shown as the list placeholder.
 pub fn empty_page(tab: Tab) -> adw::StatusPage {
     let (icon, title, description) = match tab {
@@ -102,10 +105,17 @@ pub struct RowSpec<'a> {
     pub tooltip: &'a str,
     /// `Some(starred)` shows a star toggle (Clipboard tab).
     pub star: Option<bool>,
+    /// The row has a jump list (recent files, opened with Right).
+    pub jump: bool,
 }
 
-/// Builds a list row; `on_star` is called with the row's visible index.
-pub fn build_row(spec: &RowSpec<'_>, on_star: impl Fn(usize) + 'static) -> gtk::ListBoxRow {
+/// Builds a list row; `on_star` and `on_jump` are called with the row's
+/// visible index when its star or jump list button is clicked.
+pub fn build_row(
+    spec: &RowSpec<'_>,
+    on_star: impl Fn(usize) + 'static,
+    on_jump: impl Fn(usize) + 'static,
+) -> gtk::ListBoxRow {
     let first_line = spec.text.lines().find(|l| !l.trim().is_empty());
 
     // Number shortcut hint for 1-9; kept as an empty slot after that so the
@@ -134,6 +144,19 @@ pub fn build_row(spec: &RowSpec<'_>, on_star: impl Fn(usize) + 'static) -> gtk::
     content.append(&hint);
     content.append(&title);
 
+    if spec.jump {
+        // A chevron, as on GNOME rows that lead to a sub-page.
+        let jump = gtk::Button::builder()
+            .icon_name("go-next-symbolic")
+            .tooltip_text("Recent Files (→)")
+            .valign(gtk::Align::Center)
+            .css_classes(["flat", "circular"])
+            .focusable(false)
+            .build();
+        let index = spec.index;
+        jump.connect_clicked(move |_| on_jump(index));
+        content.append(&jump);
+    }
     if let Some(starred) = spec.star {
         let mut classes = vec!["flat", "circular", "uti-star"];
         if starred {
