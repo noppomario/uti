@@ -24,7 +24,7 @@ jobs:
             git unzip cargo rustfmt clippy gcc gtk4-devel libadwaita-devel
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
