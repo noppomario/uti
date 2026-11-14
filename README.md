@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="app/src-tauri/icons/icon.png" alt="uti icon" width="128" style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+<img src="app/packaging/icons/hicolor/256x256/apps/io.github.noppomario.uti.png" alt="uti icon" width="128" style="border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
 
 # uti
 
@@ -10,13 +10,10 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://github.com/noppomario/uti)
 
 [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
-[![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![GTK4](https://img.shields.io/badge/GTK4-4A86CF?logo=gtk&logoColor=white)](https://gtk-rs.org/)
+[![libadwaita](https://img.shields.io/badge/libadwaita-4A86CF?logo=gnome&logoColor=white)](https://gnome.pages.gitlab.gnome.org/libadwaita/)
 [![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)](https://bun.sh/)
 [![Biome](https://img.shields.io/badge/Biome-60A5FA?logo=biome&logoColor=white)](https://biomejs.dev/)
-[![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
 > A modern clipboard manager and app launcher for Linux with double-Ctrl toggle
 
@@ -32,17 +29,17 @@
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - ⭐ **Snippets**: Pin frequently used text for quick access (star icon in clipboard history)
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
-- 💬 **Prompt**: Quick text input with auto-paste to active window (Ctrl+Enter)
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
-- 🖥️ **System Tray**: Runs in the background with tray icon control
+- 🖥️ **Panel Menu**: Show/Hide, Settings and more from the GNOME panel (uti for GNOME)
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
-- 🔄 **Auto-start & Self-update**: Optional auto-start on login, update via CLI or tray menu
+- 🎨 **Native Look**: GTK4 / libadwaita; follows the system light/dark style and accent color
+- 🔄 **Auto-start**: Optional auto-start on login (Settings)
 
 ## 📋 System Requirements
 
-- **OS**: Linux with systemd (Fedora 43+ recommended)
-- **Desktop**: GNOME 45+ on Wayland (recommended), other Wayland/X11 environments (limited)
+- **OS**: Linux with systemd (Fedora 44+; the app needs libadwaita 1.9+)
+- **Desktop**: GNOME 50 on Wayland (recommended), other Wayland/X11 environments (limited)
 - **Architecture**: x86_64
 
 ## 🚀 Quick Start
@@ -68,10 +65,8 @@ gnome-extensions enable uti@noppomario.github.io
 
 This extension provides:
 
-- **Panel icon with full menu** (same menu as system tray)
+- **Panel icon with full menu** (Show/Hide, Settings, Check for Updates, GitHub, Quit)
 - **Cursor-relative window positioning** (window appears at cursor location)
-
-The extension displays Tauri's tray icon directly, so no additional extensions (like AppIndicator) are required.
 
 Without the extension, uti still works but the window appears at screen center.
 
@@ -98,7 +93,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 - ⚡ **Daemon Architecture**: A dedicated Rust daemon monitors keyboard input via evdev, enabling flexible shortcuts independent of the desktop environment.
 
-- 🦀 **Modern Stack**: Built entirely with Rust backend, React 19 frontend, and tooling like Bun, Biome, and Vite for maximum developer experience.
+- 🦀 **Native Stack**: Written entirely in Rust with GTK4 / libadwaita, so it looks and behaves like a GNOME app.
 
 - 🧩 **GNOME Integration**: Custom extension displays window at cursor position and provides native panel icon—features impossible for regular Wayland apps.
 
@@ -106,19 +101,17 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 | Layer | Technology |
 | ----- | ---------- |
-| 🦀 Backend | Rust + Tauri 2 |
-| ⚛️ Frontend | React 19 + TypeScript 5.7 |
-| 🎨 Styling | Tailwind CSS v4 |
-| 📦 Bundler | Vite 6 + Bun |
-| 🔧 Linting | Biome (25-100x faster than ESLint) |
+| 🦀 App | Rust + gtk4-rs + libadwaita |
 | 🎹 Daemon | Rust + evdev + uinput + D-Bus |
+| 🧩 GNOME extension | GJS |
+| 🔧 Tooling | Bun (task runner), clippy, Biome (extension) |
 
 ## 📖 Usage
 
 ### Basic Operation
 
 1. Press **Ctrl twice quickly** to toggle window visibility
-2. Use **←/→** to switch between Clipboard, Snippets, Launcher, and Prompt tabs
+2. Use **←/→** to switch between Clipboard, Snippets, and Launcher tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
 4. Press **1-9** to quickly select an item by its number
 5. Press **Ctrl+F** to focus the search bar
@@ -128,42 +121,22 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
    - Item is immediately added to Snippets tab
    - Item is removed from Clipboard when the window closes
 9. In **Launcher tab**, press **→** to expand jump list (recent files)
-10. In **Prompt tab**: Type text and press **Ctrl+Enter** to paste to active window
-    - Text is copied to clipboard, window hides, and text is pasted to the previously active window
-    - **Note**: Auto-paste uses Ctrl+Shift+V, optimized for terminal emulators. Regular text editors may require manual paste (Ctrl+V).
-11. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
+10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
     - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
-### System Tray
+### Panel Menu (GNOME)
 
-Right-click the tray icon for options:
+Click the uti panel icon (left click toggles the window) for options:
 
 - **Show/Hide**: Toggle window visibility
-- **Settings**: Open settings window
-- **Auto-start**: Enable/disable start on login
-- **Check for Updates...**: Check for new versions
+- **Settings**: Open settings window (includes auto-start)
+- **Check for Updates**: Open the GitHub Releases page
 - **GitHub**: Open project page
 - **Quit**: Exit application
 
 ### Updating
 
-Check for and install updates:
-
-```bash
-uti update
-```
-
-Check only (without installing):
-
-```bash
-uti update --check
-```
-
-Skip confirmation prompt:
-
-```bash
-uti update -y
-```
+uti has no built-in updater. Install the new RPMs from [Releases](https://github.com/noppomario/uti/releases) or rerun `install.sh`.
 
 ## ⚙️ Configuration
 
@@ -172,7 +145,6 @@ Configuration file: `~/.config/uti/config.json`
 ```json
 {
   "theme": {
-    "color": "dark",
     "size": "normal"
   },
   "clipboardHistoryLimit": 50,
@@ -180,12 +152,13 @@ Configuration file: `~/.config/uti/config.json`
 }
 ```
 
-| Option                  | Type   | Default  | Description                   |
-| ----------------------- | ------ | -------- | ----------------------------- |
-| `theme.color`           | string | `dark`   | `midnight`, `dark`, `light`   |
-| `theme.size`            | string | `normal` | `minimal`, `normal`, `wide`   |
-| `clipboardHistoryLimit` | number | `50`     | Max clipboard items to store  |
-| `language`              | string | `en`     | `en` (English), `ja` (日本語) |
+| Option | Type | Default | Description |
+| ------ | ---- | ------- | ----------- |
+| `theme.size` | string | `normal` | `minimal`, `normal`, `wide` (window size/density) |
+| `clipboardHistoryLimit` | number | `50` | Max clipboard items to store |
+| `language` | string | `en` | Settings window language: `en` (English), `ja` (日本語) |
+
+Colors follow the system style; `theme.color` and `theme.accentColor` are ignored.
 
 ### Snippets Data
 
@@ -257,7 +230,7 @@ journalctl --user -u uti-daemon.service -n 50
 </details>
 
 <details>
-<summary><strong>Tray Icon Not Visible (GNOME)</strong></summary>
+<summary><strong>Panel Icon Not Visible (GNOME)</strong></summary>
 
 Enable uti for GNOME (see GNOME Users section above).
 
@@ -285,7 +258,7 @@ sudo gpasswd -d $USER input
 
 ## ⚠️ Known Limitations
 
-- **Window appears in dock (Wayland)**: On Wayland, the window appears in the dock when visible. This is a Tauri limitation ([#9829](https://github.com/tauri-apps/tauri/issues/9829)).
+- **Window appears in dock (non-GNOME)**: Hiding the window from the dash / Alt+Tab requires uti for GNOME.
 - **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway, etc.), window always appears at screen center. Enable uti for GNOME for cursor positioning.
 - **Jump list app support**: Only apps that write to `recently-used.xbel` (GTK/GNOME apps) and VSCode are supported. KDE apps and most Electron apps are not supported.
 
@@ -294,8 +267,8 @@ sudo gpasswd -d $USER input
 | Component | Role |
 | --------- | ---- |
 | **uti-daemon** | Detects double Ctrl press via evdev |
-| **uti** | Clipboard manager + App launcher UI (Tauri) |
-| **uti for GNOME** | GNOME Shell extension for tray icon, cursor positioning, and always-on-top control (optional) |
+| **uti** | Clipboard manager + App launcher UI (GTK4 / libadwaita) |
+| **uti for GNOME** | GNOME Shell extension for panel menu, cursor positioning, and always-on-top control (optional) |
 
 For details, see [Architecture Documentation](docs/ARCHITECTURE.md).
 

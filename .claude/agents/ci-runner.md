@@ -19,9 +19,9 @@ You are a CI/test execution specialist. Run tests and report results concisely.
 ## Commands Reference
 
 ```bash
-bun run ci:local        # Full CI check (lint, typecheck, build, test)
+bun run ci:local        # Full CI check (lint, test, build)
 bun run all:test        # All tests only
-bun run frontend:test   # Frontend tests only
+bun run app:test        # App tests only
 cargo test --workspace  # Rust tests only
 ```
 
@@ -32,7 +32,6 @@ cargo test --workspace  # Rust tests only
 
 ### Summary
 - Lint: [pass/fail]
-- Typecheck: [pass/fail]
 - Build: [pass/fail]
 - Tests: [X passed, Y failed]
 

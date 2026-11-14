@@ -26,27 +26,10 @@
     "editor.defaultFormatter": "biomejs.biome"
   },
 
-  // TypeScript/JavaScript
-  "[typescript]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
+  // JavaScript (GNOME extension)
   "[javascript]": {
     "editor.defaultFormatter": "biomejs.biome"
   },
-  "[javascriptreact]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-
-  // Biome
-  "biome.lspBin": "./app/node_modules/@biomejs/biome/bin/biome",
-
-  // Tailwind CSS
-  "tailwindCSS.experimental.classRegex": [
-    ["class(?:Name)?\\s*[:=]\\s*['\"`]([^'\"`]*)['\"`]", "([^'\"`]*)"]
-  ],
 
   // File associations
   "files.associations": {

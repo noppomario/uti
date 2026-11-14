@@ -268,7 +268,7 @@ Valuable even if the rewrite is delayed.
 - [x] Extension: `shell-version` `["50"]` (5.4.6), drop SNI watcher, own
       panel menu, async D-Bus, method-based positioning, clipboard watch (#184).
 - [x] App (Tauri): wired to the new contract, SNI tray removed (#185).
-- [ ] App: consume `ClipboardChanged` instead of polling (deferred to Phase 3).
+- [x] App: consume `ClipboardChanged` instead of polling (done in Phase 3).
 
 ### Phase 2: Extract `uti-core`
 
@@ -278,21 +278,21 @@ Valuable even if the rewrite is delayed.
 
 ### Phase 3: GTK4 / libadwaita app
 
-- [ ] Main window: tab bar, search, clipboard / snippets / launcher tabs,
+- [x] Main window: tab bar, search, clipboard / snippets / launcher tabs,
       keyboard navigation (`state::nav`), jump list, pin button, key-hint
       footer. The Prompt tab is retired (kept in code, not wired).
 - [x] Look: libadwaita, system colors and accent; density from `theme.size`.
-- [ ] Settings window with libadwaita rows; i18n via gettext (en / ja),
-      migrate strings from `app/src/settings/i18n`.
-- [ ] Launcher via `gio::AppInfo` (5.2.1, 5.2.2).
-- [ ] Remove React frontend, Vite, Biome, Vitest; update `package.json`
-      scripts or replace bun task runner with `cargo xtask` / `just`.
+- [x] Settings window with libadwaita rows; i18n from JSON (en / ja).
+- [x] Launcher via `gio::AppInfo` (5.2.1, 5.2.2).
+- [x] Remove React frontend, Vite, Biome, Vitest; bun kept as task runner
+      (`package.json` scripts updated).
 
 ### Phase 4: Distribution
 
 - [ ] COPR repo with signed RPMs (app, daemon, extension).
-- [ ] Remove `updater.rs`, `uti update` CLI and tray "Check for Updates".
-- [ ] Desktop file, AppStream metainfo, icons.
+- [x] Remove `updater.rs`, `uti update` CLI and tray "Check for Updates".
+      "Check for Updates" now opens Releases.
+- [x] Desktop file, AppStream metainfo, icons.
 - [ ] Update `install.sh` to add the COPR repo.
 
 ### Phase 5: Docs and memory

@@ -11,11 +11,18 @@ jobs:
   ci:
     name: CI Checks
     runs-on: ubuntu-latest
+    # libadwaita 1.9 (GNOME 50) is not on Ubuntu, so build in Fedora.
+    container: fedora:44
     concurrency:
       group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}-ci', github.ref_name) || format('ci-{0}', github.ref) }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
     steps:
+      - name: Install toolchain and GTK
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git unzip cargo rustfmt clippy gcc gtk4-devel libadwaita-devel
+
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -24,95 +31,20 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "uti-build"
           cache-on-failure: true
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libdbus-1-dev \
-            libevdev-dev \
-            pkg-config \
-            libgtk-3-dev \
-            libgdk-pixbuf-2.0-dev \
-            libpango1.0-dev \
-            libatk1.0-dev \
-            libsoup-3.0-dev
-
       - name: Install root dependencies
         run: bun install
 
-      - name: Install app dependencies
-        run: cd app && bun install
-
       - name: Run lint checks
-        run: bun run all:lint
-
-      - name: Run type checks
-        run: bun run all:typecheck
+        run: bun run ci:check
 
       - name: Run tests
-        run: bun run all:test
+        run: bun run ci:test
 
       - name: Run build
-        run: bun run all:build
-
-      - name: Upload daemon binary
-        if: success() && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7
-        with:
-          name: daemon-binary
-          path: target/release/uti-daemon
-          retention-days: 7
-
-      - name: Upload Tauri bundles
-        if: success() && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7
-        with:
-          name: tauri-bundles
-          path: target/release/bundle/rpm/*.rpm
-          retention-days: 7
-          if-no-files-found: warn
-
-  gtk:
-    name: GTK Checks
-    runs-on: ubuntu-latest
-    # Ubuntu's GTK4 / libadwaita are older than GNOME 50, so build in Fedora.
-    container: fedora:44
-    concurrency:
-      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main-gtk' || format('gtk-{0}', github.ref) }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-    steps:
-      - name: Install toolchain and GTK
-        run: dnf install -y --setopt=install_weak_deps=False git cargo rustfmt clippy gcc gtk4-devel libadwaita-devel
-
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Format
-        run: cargo fmt -p uti-gtk --check
-
-      - name: Lint
-        run: cargo clippy -p uti-gtk --all-targets
-
-      - name: Test
-        run: cargo test -p uti-gtk
+        run: bun run ci:build

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=uti
+Comment=Clipboard history, snippets and launcher on double Ctrl
+Exec=uti
+Icon=io.github.noppomario.uti
+Terminal=false
+Categories=Utility;GTK;
+Keywords=clipboard;snippets;launcher;
+StartupNotify=true
+StartupWMClass=io.github.noppomario.uti

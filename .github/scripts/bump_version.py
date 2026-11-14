@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bump version in all 6 locations for uti project.
+Bump the version in every manifest of the uti project.
 
 Usage:
     python bump_version.py <version>
@@ -81,28 +81,13 @@ def main():
     root = get_project_root()
     print(f"Bumping version to {version}...")
 
-    # 1. Root package.json
     update_json_version(root / "package.json", version)
-
-    # 2. app/package.json
-    update_json_version(root / "app" / "package.json", version)
-
-    # 3. app/src-tauri/tauri.conf.json
-    update_json_version(root / "app" / "src-tauri" / "tauri.conf.json", version)
-
-    # 4. app/src-tauri/Cargo.toml
-    update_cargo_version(root / "app" / "src-tauri" / "Cargo.toml", version)
-
-    # 5. daemon/Cargo.toml
-    update_cargo_version(root / "daemon" / "Cargo.toml", version)
-
-    # 6. daemon/uti-daemon.spec
+    for cargo in ("app", "daemon", "crates/uti-core"):
+        update_cargo_version(root / cargo / "Cargo.toml", version)
+    update_rpm_spec_version(root / "app" / "packaging" / "uti.spec", version)
     update_rpm_spec_version(root / "daemon" / "uti-daemon.spec", version)
 
-    # 7. crates/uti-core/Cargo.toml
-    update_cargo_version(root / "crates" / "uti-core" / "Cargo.toml", version)
-
-    print(f"\nAll 7 files updated to version {version}")
+    print(f"\nAll files updated to version {version}")
 
 
 if __name__ == "__main__":

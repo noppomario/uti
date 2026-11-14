@@ -17,40 +17,38 @@ All team members should read this when starting development.
 
 ```bash
 # Monorepo task runner (from root)
-bun run frontend:all    # Frontend: format → lint → typecheck → build → test
+bun run app:all         # App: lint → test
 bun run daemon:all      # Daemon: format → lint → build → test
-bun run ci:local        # CI equivalent: lint → typecheck → build → test
-bun run all:test        # Run all tests (parallel)
+bun run ci:local        # CI equivalent: lint → test → build
+bun run all:test        # Run all tests
 
 # Individual tasks (pattern: [workspace]:[task])
-bun run frontend:lint   # Lint frontend only
+bun run app:lint        # Lint app only
 bun run daemon:build    # Build daemon only
 bun run rust:format     # Format all Rust code
 
 # Test-Driven Development (TDD)
-cd app && bun run test:watch    # Frontend watch mode (recommended for TDD)
-cd app && bun run test:coverage # Coverage report
+cargo test -p uti               # App tests (app/src/state/)
 cargo test --workspace          # All Rust tests
 
-# Traditional development
-cd app && bun run tauri:dev    # Tauri dev server
-cd daemon && sudo cargo run    # Run daemon
+# Development
+bun run app:run                 # Run app in a config sandbox (app/run-dev.sh)
+cd daemon && sudo cargo run     # Run daemon
 ```
 
 ### Key Technologies
 
-- **Frontend**: React 19 + TypeScript + Tailwind v4 + Biome
-- **Testing**: Vitest + React Testing Library (TDD required)
-- **Backend**: Tauri 2 + Rust
+- **App**: Rust + gtk4-rs 0.11 + libadwaita 0.9
+- **Testing**: `cargo test` (TDD required)
 - **Daemon**: Rust + evdev + D-Bus
-- **Target**: Linux (Fedora 43 GNOME/Wayland)
+- **Target**: Linux (Fedora 44 GNOME 50/Wayland)
 
 ### Important Reminders
 
 - ✅ **Terminal output**: ASCII only (Unicode has ambiguous width issues)
 - ✅ All code and documentation in **English only**
 - ✅ **TDD required**: Write tests BEFORE implementation (Red-Green-Refactor)
-- ✅ Use **TSDoc** for TypeScript, **Rust doc comments** for Rust
+- ✅ Use **Rust doc comments** for Rust
 - ✅ Format on save is enabled
 - ✅ No personal information in commits
 - ✅ Trunk-based: work on short-lived `claude/*` branches, create PRs to `main`
@@ -60,10 +58,10 @@ cd daemon && sudo cargo run    # Run daemon
 
 ### Project Scale
 
-- **Current**: 49 TypeScript files, ~6,600 lines
+- **Current**: 12 Rust files in `app/src/`
 - **Philosophy**: Keep it simple (YAGNI)
-- **Structure**: `components/`, `hooks/`, `settings/` directories
+- **Structure**: `app/src/` (UI, D-Bus, settings) and `app/src/state/` (pure, unit-tested logic)
 
 ---
 
-**Last updated:** 2026-01-11
+**Last updated:** 2026-11-15

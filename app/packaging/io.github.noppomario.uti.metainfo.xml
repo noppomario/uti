@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.noppomario.uti</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>uti</name>
+  <summary>Clipboard history, snippets and launcher on double Ctrl</summary>
+  <description>
+    <p>
+      A popup for GNOME that opens at the pointer when Ctrl is pressed twice.
+      It keeps clipboard history, stores snippets and launches apps or recent
+      files, all from the keyboard.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.noppomario.uti.desktop</launchable>
+  <developer id="io.github.noppomario">
+    <name>noppomario</name>
+  </developer>
+  <url type="homepage">https://github.com/noppomario/uti</url>
+  <url type="bugtracker">https://github.com/noppomario/uti/issues</url>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+</component>

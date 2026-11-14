@@ -101,6 +101,10 @@ mod tests {
         std::fs::write(&path, b"old").unwrap();
         // A read-only directory makes creating the temp file fail.
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+        if std::fs::write(dir.path().join("probe"), b"").is_ok() {
+            // Running as root (CI containers): permissions are not enforced.
+            return;
+        }
 
         let result = write_atomic(&path, b"new");
 
