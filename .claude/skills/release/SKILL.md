@@ -27,7 +27,7 @@ gh workflow run release.yml -f version=0.0.4
 
 The workflow automatically (no human intervention required):
 
-1. Creates release branch and bumps version in all 6 locations
+1. Creates release branch and bumps version in all 7 locations
 2. Creates PR with auto-merge enabled
 3. Waits for CI to pass
 4. Auto-merges PR when CI succeeds
@@ -47,6 +47,7 @@ The workflow automatically (no human intervention required):
 - `app/src-tauri/Cargo.toml`
 - `daemon/Cargo.toml`
 - `daemon/uti-daemon.spec`
+- `crates/uti-core/Cargo.toml`
 
 ## Alternative: Manual Tag Push
 

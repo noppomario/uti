@@ -99,7 +99,10 @@ def main():
     # 6. daemon/uti-daemon.spec
     update_rpm_spec_version(root / "daemon" / "uti-daemon.spec", version)
 
-    print(f"\nAll 6 files updated to version {version}")
+    # 7. crates/uti-core/Cargo.toml
+    update_cargo_version(root / "crates" / "uti-core" / "Cargo.toml", version)
+
+    print(f"\nAll 7 files updated to version {version}")
 
 
 if __name__ == "__main__":

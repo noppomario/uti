@@ -15,9 +15,9 @@ use tauri::AppHandle;
 use zbus::{fdo, interface, proxy, Connection, OwnedVariant};
 
 /// Well-known bus name owned by the app.
-pub const APP_NAME: &str = "io.github.noppomario.uti";
+pub use uti_core::dbus::APP_BUS_NAME as APP_NAME;
 /// Object path where `org.freedesktop.Application` is served.
-pub const APP_PATH: &str = "/io/github/noppomario/uti";
+pub use uti_core::dbus::APP_OBJECT_PATH as APP_PATH;
 
 /// Daemon `Daemon1` interface (double Ctrl detector, uinput paste fallback).
 #[proxy(

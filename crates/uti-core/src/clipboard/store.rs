@@ -213,11 +213,7 @@ mod tests {
     #[test]
     fn test_save_creates_parent_directories() {
         let temp_dir = TempDir::new().unwrap();
-        let path = temp_dir
-            .path()
-            .join("nested")
-            .join("dir")
-            .join("clipboard.json");
+        let path = temp_dir.path().join("nested").join("dir").join("clipboard.json");
 
         let store = ClipboardStore::new();
         store.save(&path).unwrap();

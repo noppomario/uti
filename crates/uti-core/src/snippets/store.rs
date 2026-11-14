@@ -35,16 +35,16 @@ pub fn load_snippets() -> SnippetsStore {
             Ok(store) => {
                 println!("Loaded {} snippets from: {:?}", store.items.len(), path);
                 store
-            }
+            },
             Err(e) => {
                 eprintln!("Failed to parse snippets: {}", e);
                 SnippetsStore::default()
-            }
+            },
         },
         Err(_) => {
             println!("Snippets file not found at {:?}", path);
             SnippetsStore::default()
-        }
+        },
     }
 }
 
@@ -86,10 +86,7 @@ mod tests {
         let path = temp_dir.path().join("snippets.json");
 
         let mut store = SnippetsStore::default();
-        store.items.push(SnippetItem::new(
-            "test".to_string(),
-            Some("Test".to_string()),
-        ));
+        store.items.push(SnippetItem::new("test".to_string(), Some("Test".to_string())));
 
         // Save
         let json = serde_json::to_string_pretty(&store).unwrap();

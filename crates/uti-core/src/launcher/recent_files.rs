@@ -122,7 +122,7 @@ pub fn get_recent_files_from_xbel(
         Err(e) => {
             eprintln!("Failed to read recently-used.xbel: {}", e);
             return Vec::new();
-        }
+        },
     };
 
     let xbel: Xbel = match from_str(&content) {
@@ -130,7 +130,7 @@ pub fn get_recent_files_from_xbel(
         Err(e) => {
             eprintln!("Failed to parse recently-used.xbel: {}", e);
             return Vec::new();
-        }
+        },
     };
 
     let mut files: Vec<RecentFile> = xbel
@@ -243,7 +243,7 @@ pub fn get_recent_files_from_vscode(vscdb_path: &str) -> Vec<RecentFile> {
         Err(e) => {
             eprintln!("Failed to open VSCode state.vscdb at {:?}: {}", path, e);
             return Vec::new();
-        }
+        },
     };
 
     // Query the history.recentlyOpenedPathsList key
@@ -258,7 +258,7 @@ pub fn get_recent_files_from_vscode(vscdb_path: &str) -> Vec<RecentFile> {
         Err(e) => {
             eprintln!("Failed to query VSCode recent files: {}", e);
             return Vec::new();
-        }
+        },
     };
 
     let json: Value = match serde_json::from_str(&json_str) {
@@ -266,7 +266,7 @@ pub fn get_recent_files_from_vscode(vscdb_path: &str) -> Vec<RecentFile> {
         Err(e) => {
             eprintln!("Failed to parse VSCode recent files JSON: {}", e);
             return Vec::new();
-        }
+        },
     };
 
     // Navigate to entries array
@@ -275,7 +275,7 @@ pub fn get_recent_files_from_vscode(vscdb_path: &str) -> Vec<RecentFile> {
         None => {
             eprintln!("No entries found in VSCode recent files");
             return Vec::new();
-        }
+        },
     };
 
     let mut files: Vec<RecentFile> = entries
@@ -349,28 +349,19 @@ mod tests {
     #[test]
     fn test_decode_file_uri_simple() {
         let uri = "file:///home/user/test.txt";
-        assert_eq!(
-            decode_file_uri(uri),
-            Some("/home/user/test.txt".to_string())
-        );
+        assert_eq!(decode_file_uri(uri), Some("/home/user/test.txt".to_string()));
     }
 
     #[test]
     fn test_decode_file_uri_with_spaces() {
         let uri = "file:///home/user/My%20Documents/test.txt";
-        assert_eq!(
-            decode_file_uri(uri),
-            Some("/home/user/My Documents/test.txt".to_string())
-        );
+        assert_eq!(decode_file_uri(uri), Some("/home/user/My Documents/test.txt".to_string()));
     }
 
     #[test]
     fn test_decode_file_uri_with_japanese() {
         let uri = "file:///home/user/%E3%83%86%E3%82%B9%E3%83%88.txt";
-        assert_eq!(
-            decode_file_uri(uri),
-            Some("/home/user/テスト.txt".to_string())
-        );
+        assert_eq!(decode_file_uri(uri), Some("/home/user/テスト.txt".to_string()));
     }
 
     #[test]
@@ -432,11 +423,8 @@ mod tests {
         let db_path = temp_dir.path().join("state.vscdb");
 
         let conn = rusqlite::Connection::open(&db_path).expect("Failed to create test db");
-        conn.execute(
-            "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
-            [],
-        )
-        .expect("Failed to create table");
+        conn.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)", [])
+            .expect("Failed to create table");
 
         let sample_json = r#"{"entries":[{"folderUri":"file:///home/user/project1"},{"fileUri":"file:///home/user/test.txt"},{"workspace":{"configPath":"file:///home/user/workspace.code-workspace"}}]}"#;
         conn.execute(

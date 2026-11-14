@@ -24,13 +24,10 @@ use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 use zbus::{fdo, Connection};
 
-const BUS_NAME: &str = "io.github.noppomario.uti.Daemon";
-const OBJECT_PATH: &str = "/io/github/noppomario/uti/Daemon";
-/// Bus name owned by the uti app; only its owner may request a paste.
-const APP_BUS_NAME: &str = "io.github.noppomario.uti";
-/// Legacy signal kept for one release so older extensions/apps keep working.
-const LEGACY_PATH: &str = "/io/github/noppomario/uti/DoubleTap";
-const LEGACY_INTERFACE: &str = "io.github.noppomario.uti.DoubleTap";
+use uti_core::dbus::{
+    APP_BUS_NAME, DAEMON_BUS_NAME as BUS_NAME, DAEMON_OBJECT_PATH as OBJECT_PATH,
+    LEGACY_DOUBLETAP_INTERFACE as LEGACY_INTERFACE, LEGACY_DOUBLETAP_PATH as LEGACY_PATH,
+};
 const INPUT_DIR: &str = "/dev/input";
 
 /// Maps a raw key event to a detector event; `None` for irrelevant events.
@@ -264,6 +261,15 @@ mod tests {
         assert!(!is_keyboard(Some(VIRTUAL_KEYBOARD_NAME), true));
         assert!(is_keyboard(Some("Topre REALFORCE 112JP"), true));
         assert!(!is_keyboard(Some("Logitech MX Anywhere 3"), false));
+    }
+
+    #[test]
+    fn interface_macro_name_matches_shared_constant() {
+        // `#[zbus::interface(name = ...)]` needs a literal.
+        assert_eq!(
+            <Daemon1 as zbus::object_server::Interface>::name().as_str(),
+            uti_core::dbus::DAEMON_INTERFACE
+        );
     }
 
     #[test]

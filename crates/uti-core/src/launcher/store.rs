@@ -27,11 +27,11 @@ pub fn load_launcher_config() -> LauncherConfig {
             Ok(config) => {
                 println!("Loaded launcher config from: {:?}", path);
                 config
-            }
+            },
             Err(e) => {
                 eprintln!("Failed to parse launcher config: {}", e);
                 empty_config()
-            }
+            },
         },
         Err(_) => {
             println!(
@@ -39,7 +39,7 @@ pub fn load_launcher_config() -> LauncherConfig {
                 path
             );
             empty_config()
-        }
+        },
     }
 }
 

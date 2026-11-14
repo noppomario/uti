@@ -1,0 +1,22 @@
+[package]
+name = "uti-core"
+version = "0.2.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+quick-xml = { version = "0.39", features = ["serialize"], optional = true }
+percent-encoding = { version = "2", optional = true }
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+uuid = { version = "1", features = ["v4"] }
+
+[features]
+default = ["launcher"]
+# Launcher config and recent-file sources (XBEL, VS Code SQLite).
+launcher = ["dep:quick-xml", "dep:percent-encoding", "dep:rusqlite"]
+
+[dev-dependencies]
+tempfile = "3"
