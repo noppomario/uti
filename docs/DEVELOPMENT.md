@@ -139,15 +139,15 @@ Subsequent builds are much faster (<30 seconds for small changes).
 
 ## CI
 
-`ci.yml` runs the `just` recipes; `Select jobs` skips jobs by changed files (docs-only PRs run lint only).
+`ci.yml` runs the `just` recipes. On PRs and pushes to `main`, `Select jobs` runs only the jobs affected by the changed files (docs-only changes run lint only); the weekly run is cargo-deny only.
 
 | Job | Runs |
 | --- | --- |
 | Rust lint and test | `fedora:44`, `just lint-rust test` |
-| Dependency audit | `just deny` (cargo-deny; also weekly) |
+| Dependency audit | `just deny` (cargo-deny; also weekly for new advisories) |
 | Docs, workflow and shell lint | `just lint-md lint-gha lint-sh` |
 | Extension lint | `just lint-ext` (on `gnome-extension/` changes) |
-| RPM build | SRPM + RPMs (packaging-related PRs, pushes to `main`) |
+| RPM build | SRPM + RPMs (on packaging-related changes) |
 | Merge gate | the only required check: all of the above passed or were skipped |
 
 `codeql.yml` (Code scanning / CodeQL) runs on pushes to `main` and weekly. Actions are pinned by commit SHA; Dependabot (cargo, github-actions) opens grouped PRs monthly after a 7-day cooldown and they are merged by hand.
@@ -204,7 +204,7 @@ GitHub Releases carry release notes only; packages are built by [COPR](https://c
 - The `Release tags` ruleset blocks moving or deleting `v*` tags
 - Build trigger: the COPR custom webhook URL, stored as the `COPR_WEBHOOK_URL` repository secret (`release.yml` warns if unset)
 - `packaging/make-srpm.sh [outdir] [ref]` builds the SRPM from `ref` (default HEAD; CI and `just rpm`): version from `git describe` (`0.4.0` on a tag, `0.4.0^3.gabc1234` after it), tarball = `git archive` + `cargo vendor`, offline `--locked` build
-- CI's `RPM build` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust on packaging-related PRs and pushes to `main`
+- CI's `RPM build` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust when packaging-related files change
 
 ### Local RPM Build
 

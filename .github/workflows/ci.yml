@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # Weekly full run: picks up newly published advisories (cargo-deny).
+  # Weekly: cargo-deny only, for newly published advisories.
   schedule:
     - cron: "0 6 * * 1"
 
@@ -27,6 +27,7 @@ jobs:
       rust: ${{ steps.diff.outputs.rust }}
       extension: ${{ steps.diff.outputs.extension }}
       package: ${{ steps.diff.outputs.package }}
+      deny: ${{ steps.diff.outputs.deny }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,18 +36,27 @@ jobs:
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
         run: |
-          # Pushes to main and manual runs check everything.
-          if [ "$EVENT" != pull_request ]; then
-            printf '%s\n' rust=true extension=true package=true >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          files=$(git diff --name-only "$BASE" HEAD)
+          all() { printf '%s\n' rust=true extension=true package=true deny=true >> "$GITHUB_OUTPUT"; }
+          case "$EVENT" in
+            schedule)
+              printf '%s\n' rust=false extension=false package=false deny=true >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+            pull_request) base=$PR_BASE ;;
+            push) base=$PUSH_BASE ;;
+            *) all; exit 0 ;;
+          esac
+          # New branch or force push: nothing reliable to diff against.
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then all; exit 0; fi
+          files=$(git diff --name-only "$base" HEAD)
           shared='^(justfile|mise\.(toml|lock)|\.github/workflows/ci\.yml)$'
           match() { printf '%s\n' "$files" | grep -qE "$1|$shared" && echo true || echo false; }
           {
-            echo "rust=$(match '^(app|daemon)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')"
+            rust=$(match '^(app|daemon)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')
+            echo "rust=$rust"
+            echo "deny=$rust"
             echo "extension=$(match '^gnome-extension/')"
             echo "package=$(match '^(packaging|\.copr|app/packaging|daemon/(systemd|udev)|gnome-extension/schemas)/|^(Cargo\.(toml|lock)|gnome-extension/metadata\.json)$')"
           } >> "$GITHUB_OUTPUT"
@@ -86,7 +96,7 @@ jobs:
   deny:
     name: Dependency audit
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.deny == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,6 +110,7 @@ jobs:
 
   markdown:
     name: Docs, workflow and shell lint
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -132,7 +143,7 @@ jobs:
   package:
     name: RPM build
     needs: changes
-    if: needs.changes.outputs.package == 'true' && github.event_name != 'schedule'
+    if: needs.changes.outputs.package == 'true'
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:44
     steps:
