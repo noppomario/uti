@@ -4,7 +4,7 @@ resolver = "2"
 
 # The release version of all packages (`just bump X.Y.Z`).
 [workspace.package]
-version = "0.4.1"
+version = "0.4.2"
 
 [profile.release]
 panic = "abort"
