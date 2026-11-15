@@ -16,7 +16,10 @@ echo "[1/4] Enabling COPR repository $COPR_PROJECT (sudo)..."
 sudo dnf -y copr enable "$COPR_PROJECT"
 
 echo "[2/4] Installing packages..."
-sudo dnf -y install uti uti-daemon gnome-shell-extension-uti
+pkgs=(uti uti-daemon gnome-shell-extension-uti)
+# dnf5 `install` leaves already installed packages (e.g. old release RPMs) as is.
+sudo dnf -y install "${pkgs[@]}"
+sudo dnf -y upgrade "${pkgs[@]}"
 
 # A user-local copy (old installer) would shadow the packaged extension.
 legacy_ext="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
