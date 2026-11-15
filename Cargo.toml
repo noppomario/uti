@@ -1,6 +1,10 @@
 [workspace]
-members = ["crates/uti-core", "daemon", "app"]
+members = ["daemon", "app"]
 resolver = "2"
+
+# The release version of all packages (`just bump X.Y.Z`).
+[workspace.package]
+version = "0.4.0"
 
 [profile.release]
 panic = "abort"

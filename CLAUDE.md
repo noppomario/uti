@@ -1,64 +1,50 @@
-# uti - Project Memory
+# uti
 
-This document serves as the central project memory for Claude Code.
-All team members should read this when starting development.
+Clipboard history, snippets and launcher popup for GNOME (Fedora 44, GNOME 50, Wayland),
+toggled by double Ctrl. Three components:
 
-**Note:** Detailed rules are automatically loaded from `.claude/rules/`:
+- `app/` - GTK4 / libadwaita app (`uti`); pure, unit-tested UI logic in `app/src/state/`
+- `daemon/` - `uti-daemon`: evdev double-Ctrl detection, uinput paste (needs `input` group)
+- `gnome-extension/` - "uti for GNOME": positioning, always-on-top, paste, clipboard watch,
+  panel menu (D-Bus `Shell1` service)
 
-- `context.md` - Technical stack, architecture, constraints
-- `decisions.md` - Active ADRs (archived ADRs in `.claude/archive/`)
-- `conventions.md` - Code standards, naming, Git conventions
+Packaging: `packaging/uti.spec` (COPR `noppomario/uti`), `app/packaging/` (desktop file,
+metainfo, icons).
 
----
+Details: [ARCHITECTURE](docs/ARCHITECTURE.md) (components, D-Bus, file locations),
+[DEVELOPMENT](docs/DEVELOPMENT.md) (setup, CI, release, packaging),
+[README](README.md) (usage, config files). Past decisions and their reasons: [docs/adr/](docs/adr/).
 
-## Quick Reference
+## Commands
 
-### Development Commands
+Tools: Rust via rustup (`rust-toolchain.toml`), everything else via mise (`mise.toml`,
+`mise.lock`). One-time: `mise install && just setup`.
 
 ```bash
-# Task runner: just (tools pinned in mise.toml; run `mise install` and `just setup` once)
-just ci                 # Same checks as CI: lint + deny + test
-just fmt                # cargo fmt + biome + rumdl --fix
-just lint               # lint-rust, lint-md, lint-ext, lint-gha, lint-sh
-just test               # All tests
-just deny               # cargo-deny (deny.toml)
-just rpm                # SRPM + app/daemon/extension RPMs into dist/
-
-# Test-Driven Development (TDD)
-cargo test -p uti               # App tests (app/src/state/)
-cargo test --workspace          # All Rust tests
-
-# Development
-just run                        # Run app in a config sandbox (app/run-dev.sh)
-cd daemon && cargo run          # Run daemon (needs input group)
+just ci          # lint + deny + test: same checks as CI; run before committing
+just fmt         # cargo fmt + biome + rumdl --fix
+just test        # cargo test --workspace
+just run         # app in a config sandbox (app/run-dev.sh)
+just rpm         # SRPM + RPMs into dist/ (once: sudo dnf builddep packaging/uti.spec)
+just bump X.Y.Z  # set the release version (used by the release skill)
 ```
 
-### Key Technologies
+## Rules
 
-- **App**: Rust + gtk4-rs 0.11 + libadwaita 0.9
-- **Testing**: `cargo test` (TDD required)
-- **Daemon**: Rust + evdev + D-Bus
-- **Target**: Linux (Fedora 44 GNOME 50/Wayland)
+- English only in code, comments, docs and commit messages. Terminal output ASCII only.
+- No personal information in commits or files.
+- TDD: write the failing test first. Widgets are not unit-tested: put UI logic in
+  `app/src/state/` (no GTK types) and test it there; `app.rs` / `ui.rs` only apply state.
+- Rust doc comments on public items; no comments that restate the code.
+- Recipes fail when a tool is missing (point to `mise install`); never skip checks silently.
+- Docs are concise and not duplicated: one fact lives in one file.
 
-### Important Reminders
+## Git
 
-- ✅ **Terminal output**: ASCII only (Unicode has ambiguous width issues)
-- ✅ All code and documentation in **English only**
-- ✅ **TDD required**: Write tests BEFORE implementation (Red-Green-Refactor)
-- ✅ Use **Rust doc comments** for Rust
-- ✅ lefthook: pre-commit formats staged files, commit-msg checks Conventional Commits, pre-push runs `just lint-rust test`
-- ✅ No personal information in commits
-- ✅ Trunk-based: work on short-lived `claude/*` branches, create PRs to `main`
-- ✅ Releases are tags (`vX.Y.Z`) created from `main` by `release.yml`
-- ✅ Commit messages in English, follow conventional commits
-- ✅ **Run `just ci` before committing** (includes tests)
-
-### Project Scale
-
-- **Current**: 12 Rust files in `app/src/`
-- **Philosophy**: Keep it simple (YAGNI)
-- **Structure**: `app/src/` (UI, D-Bus, settings) and `app/src/state/` (pure, unit-tested logic)
-
----
-
-**Last updated:** 2026-11-15
+- Trunk-based: short-lived `claude/*` branches, PRs to `main`. `Merge gate` is the only
+  required check.
+- Conventional Commits (`feat fix perf refactor docs test style build ci chore`), checked by
+  the lefthook commit-msg hook. pre-commit formats staged files; pre-push runs
+  `just lint-rust test`.
+- Releases: the release skill opens `release/vX.Y.Z`; merging it tags the release and
+  triggers the COPR build (`release.yml`).

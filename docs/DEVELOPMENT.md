@@ -137,21 +137,26 @@ Subsequent builds are much faster (<30 seconds for small changes).
 
 ---
 
+## CI
+
+`ci.yml` runs the `just` recipes; `Select jobs` skips jobs by changed files (docs-only PRs run lint only).
+
+| Job | Runs |
+| --- | --- |
+| Rust lint and test | `fedora:44`, `just lint-rust test` |
+| Dependency audit | `just deny` (cargo-deny; also weekly) |
+| Docs, workflow and shell lint | `just lint-md lint-gha lint-sh` |
+| Extension lint | `just lint-ext` (on `gnome-extension/` changes) |
+| RPM build | SRPM + RPMs (packaging-related PRs, pushes to `main`) |
+| Merge gate | the only required check: all of the above passed or were skipped |
+
+`codeql.yml` (Code scanning / CodeQL) runs on pushes to `main` and weekly. Actions are pinned by commit SHA; Dependabot (cargo, github-actions) opens grouped PRs monthly after a 7-day cooldown and they are merged by hand.
+
 ## Release Process
 
 ### Version Update
 
-`.github/scripts/bump_version.py X.Y.Z` updates:
-
-| File | Format |
-| ---- | ------ |
-| `app/Cargo.toml` | `version = "X.Y.Z"` |
-| `daemon/Cargo.toml` | `version = "X.Y.Z"` |
-| `crates/uti-core/Cargo.toml` | `version = "X.Y.Z"` |
-| `packaging/uti.spec` | `Version:        X.Y.Z` |
-| `Cargo.lock` | via `cargo update --workspace` |
-
-**Note**: All components share the same version number for unified releases.
+`just bump X.Y.Z` sets `[workspace.package] version` in `Cargo.toml` (shared by `uti` and `uti-daemon`) and updates `Cargo.lock`. The RPM version comes from the git tag (`make-srpm.sh`), so `packaging/uti.spec` keeps a placeholder.
 
 ### Branch Strategy
 
@@ -181,7 +186,7 @@ The `release` skill opens the release PR with your `gh`:
 
 ```bash
 git switch -c release/vX.Y.Z origin/main
-python .github/scripts/bump_version.py X.Y.Z
+just bump X.Y.Z
 git commit -am "chore: bump version to X.Y.Z"
 git push -u origin release/vX.Y.Z
 gh pr create --base main --fill
@@ -214,6 +219,5 @@ just rpm --nodeps --nocheck            # extra flags go to rpmbuild (e.g. rustup
 ## Additional Resources
 
 - [gtk4-rs book](https://gtk-rs.org/gtk4-rs/stable/latest/book/)
-- [Project Memory](../CLAUDE.md)
-- [Code Conventions](../.claude/rules/conventions.md)
-- [Architectural Decisions](../.claude/rules/decisions.md)
+- [Project rules for Claude Code](../CLAUDE.md)
+- [Architecture Decision Records](adr/README.md)

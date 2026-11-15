@@ -24,7 +24,6 @@ You are a documentation specialist. Update project docs to reflect code changes.
 
 - `README.md` - User-facing documentation
 - `CLAUDE.md` - Project memory for Claude Code
-- `.claude/rules/*.md` - Architecture decisions, conventions
 - `docs/*.md` - Additional documentation
 
 ## Constraints

@@ -5,7 +5,8 @@
 %global ext_uuid uti@noppomario.github.io
 
 Name:           uti
-Version:        0.4.0
+# Set from `git describe` by packaging/make-srpm.sh.
+Version:        0
 Release:        1%{?dist}
 Summary:        Clipboard history, snippets and launcher on double Ctrl
 

@@ -24,10 +24,15 @@ use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 use zbus::{fdo, Connection};
 
-use uti_core::dbus::{
-    APP_BUS_NAME, DAEMON_BUS_NAME as BUS_NAME, DAEMON_OBJECT_PATH as OBJECT_PATH,
-    LEGACY_DOUBLETAP_INTERFACE as LEGACY_INTERFACE, LEGACY_DOUBLETAP_PATH as LEGACY_PATH,
-};
+// D-Bus names; the app and the GNOME extension use the same literals.
+const APP_BUS_NAME: &str = "io.github.noppomario.uti";
+const BUS_NAME: &str = "io.github.noppomario.uti.Daemon";
+const OBJECT_PATH: &str = "/io/github/noppomario/uti/Daemon";
+#[cfg(test)]
+const DAEMON_INTERFACE: &str = "io.github.noppomario.uti.Daemon1";
+/// Legacy signal still emitted for clients older than v0.3.0.
+const LEGACY_PATH: &str = "/io/github/noppomario/uti/DoubleTap";
+const LEGACY_INTERFACE: &str = "io.github.noppomario.uti.DoubleTap";
 const INPUT_DIR: &str = "/dev/input";
 
 /// Maps a raw key event to a detector event; `None` for irrelevant events.
@@ -259,10 +264,7 @@ mod tests {
     #[test]
     fn interface_macro_name_matches_shared_constant() {
         // `#[zbus::interface(name = ...)]` needs a literal.
-        assert_eq!(
-            <Daemon1 as zbus::object_server::Interface>::name().as_str(),
-            uti_core::dbus::DAEMON_INTERFACE
-        );
+        assert_eq!(<Daemon1 as zbus::object_server::Interface>::name().as_str(), DAEMON_INTERFACE);
     }
 
     #[test]

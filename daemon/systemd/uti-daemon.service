@@ -1,6 +1,7 @@
 [Unit]
 Description=uti Keyboard Daemon (User Session)
 After=graphical-session.target
+# Stop with the session so a re-login starts a fresh D-Bus connection (ADR-018).
 BindsTo=graphical-session.target
 
 [Service]

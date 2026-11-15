@@ -1479,17 +1479,9 @@ name = "uti"
 version = "0.4.0"
 dependencies = [
  "async-channel",
+ "dirs",
  "gtk4",
  "libadwaita",
- "serde_json",
- "uti-core",
-]
-
-[[package]]
-name = "uti-core"
-version = "0.4.0"
-dependencies = [
- "dirs",
  "percent-encoding",
  "quick-xml",
  "rusqlite",
@@ -1509,7 +1501,6 @@ dependencies = [
  "inotify",
  "log",
  "tokio",
- "uti-core",
  "zbus",
 ]
 

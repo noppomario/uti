@@ -5,7 +5,6 @@
 pub mod recent_files;
 mod store;
 
-pub use recent_files::RecentFile;
 pub use store::{get_launcher_config_path, load_launcher_config};
 
 use serde::{Deserialize, Serialize};

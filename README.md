@@ -81,9 +81,9 @@ Without the extension, uti still works but the window appears at screen center.
 </details>
 
 <details>
-<summary>Using AppIndicator instead?</summary>
+<summary>Hide the panel button?</summary>
 
-If you already have AppIndicator extension installed and prefer to use it, disable the extension's tray icon:
+The panel button belongs to uti for GNOME (the app itself shows no tray icon). To hide it and use double Ctrl only:
 
 ```bash
 gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
