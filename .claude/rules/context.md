@@ -39,11 +39,12 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 For detailed rationale, see ADRs in `decisions.md` (active) or
 `.claude/archive/adr-archive.md` (archived).
 
-Key archived decisions:
+Key decisions:
 
-- **ADR-001**: Biome over ESLint + Prettier
-- **ADR-004**: D-Bus for IPC
-- **ADR-016**: Custom GNOME extension (active, in decisions.md)
+- **ADR-030**: GTK4 / libadwaita app (replaced Tauri)
+- **ADR-031**: App owns state; daemon and extension are D-Bus services
+- **ADR-032**: COPR distribution
+- **ADR-033**: mise / just / lefthook tooling
 
 ## Repository Structure
 
