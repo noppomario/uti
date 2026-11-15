@@ -1,14 +1,12 @@
-# Archived Architectural Decision Records (ADR)
+# ADR records
 
-This file contains archived ADRs that are finalized and rarely need reference
-during development. These decisions have been implemented and are unlikely
-to change.
-
-For active ADRs, see `.claude/rules/decisions.md`.
+See the [index](README.md).
 
 ---
 
-## ADR-001: Use Biome instead of ESLint + Prettier
+## ADR-001
+
+### Use Biome instead of ESLint + Prettier
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -44,7 +42,9 @@ Use Biome (Rust-based, single tool) instead of ESLint + Prettier.
 
 ---
 
-## ADR-002: Do NOT use oxlint/oxfmt/tsgo
+## ADR-002
+
+### Do NOT use oxlint/oxfmt/tsgo
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -87,7 +87,9 @@ Stay with current tooling (Biome + tsc + esbuild).
 
 ---
 
-## ADR-003: No complex folder structure
+## ADR-003
+
+### No complex folder structure
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -137,7 +139,9 @@ src/
 
 ---
 
-## ADR-004: D-Bus for daemon-to-app communication
+## ADR-004
+
+### D-Bus for daemon-to-app communication
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -179,7 +183,9 @@ Use D-Bus session bus.
 
 ---
 
-## ADR-005: Remove all personal information from commits
+## ADR-005
+
+### Remove all personal information from commits
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -220,7 +226,9 @@ Rewrite git history and remove all personal identifiable information.
 
 ---
 
-## ADR-006: English-only for all code and documentation
+## ADR-006
+
+### English-only for all code and documentation
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -254,7 +262,9 @@ Translate everything to English.
 
 ---
 
-## ADR-007: Target Linux only (for now)
+## ADR-007
+
+### Target Linux only (for now)
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -295,7 +305,9 @@ Focus on Linux (Fedora 43 GNOME/Wayland) for initial release.
 
 ---
 
-## ADR-008: Monorepo task architecture with workspace-first design
+## ADR-008
+
+### Monorepo task architecture with workspace-first design
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -338,7 +350,9 @@ Rust workspace (`Cargo.toml`) for unified Rust management.
 
 ---
 
-## ADR-009: Pre-commit quality gate with ci:local requirement
+## ADR-009
+
+### Pre-commit quality gate with ci:local requirement
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -381,7 +395,9 @@ Two-layer quality gate:
 
 ---
 
-## ADR-010: Adopt Vitest for testing with TDD methodology
+## ADR-010
+
+### Adopt Vitest for testing with TDD methodology
 
 **Date**: 2025-12-27
 **Status**: Accepted
@@ -497,7 +513,9 @@ bun add -d vitest @testing-library/react @testing-library/dom happy-dom
 
 ---
 
-## ADR-011: Externalize configuration to JSON file
+## ADR-011
+
+### Externalize configuration to JSON file
 
 **Date**: 2025-12-30
 **Status**: Accepted
@@ -569,7 +587,9 @@ Use `~/.config/uti/config.json` for persistent user configuration with:
 
 ---
 
-## ADR-012: Centralize theme management with Tailwind CSS v4 @theme
+## ADR-012
+
+### Centralize theme management with Tailwind CSS v4 @theme
 
 **Date**: 2025-12-30
 **Status**: Accepted (Updated 2026-01-04)
@@ -677,7 +697,9 @@ Components use semantic tokens: `bg-app-bg`, `text-app-text`
 
 ---
 
-## ADR-013: Class-based dark mode only (no system theme detection)
+## ADR-013
+
+### Class-based dark mode only (no system theme detection)
 
 **Date**: 2025-12-30
 **Status**: Accepted
@@ -751,7 +773,9 @@ Use explicit class-based dark mode controlled by `config.json`:
 
 ---
 
-## ADR-014: System tray implementation with AppIndicator
+## ADR-014
+
+### System tray implementation with AppIndicator
 
 **Date**: 2025-12-30
 **Status**: Accepted
@@ -824,7 +848,9 @@ backend for Linux.
 
 ---
 
-## ADR-015: Separate RPM packaging from development workflow
+## ADR-015
+
+### Separate RPM packaging from development workflow
 
 **Date**: 2025-12-31
 **Status**: Accepted
@@ -910,7 +936,70 @@ daemon:rpm     ─────→ standalone (release packaging)
 
 ---
 
-## ADR-017: Unified component naming (uti-daemon)
+## ADR-016
+
+### Custom GNOME extension for tray and positioning
+
+**Date**: 2026-01-01
+**Status**: Superseded by ADR-031 (2026-11)
+**Decision Makers**: Project team
+
+### Context
+
+On GNOME/Wayland, two features required privileged shell access:
+
+1. **Tray icon**: GNOME 43+ removed native tray support
+2. **Window positioning**: Wayland apps cannot query cursor position
+
+### Decision
+
+Create "uti for GNOME" extension that provides:
+
+1. **StatusNotifierHost**: Displays Tauri's SNI tray icon in GNOME panel
+2. **Cursor positioning**: Moves window to cursor on D-Bus signal
+
+### Rationale
+
+**Single dependency**:
+
+- One extension handles both tray and positioning
+- No need for third-party AppIndicator extension
+- Full control over behavior
+
+**Architecture fit**:
+
+- Extension listens to same D-Bus signal as Tauri app
+- D-Bus broadcast enables parallel handling
+- Extension uses `Meta.Window.move_frame()` for positioning
+
+### Alternatives Considered
+
+1. **AppIndicator extension + libappindicator**
+   - Pro: More widely used
+   - Con: Doesn't solve positioning issue
+
+2. **Separate extensions for tray and positioning**
+   - Pro: Modular
+   - Con: More complexity for users
+
+### Consequences
+
+**Positive**:
+
+- Single installation for full GNOME support
+- Custom tray menu matches app exactly
+- Cursor positioning works on Wayland
+
+**Negative**:
+
+- Must maintain GNOME extension separately
+- Extension API changes with GNOME versions
+
+---
+
+## ADR-017
+
+### Unified component naming (uti-daemon)
 
 **Date**: 2026-01-01
 **Status**: Accepted
@@ -951,7 +1040,57 @@ Rename daemon to `uti-daemon` for consistency with `uti` (Tauri app) and `uti fo
 
 ---
 
-## ADR-019: Launcher feature with system history integration
+## ADR-018
+
+### Daemon lifecycle bound to graphical session
+
+**Date**: 2026-01-01
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After user re-login, double Ctrl press stopped working. The daemon was holding
+a stale D-Bus session connection from the previous login session.
+
+### Decision
+
+Bind daemon lifecycle to `graphical-session.target`:
+
+- `BindsTo=graphical-session.target`: Stop daemon when session ends
+- `WantedBy=graphical-session.target`: Start daemon when session starts
+- Handle D-Bus errors gracefully without exiting monitor loop
+
+### Rationale
+
+**Session-aware design**:
+
+- D-Bus session bus is per-login session
+- Daemon must restart with fresh connection after re-login
+- `BindsTo` ensures clean shutdown on logout
+
+**Graceful error handling**:
+
+- D-Bus send errors during logout shouldn't crash the daemon
+- Log errors but continue monitoring keyboards
+
+### Consequences
+
+**Positive**:
+
+- Double Ctrl works reliably after re-login
+- Clean daemon lifecycle management
+- No stale connections
+
+**Negative**:
+
+- Requires `systemctl --user disable && enable` when changing `WantedBy`
+
+---
+
+## ADR-019
+
+### Launcher feature with system history integration
 
 **Date**: 2026-01-02
 **Status**: Accepted
@@ -1025,7 +1164,9 @@ Add launcher tab with:
 
 ---
 
-## ADR-020: markdownlint configuration rationale
+## ADR-020
+
+### markdownlint configuration rationale
 
 **Date**: 2026-01-03
 **Status**: Accepted
@@ -1046,7 +1187,80 @@ Document the rationale for each rule in `.markdownlint.json`.
 
 ---
 
-## ADR-022: PR-based sync-develop workflow
+## ADR-021
+
+### Adopt develop branch workflow (Git-flow simplified)
+
+**Date**: 2026-01-03
+**Status**: Superseded by ADR-029
+**Decision Makers**: Project team
+
+### Context
+
+Features merged to main immediately updated README, but releases happened later.
+This caused README to describe features not yet available in the latest release.
+
+### Decision
+
+Adopt a simplified Git-flow with:
+
+- `main`: Stable releases only
+- `develop`: Latest development
+- `claude/*`: Feature branches (PR to develop)
+- `release/vX.Y.Z`: Release preparation (PR to main)
+
+### Rationale
+
+**Separation of concerns**:
+
+- README on main matches latest release
+- Users downloading release get accurate documentation
+- Developers can preview upcoming features on develop
+
+**Minimal workflow change**:
+
+- Only PR target changes (develop instead of main)
+- Release workflow already handles version bumping
+- Auto-sync after release keeps develop up-to-date
+
+### Alternatives Considered
+
+1. **Separate docs branch**
+   - Pro: Minimal change
+   - Con: Complex, docs can desync from code
+
+2. **Version-specific READMEs**
+   - Pro: Detailed per-version docs
+   - Con: Maintenance burden
+
+3. **Release notes only (no README changes)**
+   - Pro: Simple
+   - Con: README becomes stale
+
+### Consequences
+
+**Positive**:
+
+- README always matches latest release
+- Clear separation: develop = latest, main = stable
+- Existing workflow mostly unchanged
+
+**Negative**:
+
+- One extra branch to maintain
+- Must remember to PR to develop, not main
+- Sync workflow adds complexity
+
+**Reconsider when**:
+
+- Team size grows (may need more branches)
+- Release frequency changes significantly
+
+---
+
+## ADR-022
+
+### PR-based sync-develop workflow
 
 **Date**: 2026-01-03
 **Status**: Superseded by ADR-029
@@ -1093,7 +1307,78 @@ Change sync-develop.yml to create a PR instead of pushing directly:
 
 ---
 
-## ADR-024: Snippets feature with delayed pin mechanism
+## ADR-023
+
+### Window pinning with GNOME extension for always-on-top
+
+**Date**: 2026-01-04
+**Status**: Superseded by ADR-031 (2026-11)
+**Decision Makers**: Project team
+
+### Context
+
+Window pinning feature requested to keep window visible during frequent
+clipboard access. On Wayland/GNOME, `set_always_on_top()` is ignored by Mutter.
+
+### Decision
+
+Two-phase implementation:
+
+1. **Phase 1.5**: Pin state disables auto-hide and ignores double Ctrl toggle
+2. **Phase 2**: D-Bus signal `SetAlwaysOnTop(bool)` to GNOME extension, which
+   calls `Meta.Window.make_above()`
+
+### Rationale
+
+**Wayland security model**:
+
+- Mutter ignores app-level always-on-top requests
+- Only compositor (GNOME Shell) can control window stacking
+- Extension is the only way to access `Meta.Window.make_above()`
+
+**Leveraging existing infrastructure**:
+
+- GNOME extension already exists for tray and positioning
+- D-Bus signal pattern already established
+- No new dependencies
+
+### Alternatives Considered
+
+1. **GTK always-on-top APIs**
+   - Pro: No extension needed
+   - Con: Doesn't work on Wayland/Mutter
+
+2. **org.gnome.Shell.Eval D-Bus**
+   - Pro: No extension changes
+   - Con: Disabled for security (GNOME 3.38+)
+
+3. **Pin = auto-hide disable only**
+   - Pro: Simpler, works everywhere
+   - Con: Window can be covered by other windows
+
+### Consequences
+
+**Positive**:
+
+- Full pinning functionality on GNOME/Wayland
+- Consistent with existing architecture
+- Graceful degradation (auto-hide still works without extension)
+
+**Negative**:
+
+- GNOME-specific (KDE/Sway need separate implementation)
+- Requires extension reload after update
+
+**Reconsider when**:
+
+- Wayland standardizes always-on-top protocol
+- KDE/Sway support needed
+
+---
+
+## ADR-024
+
+### Snippets feature with delayed pin mechanism
 
 **Date**: 2026-01-05
 **Status**: Accepted
@@ -1171,152 +1456,9 @@ Add Snippets tab with delayed pin mechanism:
 
 ---
 
-## ADR-026: Prompt feature with uinput auto-paste
+## ADR-025
 
-**Date**: 2026-01-10
-**Status**: Accepted
-**Decision Makers**: Project team
-
-### Context
-
-Users wanted a quick way to input text and paste it to the active window.
-On Wayland, applications cannot directly inject keystrokes or access other
-windows, requiring a system-level solution.
-
-### Decision
-
-Add Prompt tab with auto-paste functionality:
-
-1. **Frontend**: New Prompt tab with textarea and Ctrl+Enter submit
-2. **Window mode**: Horizontal layout (700x300) for Prompt tab
-3. **Auto-paste**: D-Bus TypeText signal triggers daemon to simulate Ctrl+Shift+V via uinput
-4. **Permissions**: udev rule grants input group access to /dev/uinput
-
-### Rationale
-
-**uinput approach**:
-
-- Works on all Wayland compositors (GNOME, KDE, Sway)
-- Uses same input group as keyboard monitoring
-- Ctrl+Shift+V simulation avoids keyboard layout issues
-
-**Architecture alignment**:
-
-- Leverages existing daemon infrastructure
-- D-Bus signal pattern consistent with DoubleTap/SetAlwaysOnTop
-- No new dependencies (evdev already supports uinput)
-
-**Why Ctrl+Shift+V**:
-
-- Ctrl+V doesn't work in terminal emulators (reserved for interrupt)
-- Ctrl+Shift+V works in both terminals and most GUI apps
-- Trade-off: Some text editors may require manual Ctrl+V paste
-
-### Alternatives Considered
-
-1. **ydotool**
-   - Pro: Full keyboard simulation
-   - Con: Requires separate daemon, additional dependency
-
-2. **GNOME extension Clutter VirtualDevice**
-   - Pro: Native GNOME integration
-   - Con: GNOME-only, doesn't work on other desktops
-
-3. **wtype**
-   - Pro: Wayland-native
-   - Con: Only works on wlroots-based compositors, not GNOME
-
-### Consequences
-
-**Positive**:
-
-- Desktop-environment independent solution
-- Reuses existing input group permissions
-- Consistent with existing architecture
-
-**Negative**:
-
-- Requires udev rule for /dev/uinput access
-- Small delay (100ms) needed for focus to return to previous window
-- Ctrl+Shift+V may not work in some GUI text editors (user must paste manually)
-
-**Reconsider when**:
-
-- Wayland standardizes input injection API
-- Need for character-by-character typing (shortcuts, mouse clicks)
-
----
-
-## ADR-021: Adopt develop branch workflow (Git-flow simplified)
-
-**Date**: 2026-01-03
-**Status**: Superseded by ADR-029
-**Decision Makers**: Project team
-
-### Context
-
-Features merged to main immediately updated README, but releases happened later.
-This caused README to describe features not yet available in the latest release.
-
-### Decision
-
-Adopt a simplified Git-flow with:
-
-- `main`: Stable releases only
-- `develop`: Latest development
-- `claude/*`: Feature branches (PR to develop)
-- `release/vX.Y.Z`: Release preparation (PR to main)
-
-### Rationale
-
-**Separation of concerns**:
-
-- README on main matches latest release
-- Users downloading release get accurate documentation
-- Developers can preview upcoming features on develop
-
-**Minimal workflow change**:
-
-- Only PR target changes (develop instead of main)
-- Release workflow already handles version bumping
-- Auto-sync after release keeps develop up-to-date
-
-### Alternatives Considered
-
-1. **Separate docs branch**
-   - Pro: Minimal change
-   - Con: Complex, docs can desync from code
-
-2. **Version-specific READMEs**
-   - Pro: Detailed per-version docs
-   - Con: Maintenance burden
-
-3. **Release notes only (no README changes)**
-   - Pro: Simple
-   - Con: README becomes stale
-
-### Consequences
-
-**Positive**:
-
-- README always matches latest release
-- Clear separation: develop = latest, main = stable
-- Existing workflow mostly unchanged
-
-**Negative**:
-
-- One extra branch to maintain
-- Must remember to PR to develop, not main
-- Sync workflow adds complexity
-
-**Reconsider when**:
-
-- Team size grows (may need more branches)
-- Release frequency changes significantly
-
----
-
-## ADR-025: ENODEV handling for sleep/resume recovery
+### ENODEV handling for sleep/resume recovery
 
 **Date**: 2026-01-06
 **Status**: Updated (2026-01-11)
@@ -1414,212 +1556,87 @@ Use evdev's async EventStream API to enable proper task cancellation:
 
 ---
 
-## ADR-029: D-Bus connection retry for Tauri app
+## ADR-026
 
-**Date**: 2026-01-12
+### Prompt feature with uinput auto-paste
+
+**Date**: 2026-01-10
 **Status**: Accepted
 **Decision Makers**: Project team
 
 ### Context
 
-After login or system startup, the Tauri app may start before the uti-daemon.
-When this happens, `DoubleTapProxy::new()` fails because the daemon hasn't
-registered its D-Bus bus name yet. The original implementation returned an
-error immediately without retry, leaving the app unable to receive double
-Ctrl signals until manually restarted.
-
-This is the counterpart to ADR-025 (daemon-side sleep/resume recovery).
+Users wanted a quick way to input text and paste it to the active window.
+On Wayland, applications cannot directly inject keystrokes or access other
+windows, requiring a system-level solution.
 
 ### Decision
 
-Add exponential backoff retry loop to `listen_dbus()` function:
+Add Prompt tab with auto-paste functionality:
 
-1. Retry D-Bus session connection, proxy creation, and signal stream acquisition
-2. Use exponential backoff: 1s → 2s → 4s → ... → max 30s
-3. Reset backoff to 1s on successful signal stream acquisition
-4. Automatically reconnect when stream ends (daemon restart)
+1. **Frontend**: New Prompt tab with textarea and Ctrl+Enter submit
+2. **Window mode**: Horizontal layout (700x300) for Prompt tab
+3. **Auto-paste**: D-Bus TypeText signal triggers daemon to simulate Ctrl+Shift+V via uinput
+4. **Permissions**: udev rule grants input group access to /dev/uinput
 
 ### Rationale
 
-**Exponential backoff over fixed interval**:
+**uinput approach**:
 
-- Reduces log spam when daemon is unavailable for extended periods
-- Quick recovery (1s) when daemon starts shortly after app
-- Caps at 30s to balance responsiveness and resource usage
+- Works on all Wayland compositors (GNOME, KDE, Sway)
+- Uses same input group as keyboard monitoring
+- Ctrl+Shift+V simulation avoids keyboard layout issues
 
-**Infinite retry over max attempts**:
+**Architecture alignment**:
 
-- App should always be ready to receive signals
-- Daemon may start at any time (user intervention, systemd restart)
-- Matches daemon's "always running" design philosophy
+- Leverages existing daemon infrastructure
+- D-Bus signal pattern consistent with DoubleTap/SetAlwaysOnTop
+- No new dependencies (evdev already supports uinput)
 
-**No Result return type**:
+**Why Ctrl+Shift+V**:
 
-- Function never "fails" in a recoverable way
-- Caller doesn't need to handle errors
-- Simplifies spawn site
+- Ctrl+V doesn't work in terminal emulators (reserved for interrupt)
+- Ctrl+Shift+V works in both terminals and most GUI apps
+- Trade-off: Some text editors may require manual Ctrl+V paste
 
 ### Alternatives Considered
 
-1. **Retry with max attempts, then fail**
-   - Pro: Bounded behavior
-   - Con: App becomes non-functional after max attempts
+1. **ydotool**
+   - Pro: Full keyboard simulation
+   - Con: Requires separate daemon, additional dependency
 
-2. **Fixed 1s interval**
-   - Pro: Simpler implementation
-   - Con: Log spam if daemon unavailable
+2. **GNOME extension Clutter VirtualDevice**
+   - Pro: Native GNOME integration
+   - Con: GNOME-only, doesn't work on other desktops
 
-3. **systemd dependency ordering**
-   - Pro: Guarantees startup order
-   - Con: App not managed by systemd (autostart via .desktop)
+3. **wtype**
+   - Pro: Wayland-native
+   - Con: Only works on wlroots-based compositors, not GNOME
 
 ### Consequences
 
 **Positive**:
 
-- App works regardless of startup order
-- Automatic recovery from daemon restarts
-- Reduced log spam with exponential backoff
-
-**Negative**:
-
-- Up to 30s delay if daemon starts much later
-- Slightly more complex code than original
-
-**Reconsider when**:
-
-- Need guaranteed sub-second recovery
-- App becomes systemd-managed (can use After= dependency)
-
----
-
-## ADR-016: Custom GNOME extension for tray and positioning
-
-**Date**: 2026-01-01
-**Status**: Superseded by ADR-031 (2026-11)
-**Decision Makers**: Project team
-
-### Context
-
-On GNOME/Wayland, two features required privileged shell access:
-
-1. **Tray icon**: GNOME 43+ removed native tray support
-2. **Window positioning**: Wayland apps cannot query cursor position
-
-### Decision
-
-Create "uti for GNOME" extension that provides:
-
-1. **StatusNotifierHost**: Displays Tauri's SNI tray icon in GNOME panel
-2. **Cursor positioning**: Moves window to cursor on D-Bus signal
-
-### Rationale
-
-**Single dependency**:
-
-- One extension handles both tray and positioning
-- No need for third-party AppIndicator extension
-- Full control over behavior
-
-**Architecture fit**:
-
-- Extension listens to same D-Bus signal as Tauri app
-- D-Bus broadcast enables parallel handling
-- Extension uses `Meta.Window.move_frame()` for positioning
-
-### Alternatives Considered
-
-1. **AppIndicator extension + libappindicator**
-   - Pro: More widely used
-   - Con: Doesn't solve positioning issue
-
-2. **Separate extensions for tray and positioning**
-   - Pro: Modular
-   - Con: More complexity for users
-
-### Consequences
-
-**Positive**:
-
-- Single installation for full GNOME support
-- Custom tray menu matches app exactly
-- Cursor positioning works on Wayland
-
-**Negative**:
-
-- Must maintain GNOME extension separately
-- Extension API changes with GNOME versions
-
----
-
-## ADR-023: Window pinning with GNOME extension for always-on-top
-
-**Date**: 2026-01-04
-**Status**: Superseded by ADR-031 (2026-11)
-**Decision Makers**: Project team
-
-### Context
-
-Window pinning feature requested to keep window visible during frequent
-clipboard access. On Wayland/GNOME, `set_always_on_top()` is ignored by Mutter.
-
-### Decision
-
-Two-phase implementation:
-
-1. **Phase 1.5**: Pin state disables auto-hide and ignores double Ctrl toggle
-2. **Phase 2**: D-Bus signal `SetAlwaysOnTop(bool)` to GNOME extension, which
-   calls `Meta.Window.make_above()`
-
-### Rationale
-
-**Wayland security model**:
-
-- Mutter ignores app-level always-on-top requests
-- Only compositor (GNOME Shell) can control window stacking
-- Extension is the only way to access `Meta.Window.make_above()`
-
-**Leveraging existing infrastructure**:
-
-- GNOME extension already exists for tray and positioning
-- D-Bus signal pattern already established
-- No new dependencies
-
-### Alternatives Considered
-
-1. **GTK always-on-top APIs**
-   - Pro: No extension needed
-   - Con: Doesn't work on Wayland/Mutter
-
-2. **org.gnome.Shell.Eval D-Bus**
-   - Pro: No extension changes
-   - Con: Disabled for security (GNOME 3.38+)
-
-3. **Pin = auto-hide disable only**
-   - Pro: Simpler, works everywhere
-   - Con: Window can be covered by other windows
-
-### Consequences
-
-**Positive**:
-
-- Full pinning functionality on GNOME/Wayland
+- Desktop-environment independent solution
+- Reuses existing input group permissions
 - Consistent with existing architecture
-- Graceful degradation (auto-hide still works without extension)
 
 **Negative**:
 
-- GNOME-specific (KDE/Sway need separate implementation)
-- Requires extension reload after update
+- Requires udev rule for /dev/uinput access
+- Small delay (100ms) needed for focus to return to previous window
+- Ctrl+Shift+V may not work in some GUI text editors (user must paste manually)
 
 **Reconsider when**:
 
-- Wayland standardizes always-on-top protocol
-- KDE/Sway support needed
+- Wayland standardizes input injection API
+- Need for character-by-character typing (shortcuts, mouse clicks)
 
 ---
 
-## ADR-027: Settings UI with declarative schema and i18n
+## ADR-027
+
+### Settings UI with declarative schema and i18n
 
 **Date**: 2026-01-11
 **Status**: Superseded by ADR-030 (2026-11)
@@ -1724,3 +1741,357 @@ Adding a new setting requires only:
 - Main UI needs i18n support
 - Settings become complex enough for tabs/navigation
 - Need for settings sync across devices
+
+---
+
+## ADR-028
+
+### Scalable project memory with ADR archiving
+
+**Date**: 2026-01-11
+**Status**: Superseded (2026-11-15): all ADRs live in `docs/adr/` and are not auto-loaded
+**Decision Makers**: Project team
+
+### Context
+
+`.claude/rules/` files are automatically loaded at the start of every Claude Code
+session. With 27 ADRs (1,724 lines in `decisions.md`), context window usage was
+becoming a concern. Most ADRs document completed decisions that rarely need
+reference during development.
+
+### Decision
+
+Archive finalized ADRs to `.claude/archive/adr-archive.md`:
+
+1. **Archive location**: `.claude/archive/` (outside `.claude/rules/`, not auto-loaded)
+2. **Active ADRs**: Keep only frequently-referenced decisions in `decisions.md`
+3. **Criteria for active**: GNOME extension, daemon lifecycle, workflow, recent changes
+4. **Reference pattern**: Link to archive from `decisions.md` header
+
+### Active ADRs (4)
+
+| ADR | Topic | Reason |
+| --- | ----- | ------ |
+| 016 | GNOME extension | Extension development reference |
+| 018 | Daemon lifecycle | systemd configuration reference |
+| 023 | Window pinning | GNOME extension feature |
+| 027 | Settings UI | Latest feature |
+
+### Archived ADRs (23)
+
+001-015, 017, 019-022, 024-026 - All finalized decisions with stable implementations.
+
+### Rationale
+
+**Context efficiency**:
+
+- Reduces auto-loaded content by ~1,300 lines (54%)
+- Preserves decision history without consuming session context
+- Archive accessible when needed via explicit read
+
+**Clear separation**:
+
+- Active: Decisions that inform current development
+- Archived: Historical record of completed decisions
+
+### Alternatives Considered
+
+1. **Delete old ADRs**
+   - Pro: Maximum reduction
+   - Con: Loses valuable decision history
+
+2. **GitHub Wiki**
+   - Pro: Completely external
+   - Con: Harder to reference, version control separate
+
+3. **Summarize ADRs**
+   - Pro: Keeps essence, reduces size
+   - Con: Loses detailed rationale
+
+### Consequences
+
+**Positive**:
+
+- 54% reduction in auto-loaded rules content
+- Decision history preserved and accessible
+- Clear guideline for future ADR archiving
+
+**Negative**:
+
+- Must manually read archive when referencing old decisions
+- Two files to maintain instead of one
+
+**Reconsider when**:
+
+- Archive grows beyond 50 ADRs (consider further organization)
+- Claude Code supports selective rule loading
+
+---
+
+## ADR-029
+
+### D-Bus connection retry for Tauri app
+
+**Date**: 2026-01-12
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After login or system startup, the Tauri app may start before the uti-daemon.
+When this happens, `DoubleTapProxy::new()` fails because the daemon hasn't
+registered its D-Bus bus name yet. The original implementation returned an
+error immediately without retry, leaving the app unable to receive double
+Ctrl signals until manually restarted.
+
+This is the counterpart to ADR-025 (daemon-side sleep/resume recovery).
+
+### Decision
+
+Add exponential backoff retry loop to `listen_dbus()` function:
+
+1. Retry D-Bus session connection, proxy creation, and signal stream acquisition
+2. Use exponential backoff: 1s → 2s → 4s → ... → max 30s
+3. Reset backoff to 1s on successful signal stream acquisition
+4. Automatically reconnect when stream ends (daemon restart)
+
+### Rationale
+
+**Exponential backoff over fixed interval**:
+
+- Reduces log spam when daemon is unavailable for extended periods
+- Quick recovery (1s) when daemon starts shortly after app
+- Caps at 30s to balance responsiveness and resource usage
+
+**Infinite retry over max attempts**:
+
+- App should always be ready to receive signals
+- Daemon may start at any time (user intervention, systemd restart)
+- Matches daemon's "always running" design philosophy
+
+**No Result return type**:
+
+- Function never "fails" in a recoverable way
+- Caller doesn't need to handle errors
+- Simplifies spawn site
+
+### Alternatives Considered
+
+1. **Retry with max attempts, then fail**
+   - Pro: Bounded behavior
+   - Con: App becomes non-functional after max attempts
+
+2. **Fixed 1s interval**
+   - Pro: Simpler implementation
+   - Con: Log spam if daemon unavailable
+
+3. **systemd dependency ordering**
+   - Pro: Guarantees startup order
+   - Con: App not managed by systemd (autostart via .desktop)
+
+### Consequences
+
+**Positive**:
+
+- App works regardless of startup order
+- Automatic recovery from daemon restarts
+- Reduced log spam with exponential backoff
+
+**Negative**:
+
+- Up to 30s delay if daemon starts much later
+- Slightly more complex code than original
+
+**Reconsider when**:
+
+- Need guaranteed sub-second recovery
+- App becomes systemd-managed (can use After= dependency)
+
+---
+
+## ADR-030
+
+### Native GTK4 UI with libadwaita
+
+**Date**: 2026-11-14
+**Status**: Accepted (supersedes ADR-027; shipped in v0.3.0)
+**Decision Makers**: Project team
+
+### Context
+
+uti targets GNOME/Wayland only. Tauri + React added a webview, a JS toolchain
+and IPC surface (arbitrary command execution, `csp: null`), while the hard
+platform problems (positioning, always-on-top, clipboard monitoring, double
+modifier tap) are solved outside the UI framework anyway.
+
+### Decision
+
+gtk4-rs (`gnome_50`) + libadwaita (`v1_9`), no Relm4, for the popup and the
+settings window. UI logic lives in pure `app/src/state/` modules; widgets only
+apply state. Colors follow the system; `theme.size` remains as density.
+
+### Alternatives Considered
+
+1. GPUI: no window hide/activate on Linux, unofficial crate snapshots.
+2. Slint: cross-platform with tray, but non-native look and licensing review.
+3. Relm4: adds a 0.x dependency and tokio; the `state/` split already gives
+   testable updates.
+4. Keep Tauri: cross-platform not needed; webview attack surface.
+
+### Consequences
+
+**Positive**: one language for app and daemon, native look (dark mode, accent,
+IME, HiDPI), no JS toolchain.
+
+**Negative**: GNOME-only; custom color themes dropped; widgets are not
+unit-tested.
+
+**Reconsider when**: Windows/macOS/KDE support becomes a concrete goal
+(re-evaluate Slint).
+
+---
+
+## ADR-031
+
+### App owns state; extension and daemon are D-Bus services
+
+**Date**: 2026-11-14
+**Status**: Accepted (supersedes ADR-016, ADR-023)
+**Decision Makers**: Project team
+
+### Context
+
+The app, daemon and extension reacted to the same broadcast signals, which
+raced (positioning before the window existed, sleeps as coordination). The
+extension also hosted a StatusNotifierWatcher for Tauri's tray icon.
+
+### Decision
+
+- The app is the single owner of state and calls the others.
+- Daemon (`io.github.noppomario.uti.Daemon`, `Daemon1`): only signal
+  `Triggered` on double Ctrl.
+- Extension (`io.github.noppomario.uti.Shell`, `Shell1`): methods
+  `PositionAtPointer`, `SetAbove`, `Paste`, signal `ClipboardChanged`
+  (`Meta.Selection` watch). Its own panel menu calls the app's GActions.
+- App: `GApplication` owns `io.github.noppomario.uti`; actions `toggle`,
+  `show`, `hide`, `settings`, `check-updates`, `quit`.
+- Interfaces are versioned (`...1`); `Shell1` methods check that the caller
+  owns the app name.
+
+### Consequences
+
+**Positive**: no signal races or sleeps; no SNI on GNOME; clipboard capture
+without polling.
+
+**Negative**: positioning, always-on-top and the panel menu require the
+extension (pin falls back to "no auto-hide"); extension follows GNOME Shell
+versions.
+
+**Reconsider when**: Wayland gets standard positioning / always-on-top /
+data-control protocols in Mutter.
+
+---
+
+## ADR-032
+
+### Distribute via COPR from a single spec
+
+**Date**: 2026-11-15
+**Status**: Accepted (first release: v0.4.0)
+**Decision Makers**: Project team
+
+### Context
+
+RPMs attached to GitHub Releases were installed by `install.sh` and an in-app
+updater (downloads to `/tmp`, `pkexec`, no signature check). The extension was
+unzipped into the user's home.
+
+### Decision
+
+- COPR `noppomario/uti` (SCM, `make_srpm`). `packaging/uti.spec` builds
+  `uti`, `uti-daemon` and `gnome-shell-extension-uti` (system-wide) from a
+  vendored tarball, offline and `--locked`, with Fedora's rust.
+- `release.yml` triggers COPR via the `COPR_WEBHOOK_URL` webhook;
+  `.copr/Makefile` builds the latest `vX.Y.Z` tag, never the branch tip.
+  A tag ruleset blocks moving or deleting `v*` tags.
+- GitHub Releases carry notes only. Updates: `dnf upgrade`. No updater.
+- deb/Ubuntu only on request (Ubuntu lacks libadwaita 1.9).
+
+### Alternatives Considered
+
+1. Keep Release assets: unsigned, needs an updater.
+2. `copr-cli` in CI: API token expires every 180 days.
+3. Fedora official packages: package review and crate packaging overhead.
+
+### Consequences
+
+**Positive**: signed repo, standard updates, CI `RPM build` job checks the
+spec on every packaging change.
+
+**Negative**: Fedora-only; a leaked webhook can only rebuild the latest tag.
+
+---
+
+## ADR-033
+
+### Tooling pinned in the repository (mise, just, lefthook)
+
+**Date**: 2026-11-15
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After the rewrite only Rust remained, yet bun/npm still ran tasks, husky and
+lint-staged. Lint tools were unpinned, so local results could differ from CI.
+
+### Decision
+
+- Rust via rustup, pinned by `rust-toolchain.toml` (Fedora 44's version).
+- Other tools pinned in `mise.toml` + `mise.lock` (aqua backend, checksums);
+  no node.
+- `just` recipes are the only entry points; CI runs the same recipes, and
+  `just ci` equals CI. Recipes fail when a tool is missing.
+- lefthook: pre-commit formats staged files, commit-msg checks Conventional
+  Commits, pre-push runs `just lint-rust test`.
+- CI: SHA-pinned actions, least-privilege tokens, no PAT, jobs skipped by
+  changed files, one required check (`Merge gate`). Dependabot monthly with a
+  7-day cooldown, merged by hand. CodeQL off PRs.
+
+### Consequences
+
+**Positive**: reproducible local checks; no JS toolchain; faster PR CI.
+
+**Negative**: contributors need mise and rustup; mise tools are updated by
+hand (`mise outdated`).
+
+---
+
+## ADR-034
+
+### Trunk-based development on main
+
+**Date**: 2026-11-14
+**Status**: Accepted (supersedes ADR-021, ADR-022)
+**Decision Makers**: Project team
+
+### Context
+
+The `develop` / `main` split (ADR-021) added sync PRs after every release and
+drifted when a change landed on `main` directly (#117). With a single
+maintainer it gave no benefit: stable versions are already identified by tags.
+
+### Decision
+
+- `main` is the only long-lived branch. Work on short-lived `claude/*`
+  branches and open PRs to `main`.
+- The release skill opens `release/vX.Y.Z` from `main`; merging it makes
+  `release.yml` tag the release (amended 2026-11-15, no PAT).
+- Remove `develop`, `sync-develop.yml` and Dependabot `target-branch`.
+
+### Consequences
+
+**Positive**: no sync PRs, Dependabot config applies immediately, one diff base.
+
+**Negative**: `main` may contain unreleased work; users install tagged
+releases (COPR, ADR-032), not the branch.
