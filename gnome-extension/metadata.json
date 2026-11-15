@@ -2,7 +2,7 @@
   "uuid": "uti@noppomario.github.io",
   "name": "uti for GNOME",
   "description": "Panel menu, window positioning, paste and clipboard watch for the uti clipboard manager",
-  "shell-version": ["50"],
+  "shell-version": ["50", "51"],
   "settings-schema": "org.gnome.shell.extensions.uti",
   "url": "https://github.com/noppomario/uti"
 }

@@ -94,7 +94,7 @@ GNOME Shell extension that provides:
 | -------- | ----- |
 | UUID | `uti@noppomario.github.io` |
 | Settings | GSettings (`org.gnome.shell.extensions.uti`) |
-| Shell versions | 50 |
+| Shell versions | 50, 51 |
 
 ---
 
