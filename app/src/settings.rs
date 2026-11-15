@@ -20,7 +20,6 @@ pub const SIZES: [&str; 3] = ["minimal", "normal", "wide"];
 /// Clipboard history limit range and step.
 pub const HISTORY_LIMIT: (f64, f64, f64) = (10.0, 500.0, 10.0);
 
-const RELEASES_URL: &str = "https://github.com/noppomario/uti/releases";
 const GITHUB_URL: &str = "https://github.com/noppomario/uti";
 
 /// A settings change the main window applies.
@@ -170,7 +169,7 @@ pub fn populate(window: &adw::ApplicationWindow, config: &AppConfig, on_event: R
         &t("about.checkForUpdates.label"),
         None,
         "adw-external-link-symbolic",
-        move || open_uri(&w, RELEASES_URL),
+        move || crate::app::open_software_updates(&w),
     ));
     let w = window.clone();
     about.add(&link_row(

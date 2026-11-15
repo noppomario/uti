@@ -138,17 +138,16 @@ Click the uti panel icon (left click toggles the window) for options:
 
 - **Show/Hide**: Toggle window visibility
 - **Settings**: Open settings window (includes auto-start)
-- **Check for Updates**: Open the GitHub Releases page
+- **Check for Updates**: Open the Updates page of GNOME Software
 - **GitHub**: Open project page
 - **Quit**: Exit application
 
 ### Updating
 
-uti has no built-in updater. Updates come from the COPR repository:
+Updates come from the COPR repository like any other package:
 
-```bash
-sudo dnf upgrade
-```
+- **GNOME Software** (Check for Updates in the panel menu or settings): it downloads updates and notifies you; Restart & Update installs them.
+- **Terminal**: `sudo dnf upgrade`, then log out and back in. The daemon restarts itself, but the running app and the extension keep the old version until the next login.
 
 ## ⚙️ Configuration
 
