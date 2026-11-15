@@ -1,9 +1,10 @@
 name: CodeQL
 
+# Not run on PRs (and not a required check): it only covers the extension's
+# JavaScript and the workflows, which actionlint/shellcheck/Biome lint on PRs.
+# Findings appear in the Security tab.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   schedule:
     - cron: "0 6 * * 1"
