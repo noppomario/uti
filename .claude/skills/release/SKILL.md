@@ -24,8 +24,8 @@ gh pr merge --auto --merge
 ```
 
 When CI passes and the PR merges, `release.yml` tags the merge commit (`vX.Y.Z`, with
-`GITHUB_TOKEN`) and builds and publishes in the same workflow: app RPM, daemon RPM and
-GNOME extension zip as a GitHub Release.
+`GITHUB_TOKEN`), creates the GitHub Release with git-cliff notes and triggers the COPR
+build via the `COPR_WEBHOOK_URL` secret. COPR builds the packages from `packaging/uti.spec`.
 
 ## Version Format
 
@@ -34,15 +34,14 @@ GNOME extension zip as a GitHub Release.
 ## Files Updated by bump_version.py
 
 - `app/Cargo.toml`
-- `app/packaging/uti.spec`
 - `daemon/Cargo.toml`
-- `daemon/uti-daemon.spec`
 - `crates/uti-core/Cargo.toml`
+- `packaging/uti.spec`
 - `Cargo.lock` (`cargo update --workspace`)
 
 ## Alternative: Manual Tag Push
 
-Pushing a `vX.Y.Z` tag also runs build and release (no version bump):
+Pushing a `vX.Y.Z` tag also runs the release job (no version bump):
 
 ```bash
 git tag vX.Y.Z

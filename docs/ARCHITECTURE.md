@@ -165,10 +165,11 @@ sequenceDiagram
 | ---- | ------- |
 | `/usr/bin/uti` | Main application |
 | `/usr/bin/uti-daemon` | Keyboard daemon |
-| `/etc/udev/rules.d/99-uti-uinput.rules` | uinput access for auto-paste |
-| `~/.config/systemd/user/uti-daemon.service` | Daemon service |
+| `/usr/lib/udev/rules.d/99-uti-uinput.rules` | uinput access for auto-paste |
+| `/usr/lib/systemd/user/uti-daemon.service` | Daemon service (enabled per user) |
 | `~/.config/uti/config.json` | User configuration |
 | `~/.config/uti/launcher.json` | Launcher commands |
 | `~/.local/share/uti/clipboard.json` | Clipboard history |
 | `~/.config/uti/snippets.json` | Pinned snippets |
-| `~/.local/share/gnome-shell/extensions/uti@noppomario.github.io/` | GNOME extension |
+| `/usr/share/gnome-shell/extensions/uti@noppomario.github.io/` | GNOME extension |
+| `/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.uti.gschema.xml` | Extension settings schema |

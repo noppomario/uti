@@ -289,11 +289,12 @@ Valuable even if the rewrite is delayed.
 
 ### Phase 4: Distribution
 
-- [ ] COPR repo with signed RPMs (app, daemon, extension).
+- [x] COPR repo `noppomario/uti` with RPMs (app, daemon, extension) from one
+      spec (`packaging/uti.spec`); `release.yml` triggers the build. deb on request.
 - [x] Remove `updater.rs`, `uti update` CLI and tray "Check for Updates".
       "Check for Updates" now opens Releases.
 - [x] Desktop file, AppStream metainfo, icons.
-- [ ] Update `install.sh` to add the COPR repo.
+- [x] Update `install.sh` to add the COPR repo.
 
 ### Phase 5: Docs and memory
 

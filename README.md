@@ -51,16 +51,25 @@ curl -fsSL https://raw.githubusercontent.com/noppomario/uti/main/install.sh | ba
 
 After installation, **log out and log back in** (required for input group), then run `uti`.
 
+The installer enables the [COPR repository](https://copr.fedorainfracloud.org/coprs/noppomario/uti/), installs the packages, adds you to the `input` group and enables the daemon. To install manually instead:
+
+```bash
+sudo dnf copr enable noppomario/uti
+sudo dnf install uti uti-daemon gnome-shell-extension-uti
+sudo usermod -aG input $USER
+systemctl --user enable --now uti-daemon.service
+```
+
 <details>
 <summary><strong>GNOME Users</strong></summary>
 
-On GNOME, the installer automatically installs the "uti for GNOME" extension. After logging back in, enable it:
+The "uti for GNOME" extension is the `gnome-shell-extension-uti` package. After logging back in, enable it:
 
 ```bash
 gnome-extensions enable uti@noppomario.github.io
 ```
 
-> **Note**: GNOME Shell only detects newly installed local extensions after a logout/login. The extension cannot be enabled until you log back in.
+> **Note**: GNOME Shell only detects newly installed extensions after a logout/login. The extension cannot be enabled until you log back in.
 
 This extension provides:
 
@@ -135,7 +144,11 @@ Click the uti panel icon (left click toggles the window) for options:
 
 ### Updating
 
-uti has no built-in updater. Install the new RPMs from [Releases](https://github.com/noppomario/uti/releases) or rerun `install.sh`.
+uti has no built-in updater. Updates come from the COPR repository:
+
+```bash
+sudo dnf upgrade
+```
 
 ## ⚙️ Configuration
 
@@ -238,15 +251,16 @@ Enable uti for GNOME (see GNOME Users section above).
 ## 🗑️ Uninstallation
 
 ```bash
-sudo dnf remove uti uti-daemon
+systemctl --user disable --now uti-daemon.service
+sudo dnf remove uti uti-daemon gnome-shell-extension-uti
 ```
 
-This automatically stops and disables the daemon service.
+Package removal cannot disable a per-user service, so disable it first.
 
-To remove the GNOME extension (optional):
+To remove the COPR repository (optional):
 
 ```bash
-rm -rf ~/.local/share/gnome-shell/extensions/uti@noppomario.github.io
+sudo dnf copr remove noppomario/uti
 ```
 
 To remove yourself from the input group (optional):
@@ -277,13 +291,15 @@ When you install uti, the following changes are made to your system:
 
 | Component | Location | Description |
 | --------- | -------- | ----------- |
-| **uti** | `/usr/bin/uti` | Main application (RPM package) |
-| **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (RPM package) |
-| **User service** | `~/.config/systemd/user/` | Daemon autostart service |
-| **Config** | `~/.config/uti/` | User configuration, clipboard history, snippets, launcher config |
+| **uti** | `/usr/bin/uti` | Main application (`uti` package) |
+| **uti-daemon** | `/usr/bin/uti-daemon` | Keyboard daemon (`uti-daemon` package) |
+| **User service** | `/usr/lib/systemd/user/uti-daemon.service` | Daemon autostart service (enabled per user) |
+| **Config** | `~/.config/uti/` | User configuration, snippets, launcher config |
+| **Data** | `~/.local/share/uti/` | Clipboard history |
 | **Input group** | `/etc/group` | Your user is added to the `input` group |
-| **udev rule** | `/etc/udev/rules.d/99-uti-uinput.rules` | Enables uinput access for auto-paste |
-| **uti for GNOME** | `~/.local/share/gnome-shell/extensions/` | GNOME Shell extension (GNOME only) |
+| **udev rule** | `/usr/lib/udev/rules.d/99-uti-uinput.rules` | Enables uinput access for auto-paste |
+| **uti for GNOME** | `/usr/share/gnome-shell/extensions/uti@noppomario.github.io/` | GNOME Shell extension, system-wide (`gnome-shell-extension-uti` package) |
+| **COPR repo** | `/etc/yum.repos.d/` | `noppomario/uti` repository for `dnf upgrade` |
 
 ### ⚠️ About the Input Group
 

@@ -26,6 +26,7 @@ jobs:
     outputs:
       rust: ${{ steps.diff.outputs.rust }}
       extension: ${{ steps.diff.outputs.extension }}
+      package: ${{ steps.diff.outputs.package }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,15 +39,17 @@ jobs:
         run: |
           # Pushes to main and manual runs check everything.
           if [ "$EVENT" != pull_request ]; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            echo "extension=true" >> "$GITHUB_OUTPUT"
+            printf '%s\n' rust=true extension=true package=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files=$(git diff --name-only "$BASE" HEAD)
           shared='^(justfile|mise\.(toml|lock)|\.github/workflows/ci\.yml)$'
           match() { printf '%s\n' "$files" | grep -qE "$1|$shared" && echo true || echo false; }
-          echo "rust=$(match '^(app|daemon|crates)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')" >> "$GITHUB_OUTPUT"
-          echo "extension=$(match '^gnome-extension/')" >> "$GITHUB_OUTPUT"
+          {
+            echo "rust=$(match '^(app|daemon|crates)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')"
+            echo "extension=$(match '^gnome-extension/')"
+            echo "package=$(match '^(packaging|\.copr|app/packaging|daemon/(systemd|udev)|gnome-extension/schemas)/|^(Cargo\.(toml|lock)|gnome-extension/metadata\.json)$')"
+          } >> "$GITHUB_OUTPUT"
 
   rust:
     name: Rust
@@ -105,7 +108,7 @@ jobs:
       - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
         with:
           version: 2026.11.8
-          install_args: aqua:casey/just aqua:rvben/rumdl aqua:rhysd/actionlint
+          install_args: aqua:casey/just aqua:rvben/rumdl aqua:rhysd/actionlint aqua:koalaman/shellcheck
       - run: just lint-md lint-gha
 
   extension:
@@ -123,10 +126,41 @@ jobs:
           install_args: aqua:casey/just aqua:biomejs/biome
       - run: just lint-ext
 
+  # Builds the SRPM from this commit with the script COPR uses (COPR itself
+  # builds the latest tag), then the RPMs offline with Fedora's rust, so spec
+  # and vendoring breakage shows up before a release.
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.package == 'true' && github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Restore dnf cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/libdnf5
+          key: dnf-package-fedora44-${{ hashFiles('packaging/uti.spec') }}
+      - name: Install SRPM tools
+        run: |
+          dnf install -y --setopt=install_weak_deps=False --setopt=keepcache=True \
+            git cargo rpm-build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tags for the version
+          persist-credentials: false
+      - name: Build SRPM
+        run: packaging/make-srpm.sh dist
+      - name: Install build dependencies
+        run: dnf builddep -y --setopt=install_weak_deps=False --setopt=keepcache=True dist/*.src.rpm
+      - name: Build RPMs
+        run: rpmbuild --rebuild dist/*.src.rpm --define "_rpmdir $PWD/dist"
+      - run: ls -l dist/*/
+
   # Required status check: passes when every job passed or was skipped.
   ci:
     name: CI Checks
-    needs: [changes, rust, deny, markdown, extension]
+    needs: [changes, rust, deny, markdown, extension, package]
     if: always()
     runs-on: ubuntu-latest
     steps:
