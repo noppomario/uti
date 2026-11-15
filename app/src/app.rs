@@ -237,7 +237,7 @@ impl App {
                 None
             },
             Msg::CheckUpdates => {
-                open_uri(&self.ui.root, RELEASES_URL);
+                open_software_updates(&self.ui.root);
                 None
             },
             Msg::Quit => {
@@ -426,7 +426,6 @@ impl App {
             Tab::Clipboard => self.history.items.get(source)?.text.clone(),
             Tab::Snippets => self.snippets.items.get(source)?.value.clone(),
             Tab::Launcher => return self.launch_row(visible_index),
-            Tab::Prompt => return None,
         };
         self.ui.root.clipboard().set_text(&text);
         self.window.hide()
@@ -741,10 +740,6 @@ impl App {
                     })
                     .collect()
             },
-            Tab::Prompt => {
-                data.visible.clear();
-                Vec::new()
-            },
         };
         self.nav.set_len(tab, rows.len());
         let jumpable: Vec<bool> = if tab == Tab::Launcher {
@@ -988,9 +983,9 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
     listbox
 }
 
-/// Starts `command args.. [extra]` without a shell. GSubprocess reaps the
-/// child, so no zombies are left behind.
-fn spawn(command: &str, args: &[String], extra: Option<&str>) {
+/// Starts `command args.. [extra]` without a shell; `false` if it could not
+/// start. GSubprocess reaps the child, so no zombies are left behind.
+fn spawn(command: &str, args: &[String], extra: Option<&str>) -> bool {
     let mut argv: Vec<&std::ffi::OsStr> = vec![command.as_ref()];
     argv.extend(args.iter().map(std::ffi::OsStr::new));
     argv.extend(extra.map(std::ffi::OsStr::new));
@@ -1000,8 +995,12 @@ fn spawn(command: &str, args: &[String], extra: Option<&str>) {
             launcher.unsetenv(var);
         }
     }
-    if let Err(e) = launcher.spawn(&argv) {
-        eprintln!("Failed to start {command}: {e}");
+    match launcher.spawn(&argv) {
+        Ok(_) => true,
+        Err(e) => {
+            eprintln!("Failed to start {command}: {e}");
+            false
+        },
     }
 }
 
@@ -1012,6 +1011,14 @@ const SANDBOX_VARS: [&str; 2] = ["XDG_CONFIG_HOME", "XDG_DATA_HOME"];
 /// session's XDG directories back instead of the sandbox.
 fn dev_sandbox() -> bool {
     std::env::var_os("UTI_DEV_SANDBOX").is_some()
+}
+
+/// Opens the Updates page of GNOME Software, which installs uti updates from
+/// the COPR repository; falls back to the GitHub Releases page without it.
+pub fn open_software_updates(parent: &adw::ApplicationWindow) {
+    if !spawn("gnome-software", &["--mode=updates".to_string()], None) {
+        open_uri(parent, RELEASES_URL);
+    }
 }
 
 /// Opens `uri` in the default handler.

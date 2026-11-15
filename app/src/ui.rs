@@ -8,7 +8,6 @@ use crate::state::list::{Key, Tab};
 /// View stack page names.
 pub fn page_name(tab: Tab) -> &'static str {
     match tab {
-        Tab::Prompt => "prompt",
         Tab::Clipboard => "clipboard",
         Tab::Snippets => "snippets",
         Tab::Launcher => "launcher",
@@ -18,7 +17,6 @@ pub fn page_name(tab: Tab) -> &'static str {
 /// Tab title and icon.
 pub fn tab_label(tab: Tab) -> (&'static str, &'static str) {
     match tab {
-        Tab::Prompt => ("Prompt", "document-edit-symbolic"),
         Tab::Clipboard => ("Clipboard", "edit-paste-symbolic"),
         Tab::Snippets => ("Snippets", "starred-symbolic"),
         Tab::Launcher => ("Launcher", "view-app-grid-symbolic"),
@@ -31,7 +29,6 @@ pub fn search_placeholder(tab: Tab) -> &'static str {
         Tab::Clipboard => "Search history",
         Tab::Snippets => "Search snippets",
         Tab::Launcher => "Search apps",
-        Tab::Prompt => "",
     }
 }
 
@@ -43,7 +40,6 @@ pub fn key_hints(tab: Tab) -> &'static str {
         },
         Tab::Snippets => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>Ctrl+F</b> Search",
         Tab::Launcher => "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Recent Files",
-        Tab::Prompt => "",
     }
 }
 
@@ -60,7 +56,6 @@ pub fn empty_page(tab: Tab) -> adw::StatusPage {
             ("starred-symbolic", "No Snippets", "Press S on a clipboard item to keep it")
         },
         Tab::Launcher => ("view-app-grid-symbolic", "No Apps", ""),
-        Tab::Prompt => ("document-edit-symbolic", "", ""),
     };
     adw::StatusPage::builder()
         .icon_name(icon)

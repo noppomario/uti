@@ -121,28 +121,6 @@ sequenceDiagram
     Ext->>Mutter: move_frame + hide_from_window_list
 ```
 
-### Prompt Auto-Paste Sequence
-
-The Prompt tab is retired in the GTK app (code kept, not wired), so nothing currently calls `Paste`.
-
-```mermaid
-sequenceDiagram
-    participant User
-    box rgb(74, 158, 255) uti components
-        participant App as uti
-        participant Ext as GNOME Extension
-        participant Daemon as uti-daemon
-    end
-    participant Target as Active Window
-
-    User->>App: Ctrl+Enter in Prompt tab
-    App->>App: Copy to clipboard, hide window
-    App->>Ext: Shell1.Paste(plain, submit)
-    Ext->>Ext: Wait until focus leaves uti
-    Ext->>Target: Ctrl+Shift+V, Enter (virtual keyboard)
-    Note over App,Daemon: If Shell1 fails, App calls Daemon1.Paste (uinput)
-```
-
 ---
 
 ## D-Bus Interfaces
@@ -154,8 +132,8 @@ sequenceDiagram
 | GNOME Extension | `io.github.noppomario.uti.Shell` | `/io/github/noppomario/uti/Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(b activate)`, `SetAbove(b)`, `Paste(b plain, b submit)`, signal `ClipboardChanged(s)` |
 
 `Daemon1.Paste` and all `Shell1` methods reject callers that do not own
-`io.github.noppomario.uti` (`AccessDenied`). The daemon still emits the legacy
-`io.github.noppomario.uti.DoubleTap.Triggered` for one release.
+`io.github.noppomario.uti` (`AccessDenied`). Nothing in the app calls `Paste`
+since the Prompt tab was removed.
 
 ---
 
