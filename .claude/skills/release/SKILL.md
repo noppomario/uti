@@ -31,7 +31,7 @@ build via the `COPR_WEBHOOK_URL` secret. COPR builds the packages from `packagin
 
 `MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)
 
-`just bump` changes only `Cargo.toml` (`[workspace.package] version`) and `Cargo.lock`.
+`just bump` changes `Cargo.toml` (`[workspace.package] version`), `Cargo.lock` and the AppStream `<releases>` list in `app/packaging/io.github.noppomario.uti.metainfo.xml`.
 
 ## Alternative: Manual Tag Push
 

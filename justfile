@@ -1,6 +1,8 @@
 # Development tasks. Tools come from `mise install`; Rust from rust-toolchain.toml.
 # CI runs the same recipes, so `just ci` passing locally means CI's checks pass.
 
+metainfo := "app/packaging/io.github.noppomario.uti.metainfo.xml"
+
 default:
     @just --list
 
@@ -49,12 +51,15 @@ test:
 # Everything CI checks
 ci: lint deny test
 
-# Set the release version in Cargo.toml and Cargo.lock (release skill)
+# Set the release version in Cargo.toml and Cargo.lock and add it to the
+# AppStream release list (release skill)
 bump version:
     @echo '{{version}}' | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "usage: just bump X.Y.Z" >&2; exit 1; }
     sed -i -E '/^\[workspace\.package\]/,/^\[/ s/^version = ".*"/version = "{{version}}"/' Cargo.toml
     grep -qx 'version = "{{version}}"' Cargo.toml
     cargo update --workspace
+    sed -i "/<releases>/a\\    <release version=\"{{version}}\" date=\"$(date -u +%F)\"/>" {{metainfo}}
+    grep -q 'version="{{version}}"' {{metainfo}}
 
 # Run the app against a sandbox copy of ~/.config/uti
 run *args:
