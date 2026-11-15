@@ -199,7 +199,7 @@ GitHub Releases carry release notes only; packages are built by [COPR](https://c
 - The `Release tags` ruleset blocks moving or deleting `v*` tags
 - Build trigger: the COPR custom webhook URL, stored as the `COPR_WEBHOOK_URL` repository secret (`release.yml` warns if unset)
 - `packaging/make-srpm.sh [outdir] [ref]` builds the SRPM from `ref` (default HEAD; CI and `just rpm`): version from `git describe` (`0.4.0` on a tag, `0.4.0^3.gabc1234` after it), tarball = `git archive` + `cargo vendor`, offline `--locked` build
-- CI's `Package` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust on packaging-related PRs and pushes to `main`
+- CI's `RPM build` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust on packaging-related PRs and pushes to `main`
 
 ### Local RPM Build
 

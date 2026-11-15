@@ -21,7 +21,7 @@ env:
 
 jobs:
   changes:
-    name: Detect changes
+    name: Select jobs
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.diff.outputs.rust }}
@@ -52,7 +52,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   rust:
-    name: Rust
+    name: Rust lint and test
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -84,7 +84,7 @@ jobs:
       - run: just test
 
   deny:
-    name: Dependencies
+    name: Dependency audit
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -99,7 +99,7 @@ jobs:
       - run: just deny
 
   markdown:
-    name: Markdown and workflows
+    name: Docs and workflow lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,7 +112,7 @@ jobs:
       - run: just lint-md lint-gha
 
   extension:
-    name: GNOME extension
+    name: Extension lint
     needs: changes
     if: needs.changes.outputs.extension == 'true'
     runs-on: ubuntu-latest
@@ -130,7 +130,7 @@ jobs:
   # builds the latest tag), then the RPMs offline with Fedora's rust, so spec
   # and vendoring breakage shows up before a release.
   package:
-    name: Package
+    name: RPM build
     needs: changes
     if: needs.changes.outputs.package == 'true' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -159,7 +159,7 @@ jobs:
 
   # Required status check: passes when every job passed or was skipped.
   ci:
-    name: CI Checks
+    name: Merge gate
     needs: [changes, rust, deny, markdown, extension, package]
     if: always()
     runs-on: ubuntu-latest
