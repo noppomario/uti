@@ -4,9 +4,9 @@
 
 Desktop utility for Linux that toggles window visibility with double Ctrl press.
 
-**For development environment setup**, see [DEVELOPMENT.md](../../../docs/DEVELOPMENT.md)
+**For development environment setup**, see [DEVELOPMENT.md](../../docs/DEVELOPMENT.md)
 
-**For architecture and platform configurations**, see [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md)
+**For architecture and platform configurations**, see [ARCHITECTURE.md](../../docs/ARCHITECTURE.md)
 
 ## Technology Stack
 
@@ -47,7 +47,7 @@ Key archived decisions:
 
 ## Repository Structure
 
-See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for detailed structure.
+See [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) for detailed structure.
 
 **Key directories:**
 
@@ -127,24 +127,21 @@ with mode 0600 (`uti_core::fs::write_atomic`).
 
 ### Required Tools
 
-- Rust (latest stable)
-- Bun (latest, task runner)
+- Rust via rustup, pinned by `rust-toolchain.toml` (1.99.1 = Fedora 44's rust used by COPR/RPM builds)
+- mise: other tools pinned in `mise.toml` + `mise.lock` (just, lefthook, biome, cargo-deny,
+  rumdl, git-cliff, actionlint). Update with `mise outdated` / `mise lock`.
 - `gtk4-devel`, `libadwaita-devel` (Fedora 44; Ubuntu lacks libadwaita 1.9)
-- VSCode with recommended extensions:
-  - rust-analyzer
-  - biomejs.biome (GNOME extension JS)
-  - editorconfig.editorconfig
 
-### Format on Save
+Setup: `mise install && just setup` (installs lefthook hooks).
 
-Enabled in `.vscode/settings.json` for all file types.
-
-### Build Scripts
+### Tasks (justfile)
 
 ```bash
-bun run app:run     # Run app in a config sandbox (app/run-dev.sh)
-bun run app:rpm     # Build app RPM
-bun run all:format  # rustfmt + Biome (extension)
+just fmt            # cargo fmt + biome --write + rumdl --fix
+just lint           # lint-rust, lint-md, lint-ext, lint-gha
+just ci             # lint + deny + test (same checks as CI)
+just run            # Run app in a config sandbox (app/run-dev.sh)
+just rpm            # App + daemon RPMs into dist/
 ```
 
 ## Testing & Quality
@@ -168,16 +165,16 @@ cargo test --workspace          # All Rust tests
 cargo test -p uti               # App only
 cd daemon && cargo test         # Daemon only
 cargo tarpaulin                 # Coverage (requires cargo-tarpaulin)
-
-# All tests (from root)
-bun run all:test
+just test                       # All tests
 ```
 
 ### CI Integration
 
-- Tests run automatically in GitHub Actions
-- Coverage reports generated for all commits
-- PRs require passing tests
+- `ci.yml` jobs: Rust (`fedora:44`: lint-rust, test), Dependencies (cargo-deny), Markdown and
+  workflows, GNOME extension (only on `gnome-extension/` changes); `CI Checks` is the required check
+- Rust jobs skip for docs-only PRs; weekly scheduled full run
+- Actions pinned by commit SHA; tools installed from `mise.lock` via `jdx/mise-action`
+- Dependabot (cargo, github-actions): monthly, 7-day cooldown, merged by hand
 
 ### Test Priorities
 
@@ -216,4 +213,4 @@ The app has no tray icon.
 
 ## Roadmap
 
-See [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) for platform support plans.
+See [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) for platform support plans.

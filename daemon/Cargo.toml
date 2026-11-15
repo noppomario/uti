@@ -2,6 +2,8 @@
 name = "uti-daemon"
 version = "0.3.0"
 edition = "2021"
+license = "MIT"
+publish = false
 
 [dependencies]
 uti-core = { path = "../crates/uti-core", default-features = false }

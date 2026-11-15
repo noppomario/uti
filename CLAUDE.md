@@ -16,24 +16,21 @@ All team members should read this when starting development.
 ### Development Commands
 
 ```bash
-# Monorepo task runner (from root)
-bun run app:all         # App: lint → test
-bun run daemon:all      # Daemon: format → lint → build → test
-bun run ci:local        # CI equivalent: lint → test → build
-bun run all:test        # Run all tests
-
-# Individual tasks (pattern: [workspace]:[task])
-bun run app:lint        # Lint app only
-bun run daemon:build    # Build daemon only
-bun run rust:format     # Format all Rust code
+# Task runner: just (tools pinned in mise.toml; run `mise install` and `just setup` once)
+just ci                 # Same checks as CI: lint + deny + test
+just fmt                # cargo fmt + biome + rumdl --fix
+just lint               # lint-rust, lint-md, lint-ext, lint-gha
+just test               # All tests
+just deny               # cargo-deny (deny.toml)
+just rpm                # App + daemon RPMs into dist/
 
 # Test-Driven Development (TDD)
 cargo test -p uti               # App tests (app/src/state/)
 cargo test --workspace          # All Rust tests
 
 # Development
-bun run app:run                 # Run app in a config sandbox (app/run-dev.sh)
-cd daemon && sudo cargo run     # Run daemon
+just run                        # Run app in a config sandbox (app/run-dev.sh)
+cd daemon && cargo run          # Run daemon (needs input group)
 ```
 
 ### Key Technologies
@@ -49,12 +46,12 @@ cd daemon && sudo cargo run     # Run daemon
 - ✅ All code and documentation in **English only**
 - ✅ **TDD required**: Write tests BEFORE implementation (Red-Green-Refactor)
 - ✅ Use **Rust doc comments** for Rust
-- ✅ Format on save is enabled
+- ✅ lefthook: pre-commit formats staged files, commit-msg checks Conventional Commits, pre-push runs `just lint-rust test`
 - ✅ No personal information in commits
 - ✅ Trunk-based: work on short-lived `claude/*` branches, create PRs to `main`
 - ✅ Releases are tags (`vX.Y.Z`) created from `main` by `release.yml`
 - ✅ Commit messages in English, follow conventional commits
-- ✅ **Run `bun run ci:local` before committing** (includes tests)
+- ✅ **Run `just ci` before committing** (includes tests)
 
 ### Project Scale
 

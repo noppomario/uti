@@ -3,48 +3,137 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+  # Weekly full run: picks up newly published advisories (cargo-deny).
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  ci:
-    name: CI Checks
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+      extension: ${{ steps.diff.outputs.extension }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Pushes to main and manual runs check everything.
+          if [ "$EVENT" != pull_request ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "extension=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE" HEAD)
+          shared='^(justfile|mise\.(toml|lock)|\.github/workflows/ci\.yml)$'
+          match() { printf '%s\n' "$files" | grep -qE "$1|$shared" && echo true || echo false; }
+          echo "rust=$(match '^(app|daemon|crates)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')" >> "$GITHUB_OUTPUT"
+          echo "extension=$(match '^gnome-extension/')" >> "$GITHUB_OUTPUT"
+
+  rust:
+    name: Rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     # libadwaita 1.9 (GNOME 50) is not on Ubuntu, so build in Fedora.
-    container: fedora:44
-    concurrency:
-      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}-ci', github.ref_name) || format('ci-{0}', github.ref) }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+    container: registry.fedoraproject.org/fedora:44
     steps:
-      - name: Install toolchain and GTK
+      - name: Restore dnf cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/libdnf5
+          key: dnf-fedora44-${{ hashFiles('.github/workflows/ci.yml') }}
+      - name: Install system packages
         run: |
-          dnf install -y --setopt=install_weak_deps=False \
-            git unzip cargo rustfmt clippy gcc gtk4-devel libadwaita-devel
-
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+          dnf install -y --setopt=install_weak_deps=False --setopt=keepcache=True \
+            git gcc rustup gtk4-devel libadwaita-devel
+          rustup-init -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          bun-version: latest
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          shared-key: "uti-build"
-          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          install_args: aqua:casey/just
+      - run: just lint-rust
+      - run: just test
 
-      - name: Install root dependencies
-        run: bun install
+  deny:
+    name: Dependencies
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          install_args: aqua:casey/just aqua:EmbarkStudios/cargo-deny
+      - run: just deny
 
-      - name: Run lint checks
-        run: bun run ci:check
+  markdown:
+    name: Markdown and workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          install_args: aqua:casey/just aqua:rvben/rumdl aqua:rhysd/actionlint
+      - run: just lint-md lint-gha
 
-      - name: Run tests
-        run: bun run ci:test
+  extension:
+    name: GNOME extension
+    needs: changes
+    if: needs.changes.outputs.extension == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          install_args: aqua:casey/just aqua:biomejs/biome
+      - run: just lint-ext
 
-      - name: Run build
-        run: bun run ci:build
+  # Required status check: passes when every job passed or was skipped.
+  ci:
+    name: CI Checks
+    needs: [changes, rust, deny, markdown, extension]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) exit 1 ;; esac
+          done
