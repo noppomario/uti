@@ -156,7 +156,7 @@ Subsequent builds are much faster (<30 seconds for small changes).
 
 ### Version Update
 
-`just bump X.Y.Z` sets `[workspace.package] version` in `Cargo.toml` (shared by `uti` and `uti-daemon`) and updates `Cargo.lock`. The RPM version comes from the git tag (`make-srpm.sh`), so `packaging/uti.spec` keeps a placeholder.
+`just bump X.Y.Z` sets `[workspace.package] version` in `Cargo.toml` (shared by `uti` and `uti-daemon`) updates `Cargo.lock` and adds the version to `<releases>` in the AppStream metainfo (shown by GNOME Software). The RPM version comes from the git tag (`make-srpm.sh`), so `packaging/uti.spec` keeps a placeholder.
 
 ### Branch Strategy
 
@@ -199,7 +199,7 @@ When the PR merges, `release.yml` tags the merge commit with `GITHUB_TOKEN`, cre
 
 GitHub Releases carry release notes only; packages are built by [COPR](https://copr.fedorainfracloud.org/coprs/noppomario/uti/) (`noppomario/uti`, chroot `fedora-44-x86_64`). `packaging/uti.spec` builds `uti`, `uti-daemon` and `gnome-shell-extension-uti` (noarch).
 
-- COPR package: source type SCM, committish `main`, SRPM method `make_srpm`, spec `packaging/uti.spec`. Do not enable COPR's GitHub push integration.
+- COPR package: source type SCM, committish `main`, SRPM method `make_srpm`, spec `packaging/uti.spec`. Project setting "Generate AppStream metadata" is on, so GNOME Software lists uti as an app. Do not enable COPR's GitHub push integration.
 - `.copr/Makefile` builds the latest `vX.Y.Z` tag on `main`, not the branch tip, so a leaked webhook URL cannot publish unreleased code
 - The `Release tags` ruleset blocks moving or deleting `v*` tags
 - Build trigger: the COPR custom webhook URL, stored as the `COPR_WEBHOOK_URL` repository secret (`release.yml` warns if unset)
