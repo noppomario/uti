@@ -1,7 +1,7 @@
 #!/bin/bash
-# Build the source RPM from the checked-out commit (HEAD).
+# Build the source RPM from a commit.
 #
-# Usage: packaging/make-srpm.sh [outdir]   (default: dist/)
+# Usage: packaging/make-srpm.sh [outdir] [ref]   (defaults: dist/, HEAD)
 #
 # Version comes from `git describe`: `0.4.0` on a release tag, `0.4.0^3.gabc1234`
 # three commits after it. Uncommitted changes are not included.
@@ -10,10 +10,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTDIR="$(realpath -m "${1:-$ROOT/dist}")"
+REF="${2:-HEAD}"
 # COPR clones the repository as another user.
 git() { command git -c safe.directory="$ROOT" -C "$ROOT" "$@"; }
 
-desc=$(git describe --tags --long --match 'v[0-9]*')
+desc=$(git describe --tags --long --match 'v[0-9]*' "$REF")
 read -r tag count hash <<< "$(sed -E 's/^v(.*)-([0-9]+)-(g[0-9a-f]+)$/\1 \2 \3/' <<< "$desc")"
 if [ "$count" = 0 ]; then version="$tag"; else version="$tag^$count.$hash"; fi
 
@@ -21,7 +22,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 src="$work/uti-$version"
 mkdir -p "$src"
-git archive HEAD | tar -x -C "$src"
+git archive "$REF" | tar -x -C "$src"
 (cd "$src" && cargo vendor --locked --quiet vendor > /dev/null)
 tar -C "$work" -czf "$work/uti-$version.tar.gz" "uti-$version"
 sed "s/^Version:.*/Version:        $version/" "$src/packaging/uti.spec" > "$work/uti.spec"

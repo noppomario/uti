@@ -126,8 +126,9 @@ jobs:
           install_args: aqua:casey/just aqua:biomejs/biome
       - run: just lint-ext
 
-  # Builds the SRPM the way COPR does (.copr/Makefile), then the RPMs offline
-  # with Fedora's rust, so spec and vendoring breakage shows up before a release.
+  # Builds the SRPM from this commit with the script COPR uses (COPR itself
+  # builds the latest tag), then the RPMs offline with Fedora's rust, so spec
+  # and vendoring breakage shows up before a release.
   package:
     name: Package
     needs: changes
@@ -140,14 +141,16 @@ jobs:
         with:
           path: /var/cache/libdnf5
           key: dnf-package-fedora44-${{ hashFiles('packaging/uti.spec') }}
-      - name: Install git and make
-        run: dnf install -y --setopt=install_weak_deps=False --setopt=keepcache=True git make
+      - name: Install SRPM tools
+        run: |
+          dnf install -y --setopt=install_weak_deps=False --setopt=keepcache=True \
+            git cargo rpm-build
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # tags for the version
           persist-credentials: false
       - name: Build SRPM
-        run: make -f .copr/Makefile srpm outdir="$PWD/dist"
+        run: packaging/make-srpm.sh dist
       - name: Install build dependencies
         run: dnf builddep -y --setopt=install_weak_deps=False --setopt=keepcache=True dist/*.src.rpm
       - name: Build RPMs

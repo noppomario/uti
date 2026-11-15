@@ -194,9 +194,11 @@ When the PR merges, `release.yml` tags the merge commit with `GITHUB_TOKEN`, cre
 
 GitHub Releases carry release notes only; packages are built by [COPR](https://copr.fedorainfracloud.org/coprs/noppomario/uti/) (`noppomario/uti`, chroot `fedora-44-x86_64`). `packaging/uti.spec` builds `uti`, `uti-daemon` and `gnome-shell-extension-uti` (noarch).
 
-- COPR package: source type SCM, SRPM method `make_srpm` (`.copr/Makefile` -> `packaging/make-srpm.sh`), spec `packaging/uti.spec`
+- COPR package: source type SCM, committish `main`, SRPM method `make_srpm`, spec `packaging/uti.spec`. Do not enable COPR's GitHub push integration.
+- `.copr/Makefile` builds the latest `vX.Y.Z` tag on `main`, not the branch tip, so a leaked webhook URL cannot publish unreleased code
+- The `Release tags` ruleset blocks moving or deleting `v*` tags
 - Build trigger: the COPR custom webhook URL, stored as the `COPR_WEBHOOK_URL` repository secret (`release.yml` warns if unset)
-- `packaging/make-srpm.sh [outdir]` builds the SRPM from HEAD: version from `git describe` (`0.4.0` on a tag, `0.4.0^3.gabc1234` after it), tarball = `git archive` + `cargo vendor`, offline `--locked` build
+- `packaging/make-srpm.sh [outdir] [ref]` builds the SRPM from `ref` (default HEAD; CI and `just rpm`): version from `git describe` (`0.4.0` on a tag, `0.4.0^3.gabc1234` after it), tarball = `git archive` + `cargo vendor`, offline `--locked` build
 - CI's `Package` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust on packaging-related PRs and pushes to `main`
 
 ### Local RPM Build
