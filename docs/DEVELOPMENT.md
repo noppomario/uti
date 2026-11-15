@@ -147,7 +147,7 @@ Subsequent builds are much faster (<30 seconds for small changes).
 | Dependency audit | `just deny` (cargo-deny; also weekly) |
 | Docs, workflow and shell lint | `just lint-md lint-gha lint-sh` |
 | Extension lint | `just lint-ext` (on `gnome-extension/` changes) |
-| RPM build | SRPM + RPMs (packaging-related PRs, pushes to `main`) |
+| RPM build | SRPM + RPMs on each COPR Fedora release (packaging-related PRs, pushes to `main`) |
 | Merge gate | the only required check: all of the above passed or were skipped |
 
 `codeql.yml` (Code scanning / CodeQL) runs on pushes to `main` and weekly. Actions are pinned by commit SHA; Dependabot (cargo, github-actions) opens grouped PRs monthly after a 7-day cooldown and they are merged by hand.
@@ -204,7 +204,7 @@ GitHub Releases carry release notes only; packages are built by [COPR](https://c
 - The `Release tags` ruleset blocks moving or deleting `v*` tags
 - Build trigger: the COPR custom webhook URL, stored as the `COPR_WEBHOOK_URL` repository secret (`release.yml` warns if unset)
 - `packaging/make-srpm.sh [outdir] [ref]` builds the SRPM from `ref` (default HEAD; CI and `just rpm`): version from `git describe` (`0.4.0` on a tag, `0.4.0^3.gabc1234` after it), tarball = `git archive` + `cargo vendor`, offline `--locked` build
-- CI's `RPM build` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust on packaging-related PRs and pushes to `main`
+- CI's `RPM build` job builds the SRPM and RPMs with Fedora's rust in a matrix of the COPR chroots (`fedora: [44, 45]`; keep both lists in sync); the `Rust lint and test` container follows the development Fedora instead
 
 ### Local RPM Build
 

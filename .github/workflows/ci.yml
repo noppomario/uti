@@ -56,7 +56,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
-    # libadwaita 1.9 (GNOME 50) is not on Ubuntu, so build in Fedora.
+    # libadwaita 1.9 (GNOME 50) is not on Ubuntu. Same Fedora as development.
     container: registry.fedoraproject.org/fedora:44
     steps:
       - name: Restore dnf cache
@@ -130,17 +130,23 @@ jobs:
   # builds the latest tag), then the RPMs offline with Fedora's rust, so spec
   # and vendoring breakage shows up before a release.
   package:
-    name: RPM build
+    name: RPM build (fedora ${{ matrix.fedora }})
     needs: changes
     if: needs.changes.outputs.package == 'true' && github.event_name != 'schedule'
+    # Same Fedora releases as the COPR chroots (Rust lint and test follows the
+    # development Fedora instead).
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [44, 45]
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:44
+    container: registry.fedoraproject.org/fedora:${{ matrix.fedora }}
     steps:
       - name: Restore dnf cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /var/cache/libdnf5
-          key: dnf-package-fedora44-${{ hashFiles('packaging/uti.spec') }}
+          key: dnf-package-fedora${{ matrix.fedora }}-${{ hashFiles('packaging/uti.spec') }}
       - name: Install SRPM tools
         run: |
           dnf install -y --setopt=install_weak_deps=False --setopt=keepcache=True \
