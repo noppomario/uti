@@ -34,15 +34,6 @@ impl ClipboardItem {
     /// # Arguments
     ///
     /// * `text` - The clipboard text content
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use uti_core::clipboard::ClipboardItem;
-    ///
-    /// let item = ClipboardItem::new("Hello".to_string());
-    /// assert_eq!(item.text, "Hello");
-    /// ```
     pub fn new(text: String) -> Self {
         Self {
             id: new_id(),

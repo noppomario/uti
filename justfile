@@ -49,6 +49,13 @@ test:
 # Everything CI checks
 ci: lint deny test
 
+# Set the release version in Cargo.toml and Cargo.lock (release skill)
+bump version:
+    @echo '{{version}}' | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "usage: just bump X.Y.Z" >&2; exit 1; }
+    sed -i -E '/^\[workspace\.package\]/,/^\[/ s/^version = ".*"/version = "{{version}}"/' Cargo.toml
+    grep -qx 'version = "{{version}}"' Cargo.toml
+    cargo update --workspace
+
 # Run the app against a sandbox copy of ~/.config/uti
 run *args:
     ./app/run-dev.sh {{args}}

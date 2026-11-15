@@ -2,14 +2,20 @@
 
 mod app;
 mod autostart;
+mod clipboard;
+mod config;
 mod dbus;
+mod fs;
 mod i18n;
+mod launcher;
+mod paths;
 mod settings;
+mod snippets;
 mod state;
 mod ui;
 
 use adw::prelude::*;
-use uti_core::dbus::APP_BUS_NAME;
+use dbus::APP_BUS_NAME;
 
 fn main() -> gtk::glib::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

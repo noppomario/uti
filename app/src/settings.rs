@@ -8,12 +8,12 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::gio;
-use uti_core::config::AppConfig;
-use uti_core::launcher::get_launcher_config_path;
-use uti_core::snippets::SnippetsStore;
 
 use crate::autostart;
+use crate::config::AppConfig;
 use crate::i18n::{tr, LANGUAGES};
+use crate::launcher::get_launcher_config_path;
+use crate::snippets::SnippetsStore;
 
 /// `theme.size` values, in the order the settings window lists them.
 pub const SIZES: [&str; 3] = ["minimal", "normal", "wide"];
@@ -225,7 +225,7 @@ fn open_json(
             let created = path
                 .parent()
                 .map_or(Ok(()), std::fs::create_dir_all)
-                .and_then(|()| uti_core::fs::write_atomic(&path, default.as_bytes()));
+                .and_then(|()| crate::fs::write_atomic(&path, default.as_bytes()));
             if let Err(e) = created {
                 eprintln!("Failed to create {}: {e}", path.display());
                 return;

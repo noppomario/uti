@@ -16,7 +16,7 @@ Open the release PR with the user's `gh` (`X.Y.Z` = new version):
 ```bash
 git fetch origin
 git switch -c release/vX.Y.Z origin/main
-python .github/scripts/bump_version.py X.Y.Z
+just bump X.Y.Z
 git commit -am "chore: bump version to X.Y.Z"
 git push -u origin release/vX.Y.Z
 gh pr create --base main --title "chore: bump version to X.Y.Z" --body "Release vX.Y.Z"
@@ -31,13 +31,7 @@ build via the `COPR_WEBHOOK_URL` secret. COPR builds the packages from `packagin
 
 `MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)
 
-## Files Updated by bump_version.py
-
-- `app/Cargo.toml`
-- `daemon/Cargo.toml`
-- `crates/uti-core/Cargo.toml`
-- `packaging/uti.spec`
-- `Cargo.lock` (`cargo update --workspace`)
+`just bump` changes only `Cargo.toml` (`[workspace.package] version`) and `Cargo.lock`.
 
 ## Alternative: Manual Tag Push
 

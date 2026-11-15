@@ -1,12 +1,11 @@
 [package]
 name = "uti-daemon"
-version = "0.4.0"
+version.workspace = true
 edition = "2021"
 license = "MIT"
 publish = false
 
 [dependencies]
-uti-core = { path = "../crates/uti-core", default-features = false }
 evdev = { version = "0.13", features = ["tokio"] }
 zbus = { version = "6", default-features = false, features = ["tokio", "service", "proxy"] }
 tokio = { version = "1", features = ["full"] }

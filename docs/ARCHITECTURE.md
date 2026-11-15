@@ -59,7 +59,7 @@ Main application with Clipboard, Snippets and Launcher tabs, plus a settings win
 | Property | Value |
 | -------- | ----- |
 | Toolkit | Rust + gtk4-rs 0.11 + libadwaita 0.9 (`app/`) |
-| Structure | `app.rs` controller (`Msg` loop), `ui.rs`, `dbus.rs`, `settings.rs`, `state/` (pure logic) |
+| Structure | `app.rs` controller (`Msg` loop), `ui.rs`, `dbus.rs`, `settings.rs`, `state/` (pure UI logic), `config/` `clipboard/` `snippets/` `launcher/` (data files) |
 | IPC | D-Bus: owns `io.github.noppomario.uti`, serves `ActivateAction`, calls `Shell1` / `Daemon1` |
 | Config | `~/.config/uti/config.json` |
 | Launcher | `~/.config/uti/launcher.json` |

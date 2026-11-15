@@ -9,14 +9,14 @@ use std::collections::{HashMap, HashSet};
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
-use uti_core::clipboard::ClipboardStore;
-use uti_core::config::AppConfig;
-use uti_core::launcher::recent_files::RecentFile;
-use uti_core::launcher::{load_launcher_config, LauncherConfig};
-use uti_core::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 
+use crate::clipboard::ClipboardStore;
+use crate::config::AppConfig;
 use crate::dbus;
+use crate::launcher::recent_files::RecentFile;
+use crate::launcher::{load_launcher_config, LauncherConfig};
 use crate::settings;
+use crate::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 use crate::state::launcher::{rank_apps, AppText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::nav::{Effect, Focus, Nav};

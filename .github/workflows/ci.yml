@@ -46,7 +46,7 @@ jobs:
           shared='^(justfile|mise\.(toml|lock)|\.github/workflows/ci\.yml)$'
           match() { printf '%s\n' "$files" | grep -qE "$1|$shared" && echo true || echo false; }
           {
-            echo "rust=$(match '^(app|daemon|crates)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')"
+            echo "rust=$(match '^(app|daemon)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')"
             echo "extension=$(match '^gnome-extension/')"
             echo "package=$(match '^(packaging|\.copr|app/packaging|daemon/(systemd|udev)|gnome-extension/schemas)/|^(Cargo\.(toml|lock)|gnome-extension/metadata\.json)$')"
           } >> "$GITHUB_OUTPUT"

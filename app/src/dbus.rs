@@ -4,10 +4,17 @@
 //! `io.github.noppomario.uti`, which is this connection.
 
 use gtk::{gio, glib, prelude::*};
-use uti_core::dbus::{
-    DAEMON_BUS_NAME, DAEMON_INTERFACE, DAEMON_OBJECT_PATH, SHELL_BUS_NAME, SHELL_INTERFACE,
-    SHELL_OBJECT_PATH,
-};
+
+/// Bus name owned by the uti app (also its GApplication id).
+pub const APP_BUS_NAME: &str = "io.github.noppomario.uti";
+
+const DAEMON_BUS_NAME: &str = "io.github.noppomario.uti.Daemon";
+const DAEMON_OBJECT_PATH: &str = "/io/github/noppomario/uti/Daemon";
+const DAEMON_INTERFACE: &str = "io.github.noppomario.uti.Daemon1";
+
+const SHELL_BUS_NAME: &str = "io.github.noppomario.uti.Shell";
+const SHELL_OBJECT_PATH: &str = "/io/github/noppomario/uti/Shell";
+const SHELL_INTERFACE: &str = "io.github.noppomario.uti.Shell1";
 
 const CALL_TIMEOUT_MS: i32 = 2000;
 
