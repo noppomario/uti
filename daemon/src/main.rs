@@ -49,8 +49,7 @@ fn is_keyboard(name: Option<&str>, has_key_a: bool) -> bool {
 }
 
 fn is_event_node(path: &Path) -> bool {
-    path.file_name()
-        .is_some_and(|n| n.to_string_lossy().starts_with("event"))
+    path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("event"))
 }
 
 /// Tracks monitored device nodes and spawns one reader task per keyboard.
@@ -69,9 +68,7 @@ impl Devices {
         let Ok(device) = Device::open(&path) else {
             return; // Not readable (yet); udev may fix permissions (IN_ATTRIB).
         };
-        let has_key_a = device
-            .supported_keys()
-            .is_some_and(|k| k.contains(KeyCode::KEY_A));
+        let has_key_a = device.supported_keys().is_some_and(|k| k.contains(KeyCode::KEY_A));
         let name = device.name().unwrap_or("unknown").to_owned();
         if !is_keyboard(Some(&name), has_key_a) {
             return;
@@ -94,12 +91,12 @@ impl Devices {
                                 break;
                             }
                         }
-                    }
-                    Ok(_) => {}
+                    },
+                    Ok(_) => {},
                     Err(e) => {
                         info!("[{name}] stopped: {e}");
                         break;
-                    }
+                    },
                 }
             }
             this.active.lock().unwrap().remove(&path);
@@ -117,9 +114,7 @@ impl Devices {
 /// Watches `/dev/input` for new device nodes.
 async fn watch_hotplug(devices: Devices) -> std::io::Result<()> {
     let inotify = Inotify::init()?;
-    inotify
-        .watches()
-        .add(INPUT_DIR, WatchMask::CREATE | WatchMask::ATTRIB)?;
+    inotify.watches().add(INPUT_DIR, WatchMask::CREATE | WatchMask::ATTRIB)?;
     let mut events = inotify.into_event_stream([0u8; 4096])?;
     while let Some(event) = events.next().await {
         if let Some(name) = event?.name {
@@ -154,9 +149,7 @@ impl Daemon1 {
             .map(|o| o.to_string());
         if sender.is_none() || sender != owner {
             warn!("Paste denied for {sender:?} (owner {owner:?})");
-            return Err(fdo::Error::AccessDenied(format!(
-                "caller does not own {APP_BUS_NAME}"
-            )));
+            return Err(fdo::Error::AccessDenied(format!("caller does not own {APP_BUS_NAME}")));
         }
 
         let keyboard = Arc::clone(&self.keyboard);
@@ -180,7 +173,7 @@ async fn announce(conn: &Connection) {
             if let Err(e) = Daemon1::triggered(&emitter).await {
                 error!("failed to emit Triggered: {e}");
             }
-        }
+        },
         Err(e) => error!("invalid object path: {e}"),
     }
     let legacy = conn
@@ -201,7 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             warn!("virtual keyboard unavailable, Paste disabled: {e}");
             None
-        }
+        },
     };
 
     let conn = zbus::connection::Builder::session()

@@ -33,7 +33,11 @@ lint-ext: (_need "biome")
 lint-gha: (_need "actionlint") (_need "shellcheck")
     actionlint
 
-lint: lint-rust lint-md lint-ext lint-gha
+# Shell scripts shipped or run by users
+lint-sh: (_need "shellcheck")
+    shellcheck install.sh packaging/make-srpm.sh app/run-dev.sh
+
+lint: lint-rust lint-md lint-ext lint-gha lint-sh
 
 # Advisories, licenses, bans and sources of dependencies
 deny: (_need "cargo-deny")

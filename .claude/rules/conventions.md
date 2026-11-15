@@ -247,7 +247,7 @@ cargo tarpaulin         # Rust coverage (requires cargo-tarpaulin)
 
 ## Tasks (justfile)
 
-`setup`, `fmt`, `lint` (`lint-rust`, `lint-md`, `lint-ext`, `lint-gha`), `deny`, `test`, `ci`,
+`setup`, `fmt`, `lint` (`lint-rust`, `lint-md`, `lint-ext`, `lint-gha`, `lint-sh`), `deny`, `test`, `ci`,
 `run *args`, `rpm`. For a single crate use `cargo -p <crate>`.
 
 ## Git Hooks (lefthook)
