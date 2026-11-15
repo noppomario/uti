@@ -83,14 +83,3 @@ jobs:
             exit 0
           fi
           curl -fsS -X POST "$COPR_WEBHOOK_URL"
-      - name: Notify release
-        env:
-          REPO: ${{ github.repository }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-        run: |
-          [ -n "$NTFY_TOPIC" ] || exit 0
-          curl -s \
-            -H "Title: uti $TAG released" \
-            -H "Tags: white_check_mark,rocket" \
-            -d "https://github.com/$REPO/releases/tag/$TAG" \
-            "https://ntfy.sh/$NTFY_TOPIC"
