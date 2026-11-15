@@ -30,9 +30,6 @@ const BUS_NAME: &str = "io.github.noppomario.uti.Daemon";
 const OBJECT_PATH: &str = "/io/github/noppomario/uti/Daemon";
 #[cfg(test)]
 const DAEMON_INTERFACE: &str = "io.github.noppomario.uti.Daemon1";
-/// Legacy signal still emitted for clients older than v0.3.0.
-const LEGACY_PATH: &str = "/io/github/noppomario/uti/DoubleTap";
-const LEGACY_INTERFACE: &str = "io.github.noppomario.uti.DoubleTap";
 const INPUT_DIR: &str = "/dev/input";
 
 /// Maps a raw key event to a detector event; `None` for irrelevant events.
@@ -180,12 +177,6 @@ async fn announce(conn: &Connection) {
             }
         },
         Err(e) => error!("invalid object path: {e}"),
-    }
-    let legacy = conn
-        .emit_signal(None::<()>, LEGACY_PATH, LEGACY_INTERFACE, "Triggered", &())
-        .await;
-    if let Err(e) = legacy {
-        error!("failed to emit legacy Triggered: {e}");
     }
 }
 

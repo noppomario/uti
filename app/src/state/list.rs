@@ -3,10 +3,6 @@
 /// Main window tabs, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
-    /// Retired: a workaround for Japanese input in CLI tools, no longer
-    /// needed. Kept but not wired (absent from [`Tab::ALL`]).
-    #[allow(dead_code)]
-    Prompt,
     Clipboard,
     Snippets,
     Launcher,
@@ -177,12 +173,6 @@ mod tests {
         assert_eq!(Tab::Clipboard.next(), Some(Tab::Snippets));
         assert_eq!(Tab::Snippets.prev(), Some(Tab::Clipboard));
         assert_eq!(Tab::Launcher.next(), None);
-    }
-
-    #[test]
-    fn retired_prompt_tab_is_not_reachable() {
-        assert!(!Tab::ALL.contains(&Tab::Prompt));
-        assert!(Tab::ALL.iter().all(|t| t.prev() != Some(Tab::Prompt)));
     }
 
     #[test]

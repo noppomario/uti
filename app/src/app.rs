@@ -426,7 +426,6 @@ impl App {
             Tab::Clipboard => self.history.items.get(source)?.text.clone(),
             Tab::Snippets => self.snippets.items.get(source)?.value.clone(),
             Tab::Launcher => return self.launch_row(visible_index),
-            Tab::Prompt => return None,
         };
         self.ui.root.clipboard().set_text(&text);
         self.window.hide()
@@ -740,10 +739,6 @@ impl App {
                         },
                     })
                     .collect()
-            },
-            Tab::Prompt => {
-                data.visible.clear();
-                Vec::new()
             },
         };
         self.nav.set_len(tab, rows.len());
