@@ -39,17 +39,17 @@ jobs:
         run: |
           # Pushes to main and manual runs check everything.
           if [ "$EVENT" != pull_request ]; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            echo "extension=true" >> "$GITHUB_OUTPUT"
-            echo "package=true" >> "$GITHUB_OUTPUT"
+            printf '%s\n' rust=true extension=true package=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files=$(git diff --name-only "$BASE" HEAD)
           shared='^(justfile|mise\.(toml|lock)|\.github/workflows/ci\.yml)$'
           match() { printf '%s\n' "$files" | grep -qE "$1|$shared" && echo true || echo false; }
-          echo "rust=$(match '^(app|daemon|crates)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')" >> "$GITHUB_OUTPUT"
-          echo "extension=$(match '^gnome-extension/')" >> "$GITHUB_OUTPUT"
-          echo "package=$(match '^(packaging|\.copr|app/packaging|daemon/(systemd|udev)|gnome-extension/schemas)/|^(Cargo\.(toml|lock)|gnome-extension/metadata\.json)$')" >> "$GITHUB_OUTPUT"
+          {
+            echo "rust=$(match '^(app|daemon|crates)/|^(Cargo\.(toml|lock)|rust-toolchain\.toml|rustfmt\.toml|deny\.toml)$')"
+            echo "extension=$(match '^gnome-extension/')"
+            echo "package=$(match '^(packaging|\.copr|app/packaging|daemon/(systemd|udev)|gnome-extension/schemas)/|^(Cargo\.(toml|lock)|gnome-extension/metadata\.json)$')"
+          } >> "$GITHUB_OUTPUT"
 
   rust:
     name: Rust
@@ -108,7 +108,7 @@ jobs:
       - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
         with:
           version: 2026.11.8
-          install_args: aqua:casey/just aqua:rvben/rumdl aqua:rhysd/actionlint
+          install_args: aqua:casey/just aqua:rvben/rumdl aqua:rhysd/actionlint aqua:koalaman/shellcheck
       - run: just lint-md lint-gha
 
   extension:

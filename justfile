@@ -29,7 +29,8 @@ lint-ext: (_need "biome")
     cd gnome-extension && biome ci .
 
 # GitHub Actions workflow lint
-lint-gha: (_need "actionlint")
+# (shellcheck is required: actionlint silently skips run: scripts without it)
+lint-gha: (_need "actionlint") (_need "shellcheck")
     actionlint
 
 lint: lint-rust lint-md lint-ext lint-gha
