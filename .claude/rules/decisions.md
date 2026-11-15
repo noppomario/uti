@@ -5,68 +5,9 @@ frequently referenced during development.
 
 ## Archived Decisions
 
-Archived ADRs (001-015, 017, 019-022, 024-026) are stored in
+Archived ADRs (001-017, 019-027) are stored in
 `.claude/archive/adr-archive.md`. These decisions are finalized and
 rarely need reference during development.
-
----
-
-## ADR-016: Custom GNOME extension for tray and positioning
-
-**Date**: 2026-01-01
-**Status**: Accepted
-**Decision Makers**: Project team
-
-### Context
-
-On GNOME/Wayland, two features required privileged shell access:
-
-1. **Tray icon**: GNOME 43+ removed native tray support
-2. **Window positioning**: Wayland apps cannot query cursor position
-
-### Decision
-
-Create "uti for GNOME" extension that provides:
-
-1. **StatusNotifierHost**: Displays Tauri's SNI tray icon in GNOME panel
-2. **Cursor positioning**: Moves window to cursor on D-Bus signal
-
-### Rationale
-
-**Single dependency**:
-
-- One extension handles both tray and positioning
-- No need for third-party AppIndicator extension
-- Full control over behavior
-
-**Architecture fit**:
-
-- Extension listens to same D-Bus signal as Tauri app
-- D-Bus broadcast enables parallel handling
-- Extension uses `Meta.Window.move_frame()` for positioning
-
-### Alternatives Considered
-
-1. **AppIndicator extension + libappindicator**
-   - Pro: More widely used
-   - Con: Doesn't solve positioning issue
-
-2. **Separate extensions for tray and positioning**
-   - Pro: Modular
-   - Con: More complexity for users
-
-### Consequences
-
-**Positive**:
-
-- Single installation for full GNOME support
-- Custom tray menu matches app exactly
-- Cursor positioning works on Wayland
-
-**Negative**:
-
-- Must maintain GNOME extension separately
-- Extension API changes with GNOME versions
 
 ---
 
@@ -113,181 +54,6 @@ Bind daemon lifecycle to `graphical-session.target`:
 **Negative**:
 
 - Requires `systemctl --user disable && enable` when changing `WantedBy`
-
----
-
-## ADR-023: Window pinning with GNOME extension for always-on-top
-
-**Date**: 2026-01-04
-**Status**: Accepted
-**Decision Makers**: Project team
-
-### Context
-
-Window pinning feature requested to keep window visible during frequent
-clipboard access. On Wayland/GNOME, `set_always_on_top()` is ignored by Mutter.
-
-### Decision
-
-Two-phase implementation:
-
-1. **Phase 1.5**: Pin state disables auto-hide and ignores double Ctrl toggle
-2. **Phase 2**: D-Bus signal `SetAlwaysOnTop(bool)` to GNOME extension, which
-   calls `Meta.Window.make_above()`
-
-### Rationale
-
-**Wayland security model**:
-
-- Mutter ignores app-level always-on-top requests
-- Only compositor (GNOME Shell) can control window stacking
-- Extension is the only way to access `Meta.Window.make_above()`
-
-**Leveraging existing infrastructure**:
-
-- GNOME extension already exists for tray and positioning
-- D-Bus signal pattern already established
-- No new dependencies
-
-### Alternatives Considered
-
-1. **GTK always-on-top APIs**
-   - Pro: No extension needed
-   - Con: Doesn't work on Wayland/Mutter
-
-2. **org.gnome.Shell.Eval D-Bus**
-   - Pro: No extension changes
-   - Con: Disabled for security (GNOME 3.38+)
-
-3. **Pin = auto-hide disable only**
-   - Pro: Simpler, works everywhere
-   - Con: Window can be covered by other windows
-
-### Consequences
-
-**Positive**:
-
-- Full pinning functionality on GNOME/Wayland
-- Consistent with existing architecture
-- Graceful degradation (auto-hide still works without extension)
-
-**Negative**:
-
-- GNOME-specific (KDE/Sway need separate implementation)
-- Requires extension reload after update
-
-**Reconsider when**:
-
-- Wayland standardizes always-on-top protocol
-- KDE/Sway support needed
-
----
-
-## ADR-027: Settings UI with declarative schema and i18n
-
-**Date**: 2026-01-11
-**Status**: Accepted
-**Decision Makers**: Project team
-
-### Context
-
-Users needed a way to configure application settings (theme, clipboard limit,
-language) without editing JSON files directly. The UI should be extensible
-for future settings and support multiple languages.
-
-### Decision
-
-Implement a settings window with:
-
-1. **Declarative schema** (`settings/schema.ts`) for automatic UI generation
-2. **react-i18next** for settings-only internationalization (en/ja)
-3. **Separate window** opened from tray menu
-4. **Rust module refactoring** (config/, tray/, settings/)
-
-### Schema Design
-
-```typescript
-{
-  id: 'appearance',
-  titleKey: 'sections.appearance',
-  fields: [
-    {
-      key: 'themeColor',
-      labelKey: 'fields.themeColor.label',
-      type: 'select',
-      configPath: 'theme.color',
-      options: [...]
-    }
-  ]
-}
-```
-
-Adding a new setting requires only:
-
-1. Add field to schema
-2. Add translation keys
-3. Update Rust config struct
-
-### Rationale
-
-**Declarative over imperative**:
-
-- Single source of truth for settings structure
-- Automatic form generation reduces boilerplate
-- Easy to add/remove settings without touching components
-
-**Settings-only i18n**:
-
-- Main UI is simple (tab names, status), doesn't need i18n
-- Settings has more complex labels and descriptions
-- Keeps main bundle size small
-
-**Separate window**:
-
-- Settings context differs from main window
-- Can have different window size/style
-- Independent lifecycle (persist while main hides)
-
-**Rust module refactoring**:
-
-- main.rs reduced from 1120 to ~480 lines
-- Clear separation: config/, tray/, settings/
-- Easier to test individual modules
-
-### Alternatives Considered
-
-1. **Hardcoded settings form**
-   - Pro: Simpler initial implementation
-   - Con: Tedious to add new settings
-
-2. **JSON schema with react-hook-form**
-   - Pro: More flexible validation
-   - Con: Overkill for simple settings
-
-3. **Full app i18n (main + settings)**
-   - Pro: Consistent localization
-   - Con: Unnecessary for minimal main UI
-
-### Consequences
-
-**Positive**:
-
-- Easy to add new settings
-- Bilingual settings (en/ja)
-- Cleaner Rust code organization
-- Schema-driven validation
-
-**Negative**:
-
-- Schema adds abstraction layer
-- i18n adds bundle size to settings only
-- Separate window is different from main UI flow
-
-**Reconsider when**:
-
-- Main UI needs i18n support
-- Settings become complex enough for tabs/navigation
-- Need for settings sync across devices
 
 ---
 
@@ -383,22 +149,172 @@ Archive finalized ADRs to `.claude/archive/adr-archive.md`:
 
 The `develop` / `main` split (ADR-021) added sync PRs after every release and
 drifted when a change landed on `main` directly (#117). With a single
-maintainer it gave no benefit: stable versions are already identified by tags
-and GitHub Releases, which `install.sh` and the updater use.
+maintainer it gave no benefit: stable versions are already identified by tags.
 
 ### Decision
 
 - `main` is the only long-lived branch. Work on short-lived `claude/*`
   branches and open PRs to `main`.
-- `release.yml` cuts `release/vX.Y.Z` from `main`; merging it tags the release.
+- The release skill opens `release/vX.Y.Z` from `main`; merging it makes
+  `release.yml` tag the release (amended 2026-11-15, no PAT).
 - Remove `develop`, `sync-develop.yml` and Dependabot `target-branch`.
 
 ### Consequences
 
 **Positive**: no sync PRs, Dependabot config applies immediately, one diff base.
 
-**Negative**: `main` may contain unreleased work; users must install from
-Releases, not from the branch.
+**Negative**: `main` may contain unreleased work; users install tagged
+releases (COPR, ADR-032), not the branch.
+
+---
+
+## ADR-030: Native GTK4 UI with libadwaita
+
+**Date**: 2026-11-14
+**Status**: Accepted (supersedes ADR-027; shipped in v0.3.0)
+**Decision Makers**: Project team
+
+### Context
+
+uti targets GNOME/Wayland only. Tauri + React added a webview, a JS toolchain
+and IPC surface (arbitrary command execution, `csp: null`), while the hard
+platform problems (positioning, always-on-top, clipboard monitoring, double
+modifier tap) are solved outside the UI framework anyway.
+
+### Decision
+
+gtk4-rs (`gnome_50`) + libadwaita (`v1_9`), no Relm4, for the popup and the
+settings window. UI logic lives in pure `app/src/state/` modules; widgets only
+apply state. Colors follow the system; `theme.size` remains as density.
+
+### Alternatives Considered
+
+1. GPUI: no window hide/activate on Linux, unofficial crate snapshots.
+2. Slint: cross-platform with tray, but non-native look and licensing review.
+3. Relm4: adds a 0.x dependency and tokio; the `state/` split already gives
+   testable updates.
+4. Keep Tauri: cross-platform not needed; webview attack surface.
+
+### Consequences
+
+**Positive**: one language for app and daemon, native look (dark mode, accent,
+IME, HiDPI), no JS toolchain.
+
+**Negative**: GNOME-only; custom color themes dropped; widgets are not
+unit-tested.
+
+**Reconsider when**: Windows/macOS/KDE support becomes a concrete goal
+(re-evaluate Slint).
+
+---
+
+## ADR-031: App owns state; extension and daemon are D-Bus services
+
+**Date**: 2026-11-14
+**Status**: Accepted (supersedes ADR-016, ADR-023)
+**Decision Makers**: Project team
+
+### Context
+
+The app, daemon and extension reacted to the same broadcast signals, which
+raced (positioning before the window existed, sleeps as coordination). The
+extension also hosted a StatusNotifierWatcher for Tauri's tray icon.
+
+### Decision
+
+- The app is the single owner of state and calls the others.
+- Daemon (`io.github.noppomario.uti.Daemon`, `Daemon1`): only signal
+  `Triggered` on double Ctrl.
+- Extension (`io.github.noppomario.uti.Shell`, `Shell1`): methods
+  `PositionAtPointer`, `SetAbove`, `Paste`, signal `ClipboardChanged`
+  (`Meta.Selection` watch). Its own panel menu calls the app's GActions.
+- App: `GApplication` owns `io.github.noppomario.uti`; actions `toggle`,
+  `show`, `hide`, `settings`, `check-updates`, `quit`.
+- Interfaces are versioned (`...1`); `Shell1` methods check that the caller
+  owns the app name.
+
+### Consequences
+
+**Positive**: no signal races or sleeps; no SNI on GNOME; clipboard capture
+without polling.
+
+**Negative**: positioning, always-on-top and the panel menu require the
+extension (pin falls back to "no auto-hide"); extension follows GNOME Shell
+versions.
+
+**Reconsider when**: Wayland gets standard positioning / always-on-top /
+data-control protocols in Mutter.
+
+---
+
+## ADR-032: Distribute via COPR from a single spec
+
+**Date**: 2026-11-15
+**Status**: Accepted (first release: v0.4.0)
+**Decision Makers**: Project team
+
+### Context
+
+RPMs attached to GitHub Releases were installed by `install.sh` and an in-app
+updater (downloads to `/tmp`, `pkexec`, no signature check). The extension was
+unzipped into the user's home.
+
+### Decision
+
+- COPR `noppomario/uti` (SCM, `make_srpm`). `packaging/uti.spec` builds
+  `uti`, `uti-daemon` and `gnome-shell-extension-uti` (system-wide) from a
+  vendored tarball, offline and `--locked`, with Fedora's rust.
+- `release.yml` triggers COPR via the `COPR_WEBHOOK_URL` webhook;
+  `.copr/Makefile` builds the latest `vX.Y.Z` tag, never the branch tip.
+  A tag ruleset blocks moving or deleting `v*` tags.
+- GitHub Releases carry notes only. Updates: `dnf upgrade`. No updater.
+- deb/Ubuntu only on request (Ubuntu lacks libadwaita 1.9).
+
+### Alternatives Considered
+
+1. Keep Release assets: unsigned, needs an updater.
+2. `copr-cli` in CI: API token expires every 180 days.
+3. Fedora official packages: package review and crate packaging overhead.
+
+### Consequences
+
+**Positive**: signed repo, standard updates, CI `RPM build` job checks the
+spec on every packaging change.
+
+**Negative**: Fedora-only; a leaked webhook can only rebuild the latest tag.
+
+---
+
+## ADR-033: Tooling pinned in the repository (mise, just, lefthook)
+
+**Date**: 2026-11-15
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+After the rewrite only Rust remained, yet bun/npm still ran tasks, husky and
+lint-staged. Lint tools were unpinned, so local results could differ from CI.
+
+### Decision
+
+- Rust via rustup, pinned by `rust-toolchain.toml` (Fedora 44's version).
+- Other tools pinned in `mise.toml` + `mise.lock` (aqua backend, checksums);
+  no node.
+- `just` recipes are the only entry points; CI runs the same recipes, and
+  `just ci` equals CI. Recipes fail when a tool is missing.
+- lefthook: pre-commit formats staged files, commit-msg checks Conventional
+  Commits, pre-push runs `just lint-rust test`.
+- CI: SHA-pinned actions, least-privilege tokens, no PAT, jobs skipped by
+  changed files, one required check (`Merge gate`). Dependabot monthly with a
+  7-day cooldown, merged by hand. CodeQL off PRs.
+
+### Consequences
+
+**Positive**: reproducible local checks; no JS toolchain; faster PR CI.
+
+**Negative**: contributors need mise and rustup; mise tools are updated by
+hand (`mise outdated`).
 
 ---
 

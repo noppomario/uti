@@ -19,7 +19,7 @@ All team members should read this when starting development.
 # Task runner: just (tools pinned in mise.toml; run `mise install` and `just setup` once)
 just ci                 # Same checks as CI: lint + deny + test
 just fmt                # cargo fmt + biome + rumdl --fix
-just lint               # lint-rust, lint-md, lint-ext, lint-gha
+just lint               # lint-rust, lint-md, lint-ext, lint-gha, lint-sh
 just test               # All tests
 just deny               # cargo-deny (deny.toml)
 just rpm                # SRPM + app/daemon/extension RPMs into dist/

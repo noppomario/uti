@@ -87,8 +87,7 @@ impl VirtualKeyboard {
     }
 
     fn emit_key(&mut self, key: KeyCode, value: i32) -> io::Result<()> {
-        self.device
-            .emit(&[InputEvent::new(EventType::KEY.0, key.code(), value)])?;
+        self.device.emit(&[InputEvent::new(EventType::KEY.0, key.code(), value)])?;
         sleep(KEY_EVENT_DELAY);
         Ok(())
     }
@@ -103,11 +102,7 @@ mod tests {
         assert_eq!(
             paste_sequence(true, true),
             vec![
-                vec![
-                    KeyCode::KEY_LEFTCTRL,
-                    KeyCode::KEY_LEFTSHIFT,
-                    KeyCode::KEY_V
-                ],
+                vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_LEFTSHIFT, KeyCode::KEY_V],
                 vec![KeyCode::KEY_ENTER],
             ]
         );
@@ -115,9 +110,6 @@ mod tests {
 
     #[test]
     fn default_is_ctrl_v_without_enter() {
-        assert_eq!(
-            paste_sequence(false, false),
-            vec![vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_V]]
-        );
+        assert_eq!(paste_sequence(false, false), vec![vec![KeyCode::KEY_LEFTCTRL, KeyCode::KEY_V]]);
     }
 }

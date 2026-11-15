@@ -39,11 +39,12 @@ Desktop utility for Linux that toggles window visibility with double Ctrl press.
 For detailed rationale, see ADRs in `decisions.md` (active) or
 `.claude/archive/adr-archive.md` (archived).
 
-Key archived decisions:
+Key decisions:
 
-- **ADR-001**: Biome over ESLint + Prettier
-- **ADR-004**: D-Bus for IPC
-- **ADR-016**: Custom GNOME extension (active, in decisions.md)
+- **ADR-030**: GTK4 / libadwaita app (replaced Tauri)
+- **ADR-031**: App owns state; daemon and extension are D-Bus services
+- **ADR-032**: COPR distribution
+- **ADR-033**: mise / just / lefthook tooling
 
 ## Repository Structure
 
@@ -130,7 +131,7 @@ with mode 0600 (`uti_core::fs::write_atomic`).
 
 - Rust via rustup, pinned by `rust-toolchain.toml` (1.99.1 = Fedora 44's rust used by COPR/RPM builds)
 - mise: other tools pinned in `mise.toml` + `mise.lock` (just, lefthook, biome, cargo-deny,
-  rumdl, git-cliff, actionlint). Update with `mise outdated` / `mise lock`.
+  rumdl, git-cliff, actionlint, shellcheck). Update with `mise outdated` / `mise lock`.
 - `gtk4-devel`, `libadwaita-devel` (Fedora 44; Ubuntu lacks libadwaita 1.9)
 
 Setup: `mise install && just setup` (installs lefthook hooks).
@@ -139,7 +140,7 @@ Setup: `mise install && just setup` (installs lefthook hooks).
 
 ```bash
 just fmt            # cargo fmt + biome --write + rumdl --fix
-just lint           # lint-rust, lint-md, lint-ext, lint-gha
+just lint           # lint-rust, lint-md, lint-ext, lint-gha, lint-sh
 just ci             # lint + deny + test (same checks as CI)
 just run            # Run app in a config sandbox (app/run-dev.sh)
 just rpm            # SRPM + RPMs into dist/ (once: sudo dnf builddep packaging/uti.spec)
@@ -172,7 +173,7 @@ just test                       # All tests
 ### CI Integration
 
 - `ci.yml` jobs: Select jobs (by changed files), Rust lint and test (`fedora:44`), Dependency
-  audit (cargo-deny), Docs and workflow lint, Extension lint (only on `gnome-extension/`
+  audit (cargo-deny), Docs, workflow and shell lint, Extension lint (only on `gnome-extension/`
   changes), RPM build (packaging-related PRs and pushes to `main`); `Merge gate` is the only
   required check
 - `codeql.yml` (Code scanning / CodeQL): pushes to `main` and weekly, not on PRs

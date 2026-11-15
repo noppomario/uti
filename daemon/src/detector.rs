@@ -78,7 +78,7 @@ impl DoubleTapDetector {
                 } else {
                     (State::Tapped { at: now }, false)
                 }
-            }
+            },
             // Other keys, a second Ctrl while one is held, or stray releases.
             _ => (State::Idle, false),
         };
@@ -129,13 +129,8 @@ mod tests {
 
     #[test]
     fn other_key_between_taps_cancels() {
-        let fired = run(&[
-            (0, CtrlDown),
-            (50, CtrlUp),
-            (100, OtherDown),
-            (150, CtrlDown),
-            (200, CtrlUp),
-        ]);
+        let fired =
+            run(&[(0, CtrlDown), (50, CtrlUp), (100, OtherDown), (150, CtrlDown), (200, CtrlUp)]);
         assert!(fired.is_empty());
     }
 

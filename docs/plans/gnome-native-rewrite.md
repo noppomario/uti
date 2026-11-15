@@ -284,8 +284,8 @@ Valuable even if the rewrite is delayed.
 - [x] Look: libadwaita, system colors and accent; density from `theme.size`.
 - [x] Settings window with libadwaita rows; i18n from JSON (en / ja).
 - [x] Launcher via `gio::AppInfo` (5.2.1, 5.2.2).
-- [x] Remove React frontend, Vite, Biome, Vitest; bun kept as task runner
-      (`package.json` scripts updated).
+- [x] Remove React frontend, Vite, Vitest (bun later replaced by mise / just /
+      lefthook, ADR-033).
 
 ### Phase 4: Distribution
 
@@ -298,11 +298,12 @@ Valuable even if the rewrite is delayed.
 
 ### Phase 5: Docs and memory
 
-- [ ] ADR-030 (framework), ADR-031 (D-Bus redesign / extension as shell
-      service), ADR-032 (COPR distribution). Archive superseded ADRs.
-- [ ] Update `CLAUDE.md`, `.claude/rules/context.md`, `docs/ARCHITECTURE.md`,
-      `docs/DEVELOPMENT.md` (testing strategy changes: Rust unit tests for
-      `update()` logic replace React Testing Library).
+- [x] ADR-030 (framework), ADR-031 (D-Bus redesign / extension as shell
+      service), ADR-032 (COPR distribution), ADR-033 (tooling). Archived
+      ADR-016, 023, 027.
+- [x] Update `CLAUDE.md`, `.claude/rules/context.md`, `docs/ARCHITECTURE.md`,
+      `docs/DEVELOPMENT.md` (testing: pure `app/src/state/` unit tests replace
+      React Testing Library).
 
 ---
 

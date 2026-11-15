@@ -99,7 +99,7 @@ jobs:
       - run: just deny
 
   markdown:
-    name: Docs and workflow lint
+    name: Docs, workflow and shell lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,7 +109,7 @@ jobs:
         with:
           version: 2026.11.8
           install_args: aqua:casey/just aqua:rvben/rumdl aqua:rhysd/actionlint aqua:koalaman/shellcheck
-      - run: just lint-md lint-gha
+      - run: just lint-md lint-gha lint-sh
 
   extension:
     name: Extension lint
