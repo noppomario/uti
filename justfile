@@ -48,10 +48,14 @@ ci: lint deny test
 run *args:
     ./app/run-dev.sh {{args}}
 
-# Build the app and daemon RPMs into dist/
-rpm:
-    ./app/packaging/build-rpm.sh
-    ./daemon/build-rpm.sh
+# Build the SRPM from HEAD, then the binary RPMs offline, into dist/ (as COPR does).
+# Needs the build dependencies once: sudo dnf builddep packaging/uti.spec
+rpm *flags:
+    rm -rf dist
+    packaging/make-srpm.sh dist
+    rpmbuild --rebuild dist/*.src.rpm --define "_topdir $PWD/target/rpmbuild" \
+        --define "_rpmdir $PWD/dist" --define "_build_name_fmt %%{NAME}-%%{VERSION}-%%{RELEASE}.%%{ARCH}.rpm" \
+        {{flags}}
 
 [private]
 _need tool:

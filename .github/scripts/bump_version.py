@@ -72,8 +72,7 @@ def main():
 
     for cargo in ("app", "daemon", "crates/uti-core"):
         update_cargo_version(root / cargo / "Cargo.toml", version)
-    update_rpm_spec_version(root / "app" / "packaging" / "uti.spec", version)
-    update_rpm_spec_version(root / "daemon" / "uti-daemon.spec", version)
+    update_rpm_spec_version(root / "packaging" / "uti.spec", version)
 
     # Cargo.lock is committed and builds use --locked.
     subprocess.run(["cargo", "update", "--workspace"], cwd=root, check=True)

@@ -53,7 +53,8 @@ See [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) for detailed structure.
 
 - `app/` - GTK4 / libadwaita app (`uti` crate and binary)
 - `app/src/state/` - Pure, unit-tested UI state logic
-- `app/packaging/` - RPM spec, desktop file, metainfo, icons
+- `app/packaging/` - Desktop file, metainfo, icons
+- `packaging/` - RPM spec (app, daemon, extension) and `make-srpm.sh`; `.copr/` - COPR hook
 - `daemon/` - uti-daemon (evdev + D-Bus)
 - `gnome-extension/` - GNOME Shell extension
 
@@ -141,7 +142,7 @@ just fmt            # cargo fmt + biome --write + rumdl --fix
 just lint           # lint-rust, lint-md, lint-ext, lint-gha
 just ci             # lint + deny + test (same checks as CI)
 just run            # Run app in a config sandbox (app/run-dev.sh)
-just rpm            # App + daemon RPMs into dist/
+just rpm            # SRPM + RPMs into dist/ (once: sudo dnf builddep packaging/uti.spec)
 ```
 
 ## Testing & Quality
@@ -171,7 +172,8 @@ just test                       # All tests
 ### CI Integration
 
 - `ci.yml` jobs: Rust (`fedora:44`: lint-rust, test), Dependencies (cargo-deny), Markdown and
-  workflows, GNOME extension (only on `gnome-extension/` changes); `CI Checks` is the required check
+  workflows, GNOME extension (only on `gnome-extension/` changes), Package (SRPM + RPMs on
+  packaging-related PRs and pushes to `main`); `CI Checks` is the required check
 - Rust jobs skip for docs-only PRs; weekly scheduled full run
 - Actions pinned by commit SHA; tools installed from `mise.lock` via `jdx/mise-action`
 - Dependabot (cargo, github-actions): monthly, 7-day cooldown, merged by hand
@@ -186,14 +188,15 @@ just test                       # All tests
 
 ### Current
 
-- Manual installation via `install.sh`
-- systemd user service for daemon
-- RPM packages for Fedora (`uti`, `uti-daemon`), built in a `fedora:44` container
-- No updater: install new RPMs from Releases
+- COPR `noppomario/uti` (`fedora-44-x86_64`): `uti`, `uti-daemon`, `gnome-shell-extension-uti`
+  from one spec (`packaging/uti.spec`); `release.yml` triggers the build via `COPR_WEBHOOK_URL`
+- `install.sh` enables the COPR repo, installs the packages, adds the input group and enables
+  the daemon user service
+- No updater: `sudo dnf upgrade`; GitHub Releases carry release notes only
 
 ### Future
 
-- .deb package for Ubuntu/Debian
+- .deb package for Ubuntu/Debian (on request)
 - AUR package for Arch Linux
 - Flatpak
 

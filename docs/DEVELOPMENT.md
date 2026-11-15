@@ -141,15 +141,15 @@ Subsequent builds are much faster (<30 seconds for small changes).
 
 ### Version Update
 
-`.github/scripts/bump_version.py X.Y.Z` updates all 5 locations:
+`.github/scripts/bump_version.py X.Y.Z` updates:
 
 | File | Format |
 | ---- | ------ |
 | `app/Cargo.toml` | `version = "X.Y.Z"` |
-| `app/packaging/uti.spec` | `Version:        X.Y.Z` |
 | `daemon/Cargo.toml` | `version = "X.Y.Z"` |
-| `daemon/uti-daemon.spec` | `Version:        X.Y.Z` |
 | `crates/uti-core/Cargo.toml` | `version = "X.Y.Z"` |
+| `packaging/uti.spec` | `Version:        X.Y.Z` |
+| `Cargo.lock` | via `cargo update --workspace` |
 
 **Note**: All components share the same version number for unified releases.
 
@@ -188,15 +188,24 @@ gh pr create --base main --fill
 gh pr merge --auto --merge
 ```
 
-When the PR merges, `release.yml` tags the merge commit with `GITHUB_TOKEN` and builds and publishes the release in the same workflow (no PAT needed). Pushing a `vX.Y.Z` tag manually also runs build and release.
+When the PR merges, `release.yml` tags the merge commit with `GITHUB_TOKEN`, creates the GitHub Release with git-cliff notes and triggers the COPR build (no PAT needed). Pushing a `vX.Y.Z` tag manually runs the release job only.
 
-### Release Artifacts
+### Packages (COPR)
 
-Each release includes:
+GitHub Releases carry release notes only; packages are built by [COPR](https://copr.fedorainfracloud.org/coprs/noppomario/uti/) (`noppomario/uti`, chroot `fedora-44-x86_64`). `packaging/uti.spec` builds `uti`, `uti-daemon` and `gnome-shell-extension-uti` (noarch).
 
-- `uti-X.Y.Z-1.x86_64.rpm` - GTK application
-- `uti-daemon-X.Y.Z-1.x86_64.rpm` - Keyboard daemon
-- `gnome-extension.zip` - GNOME Shell extension (uti for GNOME)
+- COPR package: source type SCM, SRPM method `make_srpm` (`.copr/Makefile` -> `packaging/make-srpm.sh`), spec `packaging/uti.spec`
+- Build trigger: the COPR custom webhook URL, stored as the `COPR_WEBHOOK_URL` repository secret (`release.yml` warns if unset)
+- `packaging/make-srpm.sh [outdir]` builds the SRPM from HEAD: version from `git describe` (`0.4.0` on a tag, `0.4.0^3.gabc1234` after it), tarball = `git archive` + `cargo vendor`, offline `--locked` build
+- CI's `Package` job builds the SRPM and RPMs in `fedora:44` with Fedora's rust on packaging-related PRs and pushes to `main`
+
+### Local RPM Build
+
+```bash
+sudo dnf builddep packaging/uti.spec   # once
+just rpm                               # SRPM + RPMs into dist/
+just rpm --nodeps --nocheck            # extra flags go to rpmbuild (e.g. rustup-only setups)
+```
 
 ---
 

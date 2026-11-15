@@ -1,7 +1,10 @@
 # Release: merging a `release/vX.Y.Z` PR (opened by the release skill) tags
 # the merge commit and publishes the release in this same workflow. Tags
 # pushed with GITHUB_TOKEN do not trigger other workflows, so no PAT is
-# needed. A manually pushed `v*` tag runs the build and release jobs only.
+# needed. A manually pushed `v*` tag runs the release job only.
+#
+# Packages are built by COPR (packaging/uti.spec); the GitHub Release only
+# carries release notes.
 name: Release
 
 on:
@@ -42,65 +45,20 @@ jobs:
           gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$SHA"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Build and Package
+  release:
+    name: Create GitHub Release
     needs: tag
     # Runs after `tag`, or alone for a manually pushed tag.
     if: always() && (needs.tag.result == 'success' || github.event_name == 'push')
     runs-on: ubuntu-latest
-    # libadwaita 1.9 (GNOME 50) is not on Ubuntu.
-    container: registry.fedoraproject.org/fedora:44
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
-    steps:
-      - name: Install build dependencies
-        run: |
-          dnf install -y --setopt=install_weak_deps=False \
-            git gcc rustup gtk4-devel libadwaita-devel rpm-build zip glib2-devel
-          rustup-init -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - id: version
-        env:
-          TAG: ${{ needs.tag.outputs.tag || github.ref_name }}
-        run: |
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.version.outputs.tag }}
-          persist-credentials: false
-      - name: Build release binaries
-        run: cargo build --release --workspace --locked
-      - name: Build RPMs
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          ./app/packaging/build-rpm.sh --package-only "$VERSION"
-          ./daemon/build-rpm.sh --package-only "$VERSION"
-      - name: Package uti for GNOME
-        run: |
-          cd gnome-extension
-          glib-compile-schemas schemas/
-          zip -r ../dist/gnome-extension.zip metadata.json extension.js schemas/
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-packages
-          path: |
-            dist/*.rpm
-            dist/*.zip
-          retention-days: 7
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    if: always() && needs.build.result == 'success'
-    runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.tag.outputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.build.outputs.tag }}
+          ref: ${{ env.TAG }}
           fetch-depth: 0
           persist-credentials: false
       - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
@@ -111,20 +69,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: git-cliff --latest --strip header > "$RUNNER_TEMP/release-notes.md"
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: release-packages
-          path: dist
       - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          tag_name: ${{ needs.build.outputs.tag }}
-          files: |
-            dist/*.rpm
-            dist/*.zip
+          tag_name: ${{ env.TAG }}
           body_path: ${{ runner.temp }}/release-notes.md
+      - name: Trigger COPR build
+        env:
+          COPR_WEBHOOK_URL: ${{ secrets.COPR_WEBHOOK_URL }}
+        run: |
+          if [ -z "$COPR_WEBHOOK_URL" ]; then
+            echo "::warning::COPR_WEBHOOK_URL is not set; no package build was started"
+            exit 0
+          fi
+          curl -fsS -X POST "$COPR_WEBHOOK_URL"
       - name: Notify release
         env:
-          TAG: ${{ needs.build.outputs.tag }}
           REPO: ${{ github.repository }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |

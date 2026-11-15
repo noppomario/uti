@@ -22,7 +22,7 @@ just fmt                # cargo fmt + biome + rumdl --fix
 just lint               # lint-rust, lint-md, lint-ext, lint-gha
 just test               # All tests
 just deny               # cargo-deny (deny.toml)
-just rpm                # App + daemon RPMs into dist/
+just rpm                # SRPM + app/daemon/extension RPMs into dist/
 
 # Test-Driven Development (TDD)
 cargo test -p uti               # App tests (app/src/state/)
