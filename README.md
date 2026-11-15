@@ -38,7 +38,7 @@
 ## 📋 System Requirements
 
 - **OS**: Linux with systemd (Fedora 44+; the app needs libadwaita 1.9+)
-- **Desktop**: GNOME 50 on Wayland (recommended), other Wayland/X11 environments (limited)
+- **Desktop**: GNOME 50 or 51 on Wayland (recommended), other Wayland/X11 environments (limited)
 - **Architecture**: x86_64
 
 ## 🚀 Quick Start
