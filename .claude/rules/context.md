@@ -171,9 +171,11 @@ just test                       # All tests
 
 ### CI Integration
 
-- `ci.yml` jobs: Rust (`fedora:44`: lint-rust, test), Dependencies (cargo-deny), Markdown and
-  workflows, GNOME extension (only on `gnome-extension/` changes), Package (SRPM + RPMs on
-  packaging-related PRs and pushes to `main`); `CI Checks` is the required check
+- `ci.yml` jobs: Select jobs (by changed files), Rust lint and test (`fedora:44`), Dependency
+  audit (cargo-deny), Docs and workflow lint, Extension lint (only on `gnome-extension/`
+  changes), RPM build (packaging-related PRs and pushes to `main`); `Merge gate` is the only
+  required check
+- `codeql.yml` (Code scanning / CodeQL): pushes to `main` and weekly, not on PRs
 - Rust jobs skip for docs-only PRs; weekly scheduled full run
 - Actions pinned by commit SHA; tools installed from `mise.lock` via `jdx/mise-action`
 - Dependabot (cargo, github-actions): monthly, 7-day cooldown, merged by hand

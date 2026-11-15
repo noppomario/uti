@@ -1,4 +1,4 @@
-name: CodeQL
+name: Code scanning
 
 # Not run on PRs (and not a required check): it only covers the extension's
 # JavaScript and the workflows, which actionlint/shellcheck/Biome lint on PRs.
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze
+    name: CodeQL
     runs-on: ubuntu-latest
     permissions:
       contents: read
