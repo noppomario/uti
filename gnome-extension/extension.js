@@ -54,6 +54,7 @@ const SHELL_IFACE_XML = `
     <signal name="ClipboardChanged">
       <arg type="s" name="text"/>
     </signal>
+    <signal name="ShellPressed"/>
   </interface>
 </node>`;
 
@@ -92,6 +93,17 @@ function findMainWindow() {
         if (win && isMainWindow(win)) return win;
     }
     return null;
+}
+
+/**
+ * Whether `actor` is part of uti for GNOME's own panel button or its menu.
+ *
+ * @param {Clutter.Actor | null} actor
+ * @returns {boolean}
+ */
+function isOwnUi(actor) {
+    for (let a = actor; a; a = a.get_parent()) if (a._utiOwnUi) return true;
+    return false;
 }
 
 /**
@@ -172,6 +184,7 @@ class ShellService {
         this._focusWait = null;
         this._submitTimeoutId = 0;
         this._lastClipboardText = null;
+        this._pressFilterId = 0;
     }
 
     enable() {
@@ -199,6 +212,18 @@ class ShellService {
                 this
             );
 
+        // Presses handled by the Shell itself (desktop background, panel).
+        // Presses on app windows never reach this filter.
+        this._pressFilterId = Clutter.Event.add_filter(global.stage, (event, actor) => {
+            if (
+                event.type() === Clutter.EventType.BUTTON_PRESS &&
+                !isOwnUi(actor) &&
+                findMainWindow()
+            )
+                this._impl?.emit_signal('ShellPressed', null);
+            return Clutter.EVENT_PROPAGATE;
+        });
+
         this._keyboard = global.stage.context
             .get_backend()
             .get_default_seat()
@@ -206,6 +231,8 @@ class ShellService {
     }
 
     disable() {
+        if (this._pressFilterId) Clutter.Event.remove_filter(this._pressFilterId);
+        this._pressFilterId = 0;
         global.display.disconnectObject(this);
         global.display.get_selection().disconnectObject(this);
         for (const actor of this._watchedActors) actor.disconnectObject(this);
@@ -445,12 +472,15 @@ class ShellService {
 }
 
 /**
- * Panel button: left click toggles the main window, other buttons open the menu.
+ * Panel button: opens the menu (Show/Hide, Settings, ...).
  */
 const UtiIndicator = GObject.registerClass(
     class UtiIndicator extends PanelMenu.Button {
         _init() {
             super._init(0.0, 'uti', false);
+            // Clicks on our own UI must not count as clicks outside uti.
+            this._utiOwnUi = true;
+            this.menu.actor._utiOwnUi = true;
 
             this.add_child(
                 new St.Icon({
@@ -483,17 +513,6 @@ const UtiIndicator = GObject.registerClass(
             } catch (e) {
                 console.warn(`[uti] Failed to open ${GITHUB_URL}: ${e.message}`);
             }
-        }
-
-        vfunc_event(event) {
-            if (
-                event.type() === Clutter.EventType.BUTTON_PRESS &&
-                event.get_button() === Clutter.BUTTON_PRIMARY
-            ) {
-                activateAppAction('toggle');
-                return Clutter.EVENT_STOP;
-            }
-            return super.vfunc_event(event);
         }
     }
 );

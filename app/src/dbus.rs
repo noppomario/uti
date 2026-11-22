@@ -54,6 +54,22 @@ pub fn on_clipboard_changed(
     )
 }
 
+/// Subscribes to `Shell1.ShellPressed()` (desktop background or panel clicked).
+pub fn on_shell_pressed(
+    conn: &gio::DBusConnection,
+    callback: impl Fn() + 'static,
+) -> gio::SignalSubscription {
+    conn.subscribe_to_signal(
+        Some(SHELL_BUS_NAME),
+        Some(SHELL_INTERFACE),
+        Some("ShellPressed"),
+        Some(SHELL_OBJECT_PATH),
+        None,
+        gio::DBusSignalFlags::NONE,
+        move |_| callback(),
+    )
+}
+
 async fn call(
     conn: &gio::DBusConnection,
     service: (&str, &str, &str),
