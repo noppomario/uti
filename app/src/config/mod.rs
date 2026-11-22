@@ -69,6 +69,19 @@ impl ThemeConfig {
     }
 }
 
+/// Optional mouse launch triggers (all off by default)
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MouseConfig {
+    /// Show the window on a left double click on the desktop background
+    #[serde(default)]
+    pub desktop_double_click: bool,
+
+    /// Show the window on a right click while left is held (grabs mice)
+    #[serde(default)]
+    pub left_right_click: bool,
+}
+
 /// Application configuration
 ///
 /// This struct represents the user's configuration for the uti application.
@@ -87,6 +100,10 @@ pub struct AppConfig {
     /// UI language: 'en' or 'ja'
     #[serde(default = "default_language")]
     pub language: String,
+
+    /// Mouse launch triggers
+    #[serde(default)]
+    pub mouse: MouseConfig,
 }
 
 fn default_clipboard_limit() -> usize {
@@ -99,6 +116,7 @@ impl Default for AppConfig {
             theme: ThemeConfig::default(),
             clipboard_history_limit: default_clipboard_limit(),
             language: default_language(),
+            mouse: MouseConfig::default(),
         }
     }
 }

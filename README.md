@@ -118,7 +118,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 ### Basic Operation
 
-1. Press **Ctrl twice quickly** to toggle window visibility
+1. Press **Ctrl twice quickly** to toggle window visibility; it opens on the Clipboard tab. Optional mouse triggers (Settings > Mouse) open the Launcher tab
 2. Use **←/→** to switch between Clipboard, Snippets, and Launcher tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
 4. Press **1-9** to quickly select an item by its number
@@ -159,7 +159,11 @@ Configuration file: `~/.config/uti/config.json`
     "size": "normal"
   },
   "clipboardHistoryLimit": 50,
-  "language": "en"
+  "language": "en",
+  "mouse": {
+    "desktopDoubleClick": false,
+    "leftRightClick": false
+  }
 }
 ```
 
@@ -168,6 +172,8 @@ Configuration file: `~/.config/uti/config.json`
 | `theme.size` | string | `normal` | `minimal`, `normal`, `wide` (window size/density) |
 | `clipboardHistoryLimit` | number | `50` | Max clipboard items to store |
 | `language` | string | `en` | Settings window language: `en` (English), `ja` (日本語) |
+| `mouse.desktopDoubleClick` | boolean | `false` | Show the window on a left double click on the desktop background (needs uti for GNOME; touchpad taps are not detected) |
+| `mouse.leftRightClick` | boolean | `false` | Show the window on a right click while holding left, anywhere. Mice with real buttons only; uti-daemon grabs them and re-emits their events, and the desktop's left long-press menu is disabled |
 
 Colors follow the system style; `theme.color` and `theme.accentColor` are ignored.
 
