@@ -100,6 +100,7 @@ jobs:
 
   markdown:
     name: Docs, workflow and shell lint
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -130,7 +131,7 @@ jobs:
   # builds the latest tag), then the RPMs offline with Fedora's rust, so spec
   # and vendoring breakage shows up before a release.
   package:
-    name: RPM build (fedora ${{ matrix.fedora }})
+    name: RPM build
     needs: changes
     if: needs.changes.outputs.package == 'true' && github.event_name != 'schedule'
     # Same Fedora releases as the COPR chroots (Rust lint and test follows the
