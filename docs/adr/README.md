@@ -40,3 +40,4 @@ ADR-001 to ADR-029 mostly describe the Tauri-era app; ADR-030 and later describe
 | [032](records.md#adr-032) | Distribute via COPR from a single spec | 2026-11-15 | Accepted (first release: v0.4.0) |
 | [033](records.md#adr-033) | Tooling pinned in the repository (mise, just, lefthook) | 2026-11-15 | Accepted |
 | [034](records.md#adr-034) | Trunk-based development on main | 2026-11-14 | Accepted (supersedes ADR-021, ADR-022) |
+| [035](records.md#adr-035) | Pointer input: each sensor reports what only it can see | 2026-11-22 | Accepted |
