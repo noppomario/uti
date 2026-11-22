@@ -1,10 +1,12 @@
-//! uti keyboard daemon
+//! uti input daemon
 //!
-//! Watches all keyboards (including ones plugged in later) for a double Ctrl
-//! tap and announces it on D-Bus as `io.github.noppomario.uti.Daemon1.Triggered`.
+//! Watches all keyboards and mice (including ones plugged in later) for a
+//! double Ctrl tap and a left double click, announced on D-Bus as
+//! `io.github.noppomario.uti.Daemon1.Triggered` and `DoubleClicked`.
 //! Also offers `Daemon1.Paste` as a uinput fallback for the GNOME extension's
 //! paste; only the owner of the app's bus name may call it.
 
+mod click;
 mod detector;
 mod uinput;
 
@@ -13,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use click::DoubleClickDetector;
 use detector::{DoubleTapDetector, KeyEvent};
 use evdev::{Device, EventType, KeyCode};
 use futures_util::StreamExt;
@@ -45,24 +48,61 @@ fn classify(code: KeyCode, value: i32) -> Option<KeyEvent> {
     }
 }
 
-/// Returns true for real keyboards, excluding uti's own virtual keyboard.
-fn is_keyboard(name: Option<&str>, has_key_a: bool) -> bool {
-    has_key_a && name != Some(VIRTUAL_KEYBOARD_NAME)
+/// Events the device readers forward to the main loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Input {
+    Key(KeyEvent),
+    LeftPress,
+}
+
+/// What a device is monitored for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeviceKind {
+    keyboard: bool,
+    pointer: bool,
+}
+
+impl DeviceKind {
+    /// Real keyboards (`KEY_A`) and pointers (`BTN_LEFT`), excluding uti's
+    /// own virtual keyboard.
+    fn of(name: Option<&str>, has_key_a: bool, has_btn_left: bool) -> Self {
+        let own = name == Some(VIRTUAL_KEYBOARD_NAME);
+        Self {
+            keyboard: has_key_a && !own,
+            pointer: has_btn_left && !own,
+        }
+    }
+
+    fn is_monitored(self) -> bool {
+        self.keyboard || self.pointer
+    }
+
+    /// Maps a raw key/button event of this device to an [`Input`].
+    fn input(self, code: KeyCode, value: i32) -> Option<Input> {
+        if code == KeyCode::BTN_LEFT {
+            return (self.pointer && value == 1).then_some(Input::LeftPress);
+        }
+        if self.keyboard {
+            classify(code, value).map(Input::Key)
+        } else {
+            None
+        }
+    }
 }
 
 fn is_event_node(path: &Path) -> bool {
     path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("event"))
 }
 
-/// Tracks monitored device nodes and spawns one reader task per keyboard.
+/// Tracks monitored device nodes and spawns one reader task per device.
 #[derive(Clone)]
 struct Devices {
     active: Arc<Mutex<HashSet<PathBuf>>>,
-    tx: mpsc::UnboundedSender<KeyEvent>,
+    tx: mpsc::UnboundedSender<Input>,
 }
 
 impl Devices {
-    /// Starts monitoring `path` if it is a keyboard not monitored yet.
+    /// Starts monitoring `path` if it is a keyboard or pointer not monitored yet.
     fn try_add(&self, path: PathBuf) {
         if !is_event_node(&path) || self.active.lock().unwrap().contains(&path) {
             return;
@@ -70,9 +110,14 @@ impl Devices {
         let Ok(device) = Device::open(&path) else {
             return; // Not readable (yet); udev may fix permissions (IN_ATTRIB).
         };
-        let has_key_a = device.supported_keys().is_some_and(|k| k.contains(KeyCode::KEY_A));
+        let keys = device.supported_keys();
         let name = device.name().unwrap_or("unknown").to_owned();
-        if !is_keyboard(Some(&name), has_key_a) {
+        let kind = DeviceKind::of(
+            Some(&name),
+            keys.is_some_and(|k| k.contains(KeyCode::KEY_A)),
+            keys.is_some_and(|k| k.contains(KeyCode::BTN_LEFT)),
+        );
+        if !kind.is_monitored() {
             return;
         }
         let stream = match device.into_event_stream() {
@@ -88,8 +133,8 @@ impl Devices {
             loop {
                 match stream.next_event().await {
                     Ok(ev) if ev.event_type() == EventType::KEY => {
-                        if let Some(k) = classify(KeyCode::new(ev.code()), ev.value()) {
-                            if this.tx.send(k).is_err() {
+                        if let Some(input) = kind.input(KeyCode::new(ev.code()), ev.value()) {
+                            if this.tx.send(input).is_err() {
                                 break;
                             }
                         }
@@ -167,16 +212,30 @@ impl Daemon1 {
     /// Emitted on a double Ctrl tap.
     #[zbus(signal)]
     async fn triggered(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
+
+    /// Emitted on a left double click, wherever the pointer is.
+    #[zbus(signal)]
+    async fn double_clicked(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
 }
 
-async fn announce(conn: &Connection) {
-    match SignalEmitter::new(conn, OBJECT_PATH) {
-        Ok(emitter) => {
-            if let Err(e) = Daemon1::triggered(&emitter).await {
-                error!("failed to emit Triggered: {e}");
-            }
-        },
-        Err(e) => error!("invalid object path: {e}"),
+/// Signals of [`Daemon1`].
+#[derive(Debug, Clone, Copy)]
+enum Signal {
+    Triggered,
+    DoubleClicked,
+}
+
+async fn announce(conn: &Connection, signal: Signal) {
+    let emitter = match SignalEmitter::new(conn, OBJECT_PATH) {
+        Ok(emitter) => emitter,
+        Err(e) => return error!("invalid object path: {e}"),
+    };
+    let result = match signal {
+        Signal::Triggered => Daemon1::triggered(&emitter).await,
+        Signal::DoubleClicked => Daemon1::double_clicked(&emitter).await,
+    };
+    if let Err(e) = result {
+        error!("failed to emit {signal:?}: {e}");
     }
 }
 
@@ -214,15 +273,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hotplug = devices.clone();
     tokio::spawn(async move {
         if let Err(e) = watch_hotplug(hotplug).await {
-            error!("hotplug watch failed, new keyboards will be ignored: {e}");
+            error!("hotplug watch failed, new devices will be ignored: {e}");
         }
     });
 
-    let mut detector = DoubleTapDetector::new();
-    while let Some(event) = rx.recv().await {
-        if detector.feed(event, Instant::now()) {
-            info!("double Ctrl detected");
-            announce(&conn).await;
+    let mut ctrl = DoubleTapDetector::new();
+    let mut click = DoubleClickDetector::new();
+    while let Some(input) = rx.recv().await {
+        let now = Instant::now();
+        match input {
+            Input::Key(event) if ctrl.feed(event, now) => {
+                info!("double Ctrl detected");
+                announce(&conn, Signal::Triggered).await;
+            },
+            Input::LeftPress if click.press(now) => {
+                debug!("double click detected");
+                announce(&conn, Signal::DoubleClicked).await;
+            },
+            _ => {},
         }
     }
     Err("event channel closed".into())
@@ -247,9 +315,25 @@ mod tests {
 
     #[test]
     fn own_virtual_keyboard_is_not_monitored() {
-        assert!(!is_keyboard(Some(VIRTUAL_KEYBOARD_NAME), true));
-        assert!(is_keyboard(Some("Topre REALFORCE 112JP"), true));
-        assert!(!is_keyboard(Some("Logitech MX Anywhere 3"), false));
+        assert!(!DeviceKind::of(Some(VIRTUAL_KEYBOARD_NAME), true, false).is_monitored());
+        assert!(DeviceKind::of(Some("Topre REALFORCE 112JP"), true, false).keyboard);
+    }
+
+    #[test]
+    fn mice_are_monitored_for_left_presses_only() {
+        let mouse = DeviceKind::of(Some("Logitech MX Anywhere 3"), false, true);
+        assert!(mouse.is_monitored() && !mouse.keyboard);
+        assert_eq!(mouse.input(KeyCode::BTN_LEFT, 1), Some(Input::LeftPress));
+        assert_eq!(mouse.input(KeyCode::BTN_LEFT, 0), None);
+        assert_eq!(mouse.input(KeyCode::BTN_RIGHT, 1), None);
+        assert_eq!(mouse.input(KeyCode::KEY_LEFTCTRL, 1), None);
+    }
+
+    #[test]
+    fn combined_receiver_reports_keys_and_clicks() {
+        let combo = DeviceKind::of(Some("Logitech USB Receiver"), true, true);
+        assert_eq!(combo.input(KeyCode::KEY_LEFTCTRL, 1), Some(Input::Key(KeyEvent::CtrlDown)));
+        assert_eq!(combo.input(KeyCode::BTN_LEFT, 1), Some(Input::LeftPress));
     }
 
     #[test]

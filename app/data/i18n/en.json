@@ -2,6 +2,7 @@
   "title": "Settings",
   "sections": {
     "general": "General",
+    "mouse": "Mouse",
     "appearance": "Appearance",
     "clipboard": "Clipboard",
     "snippets": "Snippets",
@@ -20,6 +21,12 @@
         "en": "English",
         "ja": "Japanese"
       }
+    }
+  },
+  "mouse": {
+    "desktopDoubleClick": {
+      "label": "Double-Click Desktop to Show",
+      "description": "Show uti when the desktop background is double-clicked"
     }
   },
   "appearance": {

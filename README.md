@@ -118,7 +118,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 ### Basic Operation
 
-1. Press **Ctrl twice quickly** to toggle window visibility
+1. Press **Ctrl twice quickly** to toggle window visibility (optionally also: double-click the desktop, Settings > Mouse)
 2. Use **←/→** to switch between Clipboard, Snippets, and Launcher tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
 4. Press **1-9** to quickly select an item by its number
@@ -159,7 +159,10 @@ Configuration file: `~/.config/uti/config.json`
     "size": "normal"
   },
   "clipboardHistoryLimit": 50,
-  "language": "en"
+  "language": "en",
+  "mouse": {
+    "desktopDoubleClick": false
+  }
 }
 ```
 
@@ -168,6 +171,7 @@ Configuration file: `~/.config/uti/config.json`
 | `theme.size` | string | `normal` | `minimal`, `normal`, `wide` (window size/density) |
 | `clipboardHistoryLimit` | number | `50` | Max clipboard items to store |
 | `language` | string | `en` | Settings window language: `en` (English), `ja` (日本語) |
+| `mouse.desktopDoubleClick` | boolean | `false` | Show the window on a left double click on the desktop background (needs uti for GNOME; touchpad taps are not detected) |
 
 Colors follow the system style; `theme.color` and `theme.accentColor` are ignored.
 

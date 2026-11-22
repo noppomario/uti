@@ -28,6 +28,7 @@ pub enum Event {
     Language(String),
     Size(String),
     HistoryLimit(usize),
+    DesktopDoubleClick(bool),
     /// Re-read config.json, launcher.json and snippets.json.
     Reload,
 }
@@ -80,6 +81,18 @@ pub fn populate(window: &adw::ApplicationWindow, config: &AppConfig, on_event: R
     });
     general.add(&language);
     page.add(&general);
+
+    // Mouse
+    let mouse = group(&t("sections.mouse"));
+    let double_click = adw::SwitchRow::builder()
+        .title(t("mouse.desktopDoubleClick.label"))
+        .subtitle(t("mouse.desktopDoubleClick.description"))
+        .active(config.mouse.desktop_double_click)
+        .build();
+    let e = on_event.clone();
+    double_click.connect_active_notify(move |row| e(Event::DesktopDoubleClick(row.is_active())));
+    mouse.add(&double_click);
+    page.add(&mouse);
 
     // Appearance
     let appearance = group(&t("sections.appearance"));

@@ -28,7 +28,7 @@ The app owns state; the daemon and the extension are services it calls.
 
 - **Linux** with D-Bus session bus and glibc
 - **systemd** for daemon service management
-- User in `input` group for keyboard access
+- User in `input` group for keyboard and mouse access
 
 **Optional**: "uti for GNOME" extension enables the panel menu, cursor positioning, always-on-top, hiding from dash / Alt+Tab, and paste on **GNOME/Wayland**. Without it, window appears at screen center and pin button only disables auto-hide.
 
@@ -38,19 +38,20 @@ The app owns state; the daemon and the extension are services it calls.
 
 ### uti-daemon
 
-Rust daemon that monitors keyboard input, detects double Ctrl press, and provides
-virtual keyboard for auto-paste functionality.
+Rust daemon that monitors keyboards and mice, detects double Ctrl press and left
+double clicks, and provides virtual keyboard for auto-paste functionality.
 
 | Property | Value |
 | -------- | ----- |
 | Language | Rust |
 | Input | evdev (`/dev/input/event*`, hotplug via inotify) |
-| Output | `Daemon1.Triggered`, uinput (`/dev/uinput`) |
+| Output | `Daemon1.Triggered`, `Daemon1.DoubleClicked`, uinput (`/dev/uinput`) |
 | Permissions | `input` group membership |
 | Service | `uti-daemon.service` (systemd user) |
 
 A tap is a short Ctrl press with no other key in between; two taps within
-300 ms trigger (`daemon/src/detector.rs`).
+300 ms trigger (`daemon/src/detector.rs`). Two left presses within 400 ms are a
+double click (`daemon/src/click.rs`), wherever the pointer is.
 
 ### uti (GTK App)
 
@@ -90,6 +91,7 @@ GNOME Shell extension that provides:
 5. **Paste** - Clutter virtual keyboard after focus leaves uti
 6. **Clipboard watch** - `Meta.Selection` owner changes, emitted as `ClipboardChanged`
 7. **Shell clicks** - presses on the desktop background or panel (which do not move focus), emitted as `ShellPressed` while the main window is shown
+8. **Desktop hit test** - `PointerOnDesktop`: whether the pointer is over the background or a desktop-type window
 
 | Property | Value |
 | -------- | ----- |
@@ -128,9 +130,9 @@ sequenceDiagram
 
 | Owner | Bus name | Object path | Interface | Members |
 | ----- | -------- | ----------- | --------- | ------- |
-| uti-daemon | `io.github.noppomario.uti.Daemon` | `/io/github/noppomario/uti/Daemon` | `io.github.noppomario.uti.Daemon1` | signal `Triggered()`, method `Paste(b plain, b submit)` |
+| uti-daemon | `io.github.noppomario.uti.Daemon` | `/io/github/noppomario/uti/Daemon` | `io.github.noppomario.uti.Daemon1` | signals `Triggered()`, `DoubleClicked()`, method `Paste(b plain, b submit)` |
 | uti | `io.github.noppomario.uti` | `/io/github/noppomario/uti` | `org.freedesktop.Application` | `ActivateAction(s, av, a{sv})`: `toggle`, `show`, `hide`, `settings`, `check-updates`, `quit` |
-| GNOME Extension | `io.github.noppomario.uti.Shell` | `/io/github/noppomario/uti/Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(b activate)`, `SetAbove(b)`, `Paste(b plain, b submit)`, signals `ClipboardChanged(s)`, `ShellPressed()` |
+| GNOME Extension | `io.github.noppomario.uti.Shell` | `/io/github/noppomario/uti/Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(b activate)`, `SetAbove(b)`, `Paste(b plain, b submit)`, `PointerOnDesktop() -> b`, signals `ClipboardChanged(s)`, `ShellPressed()` |
 
 `Daemon1.Paste` and all `Shell1` methods reject callers that do not own
 `io.github.noppomario.uti` (`AccessDenied`). Nothing in the app calls `Paste`
@@ -138,6 +140,9 @@ since the Prompt tab was removed.
 
 The popup hides on outside clicks unless pinned: clicks on app windows arrive
 as focus loss, clicks on the Shell itself as `ShellPressed` (ADR-035).
+With `mouse.desktopDoubleClick`, a hidden app answers `DoubleClicked` by asking
+`PointerOnDesktop` and shows if true; `ShellPressed` within 500 ms of showing is
+ignored.
 
 ---
 

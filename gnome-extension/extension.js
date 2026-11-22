@@ -3,7 +3,8 @@
  *
  * Shell-side services for the uti app (GNOME 50):
  * 1. `io.github.noppomario.uti.Shell1` D-Bus service: window positioning,
- *    always-on-top, paste via virtual keyboard, clipboard change signal.
+ *    always-on-top, paste via virtual keyboard, clipboard change signal,
+ *    whether the pointer is over the desktop.
  *    Only the current owner of the app bus name may call it.
  * 2. Panel menu button that invokes the app's GActions through
  *    `org.freedesktop.Application.ActivateAction`.
@@ -50,6 +51,9 @@ const SHELL_IFACE_XML = `
     <method name="Paste">
       <arg type="b" name="plain" direction="in"/>
       <arg type="b" name="submit" direction="in"/>
+    </method>
+    <method name="PointerOnDesktop">
+      <arg type="b" name="on_desktop" direction="out"/>
     </method>
     <signal name="ClipboardChanged">
       <arg type="s" name="text"/>
@@ -103,6 +107,24 @@ function findMainWindow() {
  */
 function isOwnUi(actor) {
     for (let a = actor; a; a = a.get_parent()) if (a._utiOwnUi) return true;
+    return false;
+}
+
+/**
+ * Whether the pointer is over the desktop: the background, or a window of
+ * type DESKTOP. False in the overview, where the background is not clickable.
+ *
+ * @returns {boolean}
+ */
+function isPointerOnDesktop() {
+    if (Main.overview.visible) return false;
+    const [x, y] = global.get_pointer();
+    const actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+    for (let a = actor; a; a = a.get_parent()) {
+        if (a instanceof Meta.BackgroundActor) return true;
+        if (a instanceof Meta.WindowActor)
+            return a.get_meta_window()?.get_window_type() === Meta.WindowType.DESKTOP;
+    }
     return false;
 }
 
@@ -287,6 +309,12 @@ class ShellService {
         this._checkCaller(invocation, () => {
             invocation.return_value(null);
             this._whenFocusLeavesUti(() => this._sendPaste(plain, submit));
+        });
+    }
+
+    PointerOnDesktopAsync(_params, invocation) {
+        this._checkCaller(invocation, () => {
+            invocation.return_value(new GLib.Variant('(b)', [isPointerOnDesktop()]));
         });
     }
 

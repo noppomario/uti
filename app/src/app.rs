@@ -6,6 +6,7 @@
 //! every message the GTK focus is moved to match it.
 
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
@@ -38,6 +39,10 @@ pub enum Msg {
     FocusChanged(bool),
     /// GNOME Shell (desktop background, panel) was clicked.
     ShellPressed,
+    /// The daemon saw a left double click somewhere.
+    DoubleClicked,
+    /// The extension's answer to `PointerOnDesktop`.
+    PointerOnDesktop(bool),
     SetPinned(bool),
     OpenSettings,
     CheckUpdates,
@@ -156,6 +161,8 @@ pub fn start(app: &adw::Application, minimized: bool) {
         let t = tx.clone();
         subscriptions.push(dbus::on_triggered(conn, move || send(&t, Msg::Toggle)));
         let t = tx.clone();
+        subscriptions.push(dbus::on_double_clicked(conn, move || send(&t, Msg::DoubleClicked)));
+        let t = tx.clone();
         subscriptions
             .push(dbus::on_clipboard_changed(conn, move |text| send(&t, Msg::ClipboardText(text))));
         let t = tx.clone();
@@ -167,10 +174,12 @@ pub fn start(app: &adw::Application, minimized: bool) {
     let mut history = ClipboardStore::load_default();
     history.max_items = config.clipboard_history_limit;
 
+    let mut window = WindowState::new();
+    window.set_desktop_double_click(config.mouse.desktop_double_click);
     let mut model = App {
         tx: tx.clone(),
         ui,
-        window: WindowState::new(),
+        window,
         nav: Nav::new(),
         conn,
         _subscriptions: subscriptions,
@@ -206,11 +215,13 @@ pub fn start(app: &adw::Application, minimized: bool) {
 impl App {
     fn update(&mut self, msg: Msg) {
         let command = match msg {
-            Msg::Toggle => self.window.toggle(),
-            Msg::Show => self.window.show(),
+            Msg::Toggle => self.window.toggle(Instant::now()),
+            Msg::Show => self.window.show(Instant::now()),
             Msg::Hide => self.window.hide(),
             Msg::FocusChanged(false) => self.window.focus_lost(),
-            Msg::ShellPressed => self.window.shell_pressed(),
+            Msg::ShellPressed => self.window.shell_pressed(Instant::now()),
+            Msg::DoubleClicked => self.window.double_clicked(),
+            Msg::PointerOnDesktop(on) => self.window.pointer_on_desktop(on, Instant::now()),
             Msg::FocusChanged(true) => {
                 self.read_clipboard();
                 None
@@ -408,6 +419,15 @@ impl App {
                     self.sync_focus();
                 },
             },
+            WindowCommand::QueryPointerOnDesktop => {
+                if let Some(conn) = self.conn.clone() {
+                    let tx = self.tx.clone();
+                    glib::spawn_future_local(async move {
+                        let on = dbus::pointer_on_desktop(&conn).await;
+                        send(&tx, Msg::PointerOnDesktop(on));
+                    });
+                }
+            },
             WindowCommand::Hide => {
                 self.ui.root.set_visible(false);
                 self.commit_starred();
@@ -580,8 +600,13 @@ impl App {
                 self.config.clipboard_history_limit = limit.max(1);
                 self.history.max_items = self.config.clipboard_history_limit;
             },
+            settings::Event::DesktopDoubleClick(enabled) => {
+                self.config.mouse.desktop_double_click = enabled;
+                self.window.set_desktop_double_click(enabled);
+            },
             settings::Event::Reload => {
                 self.config = AppConfig::load();
+                self.window.set_desktop_double_click(self.config.mouse.desktop_double_click);
                 self.history.max_items = self.config.clipboard_history_limit;
                 self.apply_size();
                 self.launcher = load_launcher_config();
