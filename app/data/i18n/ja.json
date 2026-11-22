@@ -27,6 +27,10 @@
     "desktopDoubleClick": {
       "label": "デスクトップのダブルクリックで表示",
       "description": "デスクトップの背景をダブルクリックしたときに uti を表示する"
+    },
+    "leftRightClick": {
+      "label": "左ボタンを押しながら右クリックで表示",
+      "description": "どこでもランチャーを開く。ボタン付きのマウスのみ（タッチパッドは対象外）"
     }
   },
   "appearance": {

@@ -43,6 +43,10 @@ pub enum Msg {
     DoubleClicked,
     /// The extension's answer to `PointerOnDesktop`.
     PointerOnDesktop(bool),
+    /// The daemon saw a right press while left was held.
+    LeftRightClicked,
+    /// The daemon or the extension (re)appeared on the bus.
+    ServicesAppeared,
     SetPinned(bool),
     OpenSettings,
     CheckUpdates,
@@ -115,6 +119,7 @@ struct App {
     nav: Nav,
     conn: Option<gio::DBusConnection>,
     _subscriptions: Vec<gio::SignalSubscription>,
+    _watchers: Watchers,
     tabs: HashMap<Tab, TabData>,
     history: ClipboardStore,
     snippets: SnippetsStore,
@@ -148,6 +153,17 @@ fn density(size: &str) -> (i32, i32, &'static str) {
     }
 }
 
+/// Bus name watchers, unwatched on drop.
+struct Watchers(Option<[gio::WatcherId; 2]>);
+
+impl Drop for Watchers {
+    fn drop(&mut self) {
+        for id in self.0.take().into_iter().flatten() {
+            gio::bus_unwatch_name(id);
+        }
+    }
+}
+
 /// Builds the main window and starts the message loop.
 pub fn start(app: &adw::Application, minimized: bool) {
     let (tx, rx) = async_channel::unbounded();
@@ -164,6 +180,9 @@ pub fn start(app: &adw::Application, minimized: bool) {
         subscriptions.push(dbus::on_double_clicked(conn, move || send(&t, Msg::DoubleClicked)));
         let t = tx.clone();
         subscriptions
+            .push(dbus::on_left_right_clicked(conn, move || send(&t, Msg::LeftRightClicked)));
+        let t = tx.clone();
+        subscriptions
             .push(dbus::on_clipboard_changed(conn, move |text| send(&t, Msg::ClipboardText(text))));
         let t = tx.clone();
         subscriptions.push(dbus::on_shell_pressed(conn, move || send(&t, Msg::ShellPressed)));
@@ -176,6 +195,11 @@ pub fn start(app: &adw::Application, minimized: bool) {
 
     let mut window = WindowState::new();
     window.set_desktop_double_click(config.mouse.desktop_double_click);
+    window.set_left_right_click(config.mouse.left_right_click);
+    let watchers = conn.as_ref().map(|conn| {
+        let t = tx.clone();
+        dbus::watch_services(conn, move || send(&t, Msg::ServicesAppeared))
+    });
     let mut model = App {
         tx: tx.clone(),
         ui,
@@ -183,6 +207,7 @@ pub fn start(app: &adw::Application, minimized: bool) {
         nav: Nav::new(),
         conn,
         _subscriptions: subscriptions,
+        _watchers: Watchers(watchers),
         tabs: Tab::ALL.iter().map(|t| (*t, TabData::default())).collect(),
         history,
         snippets: load_snippets(),
@@ -222,6 +247,11 @@ impl App {
             Msg::ShellPressed => self.window.shell_pressed(Instant::now()),
             Msg::DoubleClicked => self.window.double_clicked(),
             Msg::PointerOnDesktop(on) => self.window.pointer_on_desktop(on, Instant::now()),
+            Msg::LeftRightClicked => self.window.left_right_clicked(Instant::now()),
+            Msg::ServicesAppeared => {
+                self.sync_left_right_click();
+                None
+            },
             Msg::FocusChanged(true) => {
                 self.read_clipboard();
                 None
@@ -401,6 +431,16 @@ impl App {
                     },
                 }
             },
+        }
+    }
+
+    /// Tells the daemon and the extension whether left-held + right click is on.
+    fn sync_left_right_click(&self) {
+        if let Some(conn) = self.conn.clone() {
+            let enabled = self.config.mouse.left_right_click;
+            glib::spawn_future_local(
+                async move { dbus::set_left_right_click(&conn, enabled).await },
+            );
         }
     }
 
@@ -612,9 +652,16 @@ impl App {
                 self.config.mouse.desktop_double_click = enabled;
                 self.window.set_desktop_double_click(enabled);
             },
+            settings::Event::LeftRightClick(enabled) => {
+                self.config.mouse.left_right_click = enabled;
+                self.window.set_left_right_click(enabled);
+                self.sync_left_right_click();
+            },
             settings::Event::Reload => {
                 self.config = AppConfig::load();
                 self.window.set_desktop_double_click(self.config.mouse.desktop_double_click);
+                self.window.set_left_right_click(self.config.mouse.left_right_click);
+                self.sync_left_right_click();
                 self.history.max_items = self.config.clipboard_history_limit;
                 self.apply_size();
                 self.launcher = load_launcher_config();

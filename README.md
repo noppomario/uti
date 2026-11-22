@@ -161,7 +161,8 @@ Configuration file: `~/.config/uti/config.json`
   "clipboardHistoryLimit": 50,
   "language": "en",
   "mouse": {
-    "desktopDoubleClick": false
+    "desktopDoubleClick": false,
+    "leftRightClick": false
   }
 }
 ```
@@ -172,6 +173,7 @@ Configuration file: `~/.config/uti/config.json`
 | `clipboardHistoryLimit` | number | `50` | Max clipboard items to store |
 | `language` | string | `en` | Settings window language: `en` (English), `ja` (日本語) |
 | `mouse.desktopDoubleClick` | boolean | `false` | Show the window on a left double click on the desktop background (needs uti for GNOME; touchpad taps are not detected) |
+| `mouse.leftRightClick` | boolean | `false` | Show the window on a right click while holding left, anywhere. Mice with real buttons only; uti-daemon grabs them and re-emits their events, and the desktop's left long-press menu is disabled |
 
 Colors follow the system style; `theme.color` and `theme.accentColor` are ignored.
 

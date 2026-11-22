@@ -4,7 +4,8 @@
  * Shell-side services for the uti app (GNOME 50):
  * 1. `io.github.noppomario.uti.Shell1` D-Bus service: window positioning,
  *    always-on-top, paste via virtual keyboard, clipboard change signal,
- *    whether the pointer is over the desktop.
+ *    whether the pointer is over the desktop, blocking left presses on the
+ *    background (for the app's left-held + right click trigger).
  *    Only the current owner of the app bus name may call it.
  * 2. Panel menu button that invokes the app's GActions through
  *    `org.freedesktop.Application.ActivateAction`.
@@ -51,6 +52,9 @@ const SHELL_IFACE_XML = `
     <method name="Paste">
       <arg type="b" name="plain" direction="in"/>
       <arg type="b" name="submit" direction="in"/>
+    </method>
+    <method name="SetBlockBackgroundPress">
+      <arg type="b" name="block" direction="in"/>
     </method>
     <method name="PointerOnDesktop">
       <arg type="b" name="on_desktop" direction="out"/>
@@ -111,6 +115,17 @@ function isOwnUi(actor) {
 }
 
 /**
+ * Whether `actor` is (part of) the desktop background.
+ *
+ * @param {Clutter.Actor | null} actor
+ * @returns {boolean}
+ */
+function isBackground(actor) {
+    for (let a = actor; a; a = a.get_parent()) if (a instanceof Meta.BackgroundActor) return true;
+    return false;
+}
+
+/**
  * Whether the pointer is over the desktop: the background, or a window of
  * type DESKTOP. False in the overview, where the background is not clickable.
  *
@@ -121,7 +136,7 @@ function isPointerOnDesktop() {
     const [x, y] = global.get_pointer();
     const actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
     for (let a = actor; a; a = a.get_parent()) {
-        if (a instanceof Meta.BackgroundActor) return true;
+        if (isBackground(a)) return true;
         if (a instanceof Meta.WindowActor)
             return a.get_meta_window()?.get_window_type() === Meta.WindowType.DESKTOP;
     }
@@ -207,6 +222,8 @@ class ShellService {
         this._submitTimeoutId = 0;
         this._lastClipboardText = null;
         this._pressFilterId = 0;
+        this._blockBackgroundPress = false;
+        this._appWatchId = 0;
     }
 
     enable() {
@@ -237,14 +254,29 @@ class ShellService {
         // Presses handled by the Shell itself (desktop background, panel).
         // Presses on app windows never reach this filter.
         this._pressFilterId = Clutter.Event.add_filter(global.stage, (event, actor) => {
+            if (event.type() !== Clutter.EventType.BUTTON_PRESS) return Clutter.EVENT_PROPAGATE;
+            if (!isOwnUi(actor) && findMainWindow()) this._impl?.emit_signal('ShellPressed', null);
+            // Holding left on the background opens GNOME's long-press menu,
+            // which steals focus from a left-held + right click.
             if (
-                event.type() === Clutter.EventType.BUTTON_PRESS &&
-                !isOwnUi(actor) &&
-                findMainWindow()
+                this._blockBackgroundPress &&
+                event.get_button() === Clutter.BUTTON_PRIMARY &&
+                !Main.overview.visible &&
+                isBackground(actor)
             )
-                this._impl?.emit_signal('ShellPressed', null);
+                return Clutter.EVENT_STOP;
             return Clutter.EVENT_PROPAGATE;
         });
+        // The app turns blocking on; it must not outlive the app.
+        this._appWatchId = Gio.bus_watch_name(
+            Gio.BusType.SESSION,
+            APP_ID,
+            Gio.BusNameWatcherFlags.NONE,
+            null,
+            () => {
+                this._blockBackgroundPress = false;
+            }
+        );
 
         this._keyboard = global.stage.context
             .get_backend()
@@ -255,6 +287,9 @@ class ShellService {
     disable() {
         if (this._pressFilterId) Clutter.Event.remove_filter(this._pressFilterId);
         this._pressFilterId = 0;
+        if (this._appWatchId) Gio.bus_unwatch_name(this._appWatchId);
+        this._appWatchId = 0;
+        this._blockBackgroundPress = false;
         global.display.disconnectObject(this);
         global.display.get_selection().disconnectObject(this);
         for (const actor of this._watchedActors) actor.disconnectObject(this);
@@ -309,6 +344,13 @@ class ShellService {
         this._checkCaller(invocation, () => {
             invocation.return_value(null);
             this._whenFocusLeavesUti(() => this._sendPaste(plain, submit));
+        });
+    }
+
+    SetBlockBackgroundPressAsync([block], invocation) {
+        this._checkCaller(invocation, () => {
+            this._blockBackgroundPress = block;
+            invocation.return_value(null);
         });
     }
 

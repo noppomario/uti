@@ -76,6 +76,10 @@ pub struct MouseConfig {
     /// Show the window on a left double click on the desktop background
     #[serde(default)]
     pub desktop_double_click: bool,
+
+    /// Show the window on a right click while left is held (grabs mice)
+    #[serde(default)]
+    pub left_right_click: bool,
 }
 
 /// Application configuration

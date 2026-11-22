@@ -27,6 +27,10 @@
     "desktopDoubleClick": {
       "label": "Double-Click Desktop to Show",
       "description": "Show uti when the desktop background is double-clicked"
+    },
+    "leftRightClick": {
+      "label": "Right-Click While Holding Left to Show",
+      "description": "Opens the Launcher anywhere. Mice with buttons only, not touchpads"
     }
   },
   "appearance": {

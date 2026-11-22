@@ -31,6 +31,7 @@ pub struct WindowState {
     pinned: bool,
     shown_at: Option<Instant>,
     desktop_double_click: bool,
+    left_right_click: bool,
 }
 
 impl WindowState {
@@ -77,6 +78,21 @@ impl WindowState {
     /// Enables or disables showing on a desktop double click.
     pub fn set_desktop_double_click(&mut self, enabled: bool) {
         self.desktop_double_click = enabled;
+    }
+
+    /// Enables or disables showing on a left-held + right click.
+    pub fn set_left_right_click(&mut self, enabled: bool) {
+        self.left_right_click = enabled;
+    }
+
+    /// The daemon saw a right press while left was held. Opens the Launcher
+    /// at the pointer, also when already shown; ignored while pinned.
+    pub fn left_right_clicked(&mut self, now: Instant) -> Option<WindowCommand> {
+        if self.left_right_click && !self.pinned {
+            self.open(Tab::Launcher, now)
+        } else {
+            None
+        }
     }
 
     /// The daemon saw a left double click somewhere. While hidden and the
@@ -270,5 +286,32 @@ mod tests {
         s.double_clicked();
         s.set_desktop_double_click(false);
         assert_eq!(s.pointer_on_desktop(true, at(0)), None);
+    }
+
+    #[test]
+    fn left_right_click_is_off_by_default() {
+        let mut s = WindowState::new();
+        assert_eq!(s.left_right_clicked(at(0)), None);
+        assert!(!s.is_visible());
+    }
+
+    #[test]
+    fn left_right_click_opens_the_launcher_even_when_shown() {
+        let mut s = WindowState::new();
+        s.set_left_right_click(true);
+        assert_eq!(s.left_right_clicked(at(0)), Some(PositionAndPresent(Tab::Launcher)));
+        assert!(s.is_visible());
+        assert_eq!(s.left_right_clicked(at(1000)), Some(PositionAndPresent(Tab::Launcher)));
+        // The gesture's own presses right after re-opening do not hide it.
+        assert_eq!(s.shell_pressed(at(1100)), None);
+    }
+
+    #[test]
+    fn left_right_click_is_ignored_while_pinned() {
+        let mut s = WindowState::new();
+        s.set_left_right_click(true);
+        s.show(at(0));
+        s.set_pinned(true);
+        assert_eq!(s.left_right_clicked(at(1000)), None);
     }
 }
