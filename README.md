@@ -29,7 +29,7 @@
 - ⭐ **Snippets**: Pin frequently used text for quick access (star icon in clipboard history)
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
-- 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled (the window otherwise hides when you click outside it)
+- 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **Panel Menu**: Show/Hide, Settings and more from the GNOME panel (uti for GNOME)
 - 📍 **Cursor Positioning**: Window appears at cursor location on GNOME
 - 🎨 **Native Look**: GTK4 / libadwaita; follows the system light/dark style and accent color
