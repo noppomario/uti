@@ -2095,3 +2095,55 @@ maintainer it gave no benefit: stable versions are already identified by tags.
 
 **Negative**: `main` may contain unreleased work; users install tagged
 releases (COPR, ADR-032), not the branch.
+
+---
+
+## ADR-035
+
+### Pointer input: each sensor reports what only it can see
+
+**Date**: 2026-11-22
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Closing the popup on outside clicks (#225) and planned mouse launch gestures
+need pointer input. PoCs on GNOME 51 (Fedora 45):
+
+- The extension (Clutter event filter, stage `captured-event`, background
+  actor) sees presses on the desktop background and Shell UI, and can stop
+  them. Presses on Wayland client windows never reach it and cannot be stopped.
+  Clutter 51 has no `get_click_count()`.
+- The daemon (evdev) sees mouse buttons, double clicks and left-held + right
+  presses, but not touchpad taps, two-finger taps or which clickpad area was
+  pressed (libinput synthesizes those in the compositor).
+- Grabbing the mouse (`EVIOCGRAB`) and re-emitting through uinput keeps speed,
+  scrolling and normal right clicks intact, and stops the right press of a
+  left-held + right gesture over any app.
+- On the desktop, holding left opens GNOME's long-press background menu, which
+  takes focus. Only the extension can stop that left press.
+
+### Decision
+
+- Clicks on app windows: focus loss (GTK `is-active`), as today.
+- Clicks the extension can see (background, Shell UI): `Shell1.ShellPressed`,
+  excluding its own panel button. Location facts come from the extension.
+- Location-independent device gestures (double Ctrl, mouse double click,
+  left-held + right): daemon. Suppressing the right press needs a mouse grab.
+- All decisions (visible, pinned, ignore right after showing) are made in the
+  app (`app/src/state/`). Daemon and extension never know app state.
+- Planned launch features: desktop double click = daemon double click + app
+  asks the extension whether the pointer is over the desktop; left-held + right
+  = daemon with grab, plus the extension stopping the desktop left long-press
+  menu only while that feature is enabled.
+
+### Consequences
+
+**Positive**: works for taps and any pointer device for outside clicks; no
+re-implementation of libinput in the daemon; role split of ADR-031 kept.
+
+**Negative**: two sensors for pointer input (by location); touchpad taps cannot
+trigger daemon gestures; desktop double click with desktop-icons extensions
+(DING) is untested (#226); left long-press background menu is lost while the gesture
+feature is on.
