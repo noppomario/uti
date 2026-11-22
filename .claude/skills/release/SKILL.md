@@ -27,6 +27,11 @@ When CI passes and the PR merges, `release.yml` tags the merge commit (`vX.Y.Z`,
 `GITHUB_TOKEN`), creates the GitHub Release with git-cliff notes and triggers the COPR
 build via the `COPR_WEBHOOK_URL` secret. COPR builds the packages from `packaging/uti.spec`.
 
+Then run `.claude/skills/release/wait-copr.sh X.Y.Z` in the background (exit 0: COPR
+build succeeded, 1: failed, 2: timed out after 120 min). When it exits, report the
+result with a push notification if available (it reaches mobile), including the COPR
+build link on failure.
+
 ## Version Format
 
 `MAJOR.MINOR.PATCH` - Semantic versioning (e.g., `0.2.0`)

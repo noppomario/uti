@@ -37,7 +37,7 @@ lint-gha: (_need "actionlint") (_need "shellcheck")
 
 # Shell scripts shipped or run by users
 lint-sh: (_need "shellcheck")
-    shellcheck install.sh packaging/make-srpm.sh app/run-dev.sh
+    shellcheck install.sh packaging/make-srpm.sh app/run-dev.sh .claude/skills/release/wait-copr.sh
 
 lint: lint-rust lint-md lint-ext lint-gha lint-sh
 
