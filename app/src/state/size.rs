@@ -25,7 +25,8 @@ impl Size {
     /// Default window width and height.
     pub fn window_size(self) -> (i32, i32) {
         match self {
-            Size::Minimal => (240, 420),
+            // Clibor's default: 25 rows of 24px below the header.
+            Size::Minimal => (300, 640),
             Size::Normal => (320, 600),
             Size::Wide => (500, 700),
         }
@@ -65,9 +66,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sizes_grow_and_have_distinct_classes() {
-        let sizes = Size::ALL.map(Size::window_size);
-        assert!(sizes.windows(2).all(|w| w[0].0 < w[1].0 && w[0].1 < w[1].1));
+    fn test_widths_grow_and_classes_are_distinct() {
+        // Heights do not: minimal is dense, not short (25 rows like Clibor).
+        let widths = Size::ALL.map(|s| s.window_size().0);
+        assert!(widths.windows(2).all(|w| w[0] < w[1]));
         let classes = Size::ALL.map(Size::css_class);
         assert!(classes.iter().enumerate().all(|(i, c)| !classes[..i].contains(c)));
     }

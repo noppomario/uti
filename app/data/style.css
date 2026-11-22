@@ -7,10 +7,11 @@
   min-height: 30px;
 }
 
-/* List rows: one height, aligned number column. */
+/* List rows: one height, aligned number column. The right padding keeps
+ * row buttons clear of the 24px overlay scrollbar (with the row's 6px margin). */
 .uti-row-box {
   min-height: 36px;
-  padding: 0 6px;
+  padding: 0 18px 0 6px;
 }
 .uti-index {
   font-feature-settings: "tnum";
@@ -89,12 +90,9 @@ window.density-minimal .navigation-sidebar > row {
   margin: 0;
   border-radius: 0;
 }
-window.density-minimal .navigation-sidebar > row:nth-child(even):not(:selected):not(:hover) {
-  background-color: color-mix(in srgb, currentColor 4%, transparent);
-}
 window.density-minimal .uti-row-box {
-  min-height: 19px;
-  padding: 0 4px;
+  min-height: 24px;
+  padding: 0 24px 0 4px;
   border-spacing: 6px;
   font-size: 0.85em;
 }
