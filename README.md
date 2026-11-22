@@ -26,7 +26,7 @@
 
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
-- ⭐ **Snippets**: Pin frequently used text for quick access (star icon in clipboard history)
+- ⭐ **Snippets**: Keep frequently used text; add from clipboard history, manage in Settings
 - 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
@@ -125,9 +125,10 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 5. Press **Ctrl+F** to focus the search bar
 6. **Type to search**: Filter items or search system applications
 7. **Escape** clears search and returns focus to the list
-8. In **Clipboard tab**, press **S** or click **⭐** (star icon) to pin item to Snippets
-   - Item is immediately added to Snippets tab
-   - Item is removed from Clipboard when the window closes
+8. **Right-click** a row (or press **Menu** / **Shift+F10**) for its actions:
+   - Clipboard: Add to Snippets (**S**; the item stays in history), Delete from History (**Delete**)
+   - Snippets: Edit (**F2**), New Snippet, Move Up / Down, Delete (**Delete**). Edit and New
+     open Settings > Snippets, where snippets can also be added, edited, reordered and deleted
 9. In **Launcher tab**, press **→** to expand jump list (recent files)
 10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
     - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.

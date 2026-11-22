@@ -55,6 +55,18 @@
     "openConfig": {
       "label": "Edit snippets.json",
       "description": "Open snippets configuration file in default editor"
+    },
+    "manager": {
+      "add": "Add Snippet",
+      "empty": "No snippets yet",
+      "moveUp": "Move Up",
+      "moveDown": "Move Down",
+      "delete": "Delete",
+      "editTitle": "Edit Snippet",
+      "newTitle": "New Snippet",
+      "label": "Label (optional)",
+      "value": "Text",
+      "save": "Save"
     }
   },
   "launcher": {
