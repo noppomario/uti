@@ -130,7 +130,7 @@ jobs:
   # builds the latest tag), then the RPMs offline with Fedora's rust, so spec
   # and vendoring breakage shows up before a release.
   package:
-    name: RPM build (fedora ${{ matrix.fedora }})
+    name: RPM build
     needs: changes
     if: needs.changes.outputs.package == 'true' && github.event_name != 'schedule'
     # Same Fedora releases as the COPR chroots (Rust lint and test follows the
