@@ -2,6 +2,8 @@
 
 use std::time::{Duration, Instant};
 
+use super::list::Tab;
+
 /// Shell presses this soon after showing belong to the gesture that showed
 /// the window (e.g. the second press of a desktop double click).
 pub const SHOW_GRACE: Duration = Duration::from_millis(500);
@@ -9,8 +11,10 @@ pub const SHOW_GRACE: Duration = Duration::from_millis(500);
 /// What the UI layer must do after a state change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowCommand {
-    /// Ask the extension to position at the pointer, then `present()`.
-    PositionAndPresent,
+    /// Select the tab, ask the extension to position at the pointer, then
+    /// `present()`. Mouse triggers open the Launcher, everything else the
+    /// Clipboard.
+    PositionAndPresent(Tab),
     /// Hide the window.
     Hide,
     /// Tell the extension to keep the window above others (or not).
@@ -54,12 +58,20 @@ impl WindowState {
 
     /// Explicit `show` action.
     pub fn show(&mut self, now: Instant) -> Option<WindowCommand> {
+        self.show_tab(Tab::Clipboard, now)
+    }
+
+    fn show_tab(&mut self, tab: Tab, now: Instant) -> Option<WindowCommand> {
         if self.visible {
             return None;
         }
+        self.open(tab, now)
+    }
+
+    fn open(&mut self, tab: Tab, now: Instant) -> Option<WindowCommand> {
         self.visible = true;
         self.shown_at = Some(now);
-        Some(WindowCommand::PositionAndPresent)
+        Some(WindowCommand::PositionAndPresent(tab))
     }
 
     /// Enables or disables showing on a desktop double click.
@@ -76,7 +88,7 @@ impl WindowState {
     /// The extension answered [`WindowCommand::QueryPointerOnDesktop`].
     pub fn pointer_on_desktop(&mut self, on_desktop: bool, now: Instant) -> Option<WindowCommand> {
         if on_desktop && self.desktop_double_click {
-            self.show(now)
+            self.show_tab(Tab::Launcher, now)
         } else {
             None
         }
@@ -138,7 +150,7 @@ mod tests {
     #[test]
     fn toggle_shows_then_hides() {
         let mut s = WindowState::new();
-        assert_eq!(s.toggle(at(0)), Some(PositionAndPresent));
+        assert_eq!(s.toggle(at(0)), Some(PositionAndPresent(Tab::Clipboard)));
         assert!(s.is_visible());
         assert_eq!(s.toggle(at(0)), Some(Hide));
         assert!(!s.is_visible());
@@ -193,7 +205,7 @@ mod tests {
     #[test]
     fn show_presents_only_when_hidden() {
         let mut s = WindowState::new();
-        assert_eq!(s.show(at(0)), Some(PositionAndPresent));
+        assert_eq!(s.show(at(0)), Some(PositionAndPresent(Tab::Clipboard)));
         assert_eq!(s.show(at(0)), None);
     }
 
@@ -238,7 +250,7 @@ mod tests {
         s.set_desktop_double_click(true);
         assert_eq!(s.double_clicked(), Some(QueryPointerOnDesktop));
         assert_eq!(s.pointer_on_desktop(false, at(0)), None);
-        assert_eq!(s.pointer_on_desktop(true, at(0)), Some(PositionAndPresent));
+        assert_eq!(s.pointer_on_desktop(true, at(0)), Some(PositionAndPresent(Tab::Launcher)));
         assert!(s.is_visible());
     }
 

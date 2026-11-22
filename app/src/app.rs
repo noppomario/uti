@@ -404,20 +404,28 @@ impl App {
         }
     }
 
+    fn position_and_present(&mut self) {
+        match self.conn.clone() {
+            Some(conn) => {
+                let tx = self.tx.clone();
+                glib::spawn_future_local(async move {
+                    dbus::position_at_pointer(&conn).await;
+                    send(&tx, Msg::Present);
+                });
+            },
+            None => {
+                self.ui.root.present();
+                self.sync_focus();
+            },
+        }
+    }
+
     fn apply(&mut self, command: WindowCommand) {
         match command {
-            WindowCommand::PositionAndPresent => match self.conn.clone() {
-                Some(conn) => {
-                    let tx = self.tx.clone();
-                    glib::spawn_future_local(async move {
-                        dbus::position_at_pointer(&conn).await;
-                        send(&tx, Msg::Present);
-                    });
-                },
-                None => {
-                    self.ui.root.present();
-                    self.sync_focus();
-                },
+            WindowCommand::PositionAndPresent(tab) => {
+                let effect = self.nav.select_tab(tab);
+                self.navigate(effect);
+                self.position_and_present();
             },
             WindowCommand::QueryPointerOnDesktop => {
                 if let Some(conn) = self.conn.clone() {

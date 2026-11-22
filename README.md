@@ -118,7 +118,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 ### Basic Operation
 
-1. Press **Ctrl twice quickly** to toggle window visibility (optionally also: double-click the desktop, Settings > Mouse)
+1. Press **Ctrl twice quickly** to toggle window visibility; it opens on the Clipboard tab. Optional mouse triggers (Settings > Mouse) open the Launcher tab
 2. Use **←/→** to switch between Clipboard, Snippets, and Launcher tabs
 3. Use **↑/↓** to navigate items, **Enter** to select
 4. Press **1-9** to quickly select an item by its number
