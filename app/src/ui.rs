@@ -145,7 +145,7 @@ pub fn build_row(
             .icon_name("go-next-symbolic")
             .tooltip_text("Recent Files (→)")
             .valign(gtk::Align::Center)
-            .css_classes(["flat", "circular"])
+            .css_classes(["flat", "uti-row-button"])
             .focusable(false)
             .build();
         let index = spec.index;
@@ -153,7 +153,7 @@ pub fn build_row(
         content.append(&jump);
     }
     if let Some(starred) = spec.star {
-        let mut classes = vec!["flat", "circular", "uti-star"];
+        let mut classes = vec!["flat", "uti-row-button", "uti-star"];
         if starred {
             classes.push("starred");
         }

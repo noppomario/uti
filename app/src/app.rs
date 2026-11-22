@@ -21,6 +21,7 @@ use crate::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
 use crate::state::launcher::{rank_apps, AppText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::nav::{Effect, Focus, Nav};
+use crate::state::size::Size;
 use crate::state::window::{WindowCommand, WindowState};
 use crate::ui;
 
@@ -59,6 +60,8 @@ pub enum Msg {
     /// GTK focus moved (mouse click or Tab key).
     FocusMoved(Focus),
     FocusSearch,
+    /// The search bar was revealed (typing in minimal).
+    SearchRevealed,
     /// A row was clicked; visible index in the current tab.
     Activate(usize),
     ToggleStar(usize),
@@ -104,6 +107,8 @@ struct Ui {
     stack: gtk::Stack,
     tab_group: adw::ToggleGroup,
     search: gtk::SearchEntry,
+    search_bar: gtk::SearchBar,
+    toolbar: adw::ToolbarView,
     lists: HashMap<Tab, gtk::ListBox>,
     jump_list: gtk::ListBox,
     jump_pane: gtk::ScrolledWindow,
@@ -144,15 +149,6 @@ fn load_apps() -> Vec<gio::AppInfo> {
     gio::AppInfo::all().into_iter().filter(|a| a.should_show()).collect()
 }
 
-/// Window size and CSS class for `theme.size`.
-fn density(size: &str) -> (i32, i32, &'static str) {
-    match size {
-        "minimal" => (320, 600, "density-minimal"),
-        "wide" => (750, 800, "density-wide"),
-        _ => (500, 700, "density-normal"),
-    }
-}
-
 /// Bus name watchers, unwatched on drop.
 struct Watchers(Option<[gio::WatcherId; 2]>);
 
@@ -168,7 +164,7 @@ impl Drop for Watchers {
 pub fn start(app: &adw::Application, minimized: bool) {
     let (tx, rx) = async_channel::unbounded();
     let config = AppConfig::load();
-    let ui = build_ui(app, &tx, &config.theme.size);
+    let ui = build_ui(app, &tx, Size::parse(&config.theme.size));
     register_actions(app, &tx);
 
     let conn = app.dbus_connection();
@@ -304,6 +300,7 @@ impl App {
                         self.refresh(tab);
                     }
                 }
+                self.sync_search_bar();
                 None
             },
             Msg::Key(key) => {
@@ -323,11 +320,18 @@ impl App {
             },
             Msg::FocusMoved(focus) => {
                 self.nav.focus_moved(focus);
+                self.sync_search_bar();
                 None
             },
             Msg::FocusSearch => {
                 self.nav.focus_search();
                 self.sync_focus();
+                None
+            },
+            Msg::SearchRevealed => {
+                // The bar moves focus to the entry itself; grabbing it again
+                // would select the typed text.
+                self.nav.focus_search();
                 None
             },
             Msg::Activate(i) => self.activate(i),
@@ -395,6 +399,8 @@ impl App {
         // rings after its own keyboard navigation; keep them on (the popup
         // is keyboard-driven).
         self.ui.root.set_focus_visible(true);
+        // Before focusing: a hidden search entry cannot take focus.
+        self.sync_search_bar();
         match self.nav.focus() {
             Focus::Search => {
                 self.ui.search.grab_focus();
@@ -458,6 +464,19 @@ impl App {
                 self.sync_focus();
             },
         }
+    }
+
+    /// Shows or hides the search bar for `theme.size`.
+    fn sync_search_bar(&self) {
+        let has_query = self.tabs.get(&self.nav.tab()).is_some_and(|d| !d.query.is_empty());
+        let show = self.size().show_search(self.nav.focus() == Focus::Search, has_query);
+        if self.ui.search_bar.is_search_mode() != show {
+            self.ui.search_bar.set_search_mode(show);
+        }
+    }
+
+    fn size(&self) -> Size {
+        Size::parse(&self.config.theme.size)
     }
 
     fn apply(&mut self, command: WindowCommand) {
@@ -683,12 +702,15 @@ impl App {
 
     /// Resizes the main window for `theme.size`.
     fn apply_size(&mut self) {
-        let (width, height, class) = density(&self.config.theme.size);
-        for (_, _, other) in ["minimal", "normal", "wide"].map(density) {
-            self.ui.root.remove_css_class(other);
+        let size = self.size();
+        for other in Size::ALL {
+            self.ui.root.remove_css_class(other.css_class());
         }
-        self.ui.root.add_css_class(class);
+        self.ui.root.add_css_class(size.css_class());
+        let (width, height) = size.window_size();
         self.ui.root.set_default_size(width, height);
+        self.ui.toolbar.set_reveal_bottom_bars(size.show_footer());
+        self.sync_search_bar();
         // Trim again on the next show, with the new row height.
         self.rows_fitted = false;
     }
@@ -862,7 +884,7 @@ impl App {
     }
 }
 
-fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
+fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
     let stack = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
         .transition_duration(100)
@@ -950,13 +972,18 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
     let search = gtk::SearchEntry::builder().hexpand(true).build();
     let t = tx.clone();
     search.connect_search_changed(move |e| send(&t, Msg::SearchChanged(e.text().to_string())));
-    let search_bar = gtk::Box::builder()
-        .margin_start(6)
-        .margin_end(6)
-        .margin_top(6)
-        .margin_bottom(6)
+    // Hidden in minimal until searching; typing anywhere reveals it.
+    let search_bar = gtk::SearchBar::builder()
+        .child(&search)
+        .search_mode_enabled(size.show_search(false, false))
         .build();
-    search_bar.append(&search);
+    search_bar.connect_entry(&search);
+    let t = tx.clone();
+    search_bar.connect_search_mode_enabled_notify(move |b| {
+        if b.is_search_mode() {
+            send(&t, Msg::SearchRevealed);
+        }
+    });
 
     let footer = gtk::Label::builder()
         .xalign(0.0)
@@ -971,20 +998,25 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
     toolbar.add_bottom_bar(&footer);
     // Opaque footer with a separator, so list rows never show through.
     toolbar.set_bottom_bar_style(adw::ToolbarStyle::RaisedBorder);
+    toolbar.set_reveal_bottom_bars(size.show_footer());
 
-    let (width, height, density_class) = density(size);
+    let (width, height) = size.window_size();
     let root = adw::ApplicationWindow::builder()
         .application(app)
         .title(MAIN_WINDOW_TITLE)
         .resizable(false)
         .default_width(width)
         .default_height(height)
+        // Below AdwWindow's implicit 360x294 minimum, which minimal needs.
+        .width_request(200)
+        .height_request(200)
         .content(&toolbar)
         .build();
     // add_css_class keeps GTK's own classes (background, csd): replacing them
     // made the window transparent and square.
     root.add_css_class("uti-popup");
-    root.add_css_class(density_class);
+    root.add_css_class(size.css_class());
+    search_bar.set_key_capture_widget(Some(&root));
 
     let t = tx.clone();
     root.connect_is_active_notify(move |w| send(&t, Msg::FocusChanged(w.is_active())));
@@ -1047,6 +1079,8 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: &str) -> Ui {
         stack,
         tab_group,
         search,
+        search_bar,
+        toolbar,
         lists,
         jump_list,
         jump_pane,

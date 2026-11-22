@@ -169,7 +169,7 @@ Configuration file: `~/.config/uti/config.json`
 
 | Option | Type | Default | Description |
 | ------ | ---- | ------- | ----------- |
-| `theme.size` | string | `normal` | `minimal`, `normal`, `wide` (window size/density) |
+| `theme.size` | string | `normal` | `minimal` (dense; key hints hidden, search bar shown while searching), `normal`, `wide` |
 | `clipboardHistoryLimit` | number | `50` | Max clipboard items to store |
 | `language` | string | `en` | Settings window language: `en` (English), `ja` (日本語) |
 | `mouse.desktopDoubleClick` | boolean | `false` | Show the window on a left double click on the desktop background (needs uti for GNOME; touchpad taps are not detected) |
