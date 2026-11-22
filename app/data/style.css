@@ -7,13 +7,21 @@
   min-height: 30px;
 }
 
-/* List rows: one height, aligned number column. */
+/* List rows: one height, aligned number column. The right padding keeps
+ * row buttons clear of the 24px overlay scrollbar (with the row's 6px margin). */
 .uti-row-box {
   min-height: 36px;
-  padding: 0 6px;
+  padding: 0 18px 0 6px;
 }
 .uti-index {
   font-feature-settings: "tnum";
+}
+
+/* Star / jump buttons: small icons that do not set the row height. */
+.uti-row-button {
+  min-width: 24px;
+  min-height: 0;
+  padding: 0;
 }
 
 /* Star buttons stay quiet until hovered, selected or starred. */
@@ -29,13 +37,68 @@ row .uti-star.starred {
   color: var(--accent-color);
 }
 
-/* Density: minimal / normal / wide (theme.size). */
-window.density-minimal .uti-row-box {
+/* Density: minimal / normal / wide (theme.size). libadwaita's 36px
+ * sidebar row height would floor the smaller sizes. */
+window.density-normal .navigation-sidebar > row {
+  min-height: 0;
+}
+window.density-normal .uti-row-box {
   min-height: 28px;
   font-size: 0.92em;
 }
-window.density-wide .uti-row-box {
-  min-height: 44px;
+window.density-normal .uti-row-button {
+  min-width: 20px;
+  -gtk-icon-size: 14px;
+}
+
+/* Minimal: dense, flat list in the spirit of classic clipboard tools. */
+window.density-minimal headerbar {
+  min-height: 0;
+}
+window.density-minimal headerbar > windowhandle > box {
+  padding: 2px 4px;
+}
+window.density-minimal .uti-tabs {
+  ---group-padding: 1px;
+  padding: 1px;
+  border-radius: 6px;
+}
+window.density-minimal .uti-tabs toggle {
+  min-width: 22px;
+  min-height: 20px;
+  padding: 0 4px;
+  border-radius: 5px;
+}
+window.density-minimal headerbar button {
+  min-width: 22px;
+  min-height: 20px;
+  padding: 0 2px;
+}
+window.density-minimal searchbar > revealer > box {
+  padding: 2px 4px;
+}
+window.density-minimal searchbar entry {
+  min-height: 22px;
+  border-radius: 5px;
+}
+window.density-minimal .navigation-sidebar {
+  padding: 0;
+}
+window.density-minimal .navigation-sidebar > row {
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+}
+window.density-minimal .uti-row-box {
+  min-height: 24px;
+  padding: 0 24px 0 4px;
+  border-spacing: 6px;
+  font-size: 0.85em;
+}
+window.density-minimal .uti-row-button {
+  min-width: 16px;
+  -gtk-icon-size: 12px;
 }
 
 /* Key hints under the list. */

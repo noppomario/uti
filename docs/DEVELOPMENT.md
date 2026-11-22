@@ -98,6 +98,13 @@ gdbus call --session -d io.github.noppomario.uti -o /io/github/noppomario/uti \
   -m org.freedesktop.Application.ActivateAction debug-key '[<"right">]' '{}'
 ```
 
+`debug-key` skips GTK's key handling, so check these by hand after UI changes, in every
+`theme.size` (Settings > Window Size applies it live):
+
+- → from the Launcher tab reaches the pin (an item with a jump list opens it instead); ← returns
+- Typing or Ctrl+F shows the search bar (hidden in `minimal` until searching)
+- The star button is clickable while the scrollbar is shown
+
 ### Why input group?
 
 - Daemon needs to read `/dev/input/event*` (keyboard devices)

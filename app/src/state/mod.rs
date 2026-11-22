@@ -3,4 +3,5 @@
 pub mod launcher;
 pub mod list;
 pub mod nav;
+pub mod size;
 pub mod window;
