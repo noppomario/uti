@@ -89,6 +89,7 @@ GNOME Shell extension that provides:
 4. **Hide from dash / Alt+Tab** - `Meta.Window.hide_from_window_list()`
 5. **Paste** - Clutter virtual keyboard after focus leaves uti
 6. **Clipboard watch** - `Meta.Selection` owner changes, emitted as `ClipboardChanged`
+7. **Shell clicks** - presses on the desktop background or panel (which do not move focus), emitted as `ShellPressed` while the main window is shown
 
 | Property | Value |
 | -------- | ----- |
@@ -129,11 +130,14 @@ sequenceDiagram
 | ----- | -------- | ----------- | --------- | ------- |
 | uti-daemon | `io.github.noppomario.uti.Daemon` | `/io/github/noppomario/uti/Daemon` | `io.github.noppomario.uti.Daemon1` | signal `Triggered()`, method `Paste(b plain, b submit)` |
 | uti | `io.github.noppomario.uti` | `/io/github/noppomario/uti` | `org.freedesktop.Application` | `ActivateAction(s, av, a{sv})`: `toggle`, `show`, `hide`, `settings`, `check-updates`, `quit` |
-| GNOME Extension | `io.github.noppomario.uti.Shell` | `/io/github/noppomario/uti/Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(b activate)`, `SetAbove(b)`, `Paste(b plain, b submit)`, signal `ClipboardChanged(s)` |
+| GNOME Extension | `io.github.noppomario.uti.Shell` | `/io/github/noppomario/uti/Shell` | `io.github.noppomario.uti.Shell1` | `PositionAtPointer(b activate)`, `SetAbove(b)`, `Paste(b plain, b submit)`, signals `ClipboardChanged(s)`, `ShellPressed()` |
 
 `Daemon1.Paste` and all `Shell1` methods reject callers that do not own
 `io.github.noppomario.uti` (`AccessDenied`). Nothing in the app calls `Paste`
 since the Prompt tab was removed.
+
+The popup hides on outside clicks unless pinned: clicks on app windows arrive
+as focus loss, clicks on the Shell itself as `ShellPressed` (ADR-035).
 
 ---
 

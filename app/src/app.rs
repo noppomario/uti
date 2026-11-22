@@ -36,6 +36,8 @@ pub enum Msg {
     /// The extension has the position request; show the window now.
     Present,
     FocusChanged(bool),
+    /// GNOME Shell (desktop background, panel) was clicked.
+    ShellPressed,
     SetPinned(bool),
     OpenSettings,
     CheckUpdates,
@@ -156,6 +158,8 @@ pub fn start(app: &adw::Application, minimized: bool) {
         let t = tx.clone();
         subscriptions
             .push(dbus::on_clipboard_changed(conn, move |text| send(&t, Msg::ClipboardText(text))));
+        let t = tx.clone();
+        subscriptions.push(dbus::on_shell_pressed(conn, move || send(&t, Msg::ShellPressed)));
     } else {
         eprintln!("No D-Bus connection: double Ctrl and extension features disabled");
     }
@@ -206,6 +210,7 @@ impl App {
             Msg::Show => self.window.show(),
             Msg::Hide => self.window.hide(),
             Msg::FocusChanged(false) => self.window.focus_lost(),
+            Msg::ShellPressed => self.window.shell_pressed(),
             Msg::FocusChanged(true) => {
                 self.read_clipboard();
                 None

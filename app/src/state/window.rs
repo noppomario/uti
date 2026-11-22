@@ -68,6 +68,16 @@ impl WindowState {
         }
     }
 
+    /// GNOME Shell itself (desktop background, panel) was clicked: a click
+    /// outside the window that does not move keyboard focus.
+    pub fn shell_pressed(&mut self) -> Option<WindowCommand> {
+        if self.pinned {
+            None
+        } else {
+            self.hide()
+        }
+    }
+
     /// Pin button toggled.
     pub fn set_pinned(&mut self, pinned: bool) -> Option<WindowCommand> {
         if self.pinned == pinned {
@@ -117,6 +127,25 @@ mod tests {
     fn focus_loss_while_hidden_does_nothing() {
         let mut s = WindowState::new();
         assert_eq!(s.focus_lost(), None);
+    }
+
+    #[test]
+    fn shell_press_hides_unless_pinned() {
+        let mut s = WindowState::new();
+        s.show();
+        assert_eq!(s.shell_pressed(), Some(Hide));
+        assert!(!s.is_visible());
+
+        s.show();
+        s.set_pinned(true);
+        assert_eq!(s.shell_pressed(), None);
+        assert!(s.is_visible());
+    }
+
+    #[test]
+    fn shell_press_while_hidden_does_nothing() {
+        let mut s = WindowState::new();
+        assert_eq!(s.shell_pressed(), None);
     }
 
     #[test]

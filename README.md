@@ -134,7 +134,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 
 ### Panel Menu (GNOME)
 
-Click the uti panel icon (left click toggles the window) for options:
+Click the uti panel icon for options:
 
 - **Show/Hide**: Toggle window visibility
 - **Settings**: Open settings window (includes auto-start)
