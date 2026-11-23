@@ -15,6 +15,7 @@ use crate::config::AppConfig;
 use crate::i18n::{tr, LANGUAGES};
 use crate::launcher::get_launcher_config_path;
 use crate::snippets::{SnippetItem, SnippetsStore};
+use crate::state::scrollbar::Scrollbar;
 use crate::state::settings::{SettingsPage, SettingsTarget, SnippetTarget};
 
 /// `theme.size` values, in the order the settings window lists them.
@@ -31,6 +32,7 @@ const SNIPPET_LIST_TAG: &str = "list";
 pub enum Event {
     Language(String),
     Size(String),
+    Scrollbar(String),
     HistoryLimit(usize),
     DesktopDoubleClick(bool),
     LeftRightClick(bool),
@@ -342,6 +344,23 @@ pub fn populate(
         }
     });
     appearance.add(&size);
+    let scrollbar_labels: Vec<String> = Scrollbar::ALL
+        .iter()
+        .map(|s| t(&format!("appearance.theme.scrollbar.options.{}", s.id())))
+        .collect();
+    let current = Scrollbar::parse(&config.theme.scrollbar);
+    let scrollbar = combo(
+        &t("appearance.theme.scrollbar.label"),
+        &scrollbar_labels,
+        Scrollbar::ALL.iter().position(|s| *s == current).unwrap_or(0) as u32,
+    );
+    let e = on_event.clone();
+    scrollbar.connect_selected_notify(move |row| {
+        if let Some(s) = Scrollbar::ALL.get(row.selected() as usize) {
+            e(Event::Scrollbar(s.id().to_string()));
+        }
+    });
+    appearance.add(&scrollbar);
     add_page(SettingsPage::Appearance, &[appearance]);
 
     // Clipboard
@@ -598,6 +617,10 @@ mod tests {
         for lang in LANGUAGES {
             for s in SIZES {
                 let key = format!("appearance.theme.size.options.{s}");
+                assert_ne!(tr(lang, &key), key);
+            }
+            for s in Scrollbar::ALL {
+                let key = format!("appearance.theme.scrollbar.options.{}", s.id());
                 assert_ne!(tr(lang, &key), key);
             }
             for l in LANGUAGES {

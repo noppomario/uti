@@ -157,7 +157,8 @@ Configuration file: `~/.config/uti/config.json`
 ```json
 {
   "theme": {
-    "size": "normal"
+    "size": "normal",
+    "scrollbar": "overlay"
   },
   "clipboardHistoryLimit": 50,
   "language": "en",
@@ -171,6 +172,7 @@ Configuration file: `~/.config/uti/config.json`
 | Option | Type | Default | Description |
 | ------ | ---- | ------- | ----------- |
 | `theme.size` | string | `normal` | `minimal` (dense; key hints hidden, search bar shown while searching), `normal`, `wide` |
+| `theme.scrollbar` | string | `overlay` | List scrollbar: `overlay` (shown while scrolling), `always`, `hidden` (still scrolls) |
 | `clipboardHistoryLimit` | number | `50` | Max clipboard items to store |
 | `language` | string | `en` | Settings window language: `en` (English), `ja` (日本語) |
 | `mouse.desktopDoubleClick` | boolean | `false` | Show the window on a left double click on the desktop background (needs uti for GNOME; touchpad taps are not detected) |

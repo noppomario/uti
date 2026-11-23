@@ -22,6 +22,7 @@ use crate::state::launcher::{rank_apps, AppText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::menu::row_menu;
 use crate::state::nav::{Effect, Focus, Nav};
+use crate::state::scrollbar::Scrollbar;
 use crate::state::settings::{SettingsTarget, SnippetTarget};
 use crate::state::size::Size;
 use crate::state::window::{WindowCommand, WindowState};
@@ -235,6 +236,7 @@ pub fn start(app: &adw::Application, minimized: bool) {
     };
     let t = tx.clone();
     gio::AppInfoMonitor::get().connect_changed(move |_| send(&t, Msg::AppsChanged));
+    model.apply_scrollbar();
     for tab in Tab::ALL {
         model.refresh(tab);
     }
@@ -846,6 +848,10 @@ impl App {
                 self.config.theme.size = size;
                 self.apply_size();
             },
+            settings::Event::Scrollbar(scrollbar) => {
+                self.config.theme.scrollbar = scrollbar;
+                self.apply_scrollbar();
+            },
             settings::Event::HistoryLimit(limit) => {
                 // Trimmed on the next add, like the startup sync.
                 self.config.clipboard_history_limit = limit.max(1);
@@ -890,6 +896,7 @@ impl App {
                 self.sync_left_right_click();
                 self.history.max_items = self.config.clipboard_history_limit;
                 self.apply_size();
+                self.apply_scrollbar();
                 self.launcher = load_launcher_config();
                 self.snippets = load_snippets();
                 self.close_jump_list();
@@ -918,6 +925,32 @@ impl App {
         self.sync_search_bar();
         // Trim again on the next show, with the new row height.
         self.rows_fitted = false;
+    }
+
+    /// Applies `theme.scrollbar` to every list.
+    fn apply_scrollbar(&self) {
+        let style = Scrollbar::parse(&self.config.theme.scrollbar);
+        for other in Scrollbar::ALL {
+            self.ui.root.remove_css_class(other.css_class());
+        }
+        self.ui.root.add_css_class(style.css_class());
+        let policy = if style.visible() {
+            gtk::PolicyType::Automatic
+        } else {
+            // Scrolls without a scrollbar.
+            gtk::PolicyType::External
+        };
+        let panes = self
+            .ui
+            .lists
+            .values()
+            .filter_map(|l| l.ancestor(gtk::ScrolledWindow::static_type()))
+            .filter_map(|w| w.downcast::<gtk::ScrolledWindow>().ok())
+            .chain([self.ui.jump_pane.clone()]);
+        for pane in panes {
+            pane.set_vscrollbar_policy(policy);
+            pane.set_overlay_scrolling(style.overlays());
+        }
     }
 
     /// Opens the jump list (recent files) of the visible Launcher row.

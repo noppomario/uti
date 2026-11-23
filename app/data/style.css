@@ -97,6 +97,17 @@ window.density-minimal .uti-row-button {
   -gtk-icon-size: 12px;
 }
 
+/* Without an overlay scrollbar (theme.scrollbar), the right padding
+ * matches the left. After the density rules so it wins over them. */
+window.scrollbar-always .uti-row-box,
+window.scrollbar-hidden .uti-row-box {
+  padding-right: 6px;
+}
+window.density-minimal.scrollbar-always .uti-row-box,
+window.density-minimal.scrollbar-hidden .uti-row-box {
+  padding-right: 4px;
+}
+
 /* Key hints under the list. */
 .uti-footer {
   padding: 6px 12px;

@@ -42,6 +42,14 @@
           "normal": "ノーマル",
           "wide": "ワイド"
         }
+      },
+      "scrollbar": {
+        "label": "スクロールバー",
+        "options": {
+          "overlay": "オーバーレイ",
+          "always": "常に表示",
+          "hidden": "非表示"
+        }
       }
     }
   },

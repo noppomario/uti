@@ -42,6 +42,14 @@
           "normal": "Normal",
           "wide": "Wide"
         }
+      },
+      "scrollbar": {
+        "label": "Scrollbar",
+        "options": {
+          "overlay": "Overlay",
+          "always": "Always",
+          "hidden": "Hidden"
+        }
       }
     }
   },

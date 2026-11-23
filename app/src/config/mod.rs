@@ -4,7 +4,9 @@
 
 pub mod defaults;
 
-use defaults::{DEFAULT_CLIPBOARD_LIMIT, DEFAULT_COLOR, DEFAULT_LANGUAGE, DEFAULT_SIZE};
+use defaults::{
+    DEFAULT_CLIPBOARD_LIMIT, DEFAULT_COLOR, DEFAULT_LANGUAGE, DEFAULT_SCROLLBAR, DEFAULT_SIZE,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -20,6 +22,10 @@ pub struct ThemeConfig {
     /// Size theme: 'minimal', 'normal', or 'wide'
     #[serde(default = "default_size")]
     pub size: String,
+
+    /// List scrollbar: 'overlay', 'always', or 'hidden'
+    #[serde(default = "default_scrollbar")]
+    pub scrollbar: String,
 
     /// Custom accent color (hex format, e.g., '#3584e4')
     #[serde(
@@ -38,6 +44,10 @@ fn default_size() -> String {
     DEFAULT_SIZE.to_string()
 }
 
+fn default_scrollbar() -> String {
+    DEFAULT_SCROLLBAR.to_string()
+}
+
 fn default_language() -> String {
     DEFAULT_LANGUAGE.to_string()
 }
@@ -47,6 +57,7 @@ impl Default for ThemeConfig {
         Self {
             color: default_color(),
             size: default_size(),
+            scrollbar: default_scrollbar(),
             accent_color: None,
         }
     }
@@ -65,6 +76,14 @@ impl ThemeConfig {
         if !matches!(self.size.as_str(), "minimal" | "normal" | "wide") {
             eprintln!("Invalid size theme '{}', falling back to '{}'", self.size, DEFAULT_SIZE);
             self.size = DEFAULT_SIZE.to_string();
+        }
+
+        if !matches!(self.scrollbar.as_str(), "overlay" | "always" | "hidden") {
+            eprintln!(
+                "Invalid scrollbar '{}', falling back to '{}'",
+                self.scrollbar, DEFAULT_SCROLLBAR
+            );
+            self.scrollbar = DEFAULT_SCROLLBAR.to_string();
         }
     }
 }
@@ -211,5 +230,19 @@ impl AppConfig {
 
         println!("Config saved to: {:?}", path);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrollbar_defaults_to_overlay_and_invalid_values_fall_back() {
+        let mut theme: ThemeConfig = serde_json::from_str(r#"{"size": "wide"}"#).unwrap();
+        assert_eq!(theme.scrollbar, "overlay");
+        theme.scrollbar = "nope".to_string();
+        theme.validate();
+        assert_eq!(theme.scrollbar, "overlay");
     }
 }
