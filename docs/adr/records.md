@@ -2166,7 +2166,8 @@ the base for a later cascading launcher. Measured on GNOME 51 (Fedora 45):
 - A popover stays in the window's widget tree (parented to the stack), so the
   window-level capture key handler and the focus-follow handler see its keys
   and focus.
-- Clicks on the menu are on a client surface; the extension never sees them.
+- While the menu's popup grab is on, presses on the menu reach the extension's
+  stage filter and were reported as `Shell1.ShellPressed`, hiding the popup.
 
 ### Decision
 
@@ -2174,6 +2175,8 @@ the base for a later cascading launcher. Measured on GNOME 51 (Fedora 45):
   app checks `is-active` once; if focus went to another window, it hides as
   for any focus loss. Shell presses hide as before.
 - While the menu is visible, the window's key and focus handlers do nothing.
+- The extension does not report presses inside client window actors (app
+  windows and their popups) as `ShellPressed`.
 
 ### Consequences
 

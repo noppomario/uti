@@ -115,6 +115,17 @@ function isOwnUi(actor) {
 }
 
 /**
+ * Whether `actor` is (part of) a client window, including its popups.
+ *
+ * @param {Clutter.Actor | null} actor
+ * @returns {boolean}
+ */
+function isClientWindow(actor) {
+    for (let a = actor; a; a = a.get_parent()) if (a instanceof Meta.WindowActor) return true;
+    return false;
+}
+
+/**
  * Whether `actor` is (part of) the desktop background.
  *
  * @param {Clutter.Actor | null} actor
@@ -252,10 +263,12 @@ class ShellService {
             );
 
         // Presses handled by the Shell itself (desktop background, panel).
-        // Presses on app windows never reach this filter.
+        // Presses on app windows usually never reach this filter, but those on
+        // a popup menu of an app (e.g. uti's row menu) do while its grab is on.
         this._pressFilterId = Clutter.Event.add_filter(global.stage, (event, actor) => {
             if (event.type() !== Clutter.EventType.BUTTON_PRESS) return Clutter.EVENT_PROPAGATE;
-            if (!isOwnUi(actor) && findMainWindow()) this._impl?.emit_signal('ShellPressed', null);
+            if (!isOwnUi(actor) && !isClientWindow(actor) && findMainWindow())
+                this._impl?.emit_signal('ShellPressed', null);
             // Holding left on the background opens GNOME's long-press menu,
             // which steals focus from a left-held + right click.
             if (
