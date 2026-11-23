@@ -41,3 +41,4 @@ ADR-001 to ADR-029 mostly describe the Tauri-era app; ADR-030 and later describe
 | [033](records.md#adr-033) | Tooling pinned in the repository (mise, just, lefthook) | 2026-11-15 | Accepted |
 | [034](records.md#adr-034) | Trunk-based development on main | 2026-11-14 | Accepted (supersedes ADR-021, ADR-022) |
 | [035](records.md#adr-035) | Pointer input: each sensor reports what only it can see | 2026-11-22 | Accepted |
+| [036](records.md#adr-036) | Context menus in the popup: focus loss is ignored while a menu is open | 2026-11-23 | Accepted |

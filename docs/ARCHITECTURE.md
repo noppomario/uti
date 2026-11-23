@@ -78,7 +78,7 @@ Main application with Clipboard, Snippets and Launcher tabs, plus a settings win
 - Added from Clipboard rows (context menu or `S`); history items stay, duplicates allowed
 - Row context menus: one `gtk::PopoverMenu` parented to the stack, items from `state/menu.rs`,
   actions in the window's `row` group. While it is open, the window's key and focus handlers
-  leave it alone (it lives in the window's widget tree); it does not drop window focus
+  leave it alone (it lives in the window's widget tree), and focus loss does not hide (ADR-036)
 - Managed in Settings > Snippets (list -> editor); the main window owns the store and
   re-renders the settings list after each change. Manual editing via JSON file supported
 

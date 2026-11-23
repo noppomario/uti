@@ -635,6 +635,13 @@ impl App {
         self.nav.menu_opened();
         self.window.menu_opened();
         self.ui.menu.popup();
+        // GtkMenuSectionBox shows its separators from an idle callback, after
+        // the popup size is fixed; without a second layout the menu scrolls.
+        let menu = self.ui.menu.clone();
+        glib::idle_add_local_once(move || {
+            menu.queue_resize();
+            menu.present();
+        });
     }
 
     /// Adds a visible Clipboard row to snippets; the history item stays.
