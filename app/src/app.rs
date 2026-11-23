@@ -71,6 +71,8 @@ pub enum Msg {
     /// below the selected row). Index 0 on an empty list.
     OpenMenu(usize, Option<(f64, f64)>),
     MenuClosed,
+    /// Shortly after the menu closed: hide if focus went to another window.
+    MenuSettled,
     /// Visible Clipboard row to add to snippets.
     AddSnippet(usize),
     /// Visible row of the current tab to delete.
@@ -366,8 +368,15 @@ impl App {
             Msg::MenuClosed => {
                 self.nav.menu_closed();
                 self.sync_focus();
+                // Focus comes back to the window only after the popup is gone.
+                let t = self.tx.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
+                    send(&t, Msg::MenuSettled)
+                });
                 None
             },
+            Msg::MenuSettled if self.ui.menu.is_visible() => None,
+            Msg::MenuSettled => self.window.menu_closed(self.ui.root.is_active()),
             Msg::AddSnippet(i) => {
                 self.add_snippet(i);
                 None
@@ -624,6 +633,7 @@ impl App {
             1,
         )));
         self.nav.menu_opened();
+        self.window.menu_opened();
         self.ui.menu.popup();
     }
 
@@ -1202,7 +1212,10 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
 
     // The menu lives in the window's widget tree (parented to the stack), so
     // its focus and keys reach the handlers below; both leave it alone.
-    let menu = gtk::PopoverMenu::builder().has_arrow(false).halign(gtk::Align::Start).build();
+    let menu = gtk::PopoverMenu::builder()
+        .has_arrow(false)
+        .position(gtk::PositionType::Bottom)
+        .build();
     menu.set_parent(&stack);
     let t = tx.clone();
     menu.connect_closed(move |_| send(&t, Msg::MenuClosed));

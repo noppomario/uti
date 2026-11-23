@@ -306,10 +306,9 @@ pub fn populate(
         }
     });
     general.add(&language);
-    add_page(SettingsPage::General, &[general]);
 
     // Mouse
-    let mouse = adw::PreferencesGroup::new();
+    let mouse = group(&t("sections.mouse"));
     let double_click = adw::SwitchRow::builder()
         .title(t("mouse.desktopDoubleClick.label"))
         .subtitle(t("mouse.desktopDoubleClick.description"))
@@ -326,7 +325,6 @@ pub fn populate(
     let e = on_event.clone();
     left_right.connect_active_notify(move |row| e(Event::LeftRightClick(row.is_active())));
     mouse.add(&left_right);
-    add_page(SettingsPage::Mouse, &[mouse]);
 
     // Appearance
     let appearance = adw::PreferencesGroup::new();
@@ -347,7 +345,7 @@ pub fn populate(
     add_page(SettingsPage::Appearance, &[appearance]);
 
     // Clipboard
-    let clipboard = adw::PreferencesGroup::new();
+    let clipboard = group(&t("sections.clipboard"));
     let (min, max, step) = HISTORY_LIMIT;
     let limit = adw::SpinRow::with_range(min, max, step);
     limit.set_title(&t("clipboard.historyLimit.label"));
@@ -356,7 +354,6 @@ pub fn populate(
     let e = on_event.clone();
     limit.connect_value_notify(move |row| e(Event::HistoryLimit(row.value() as usize)));
     clipboard.add(&limit);
-    add_page(SettingsPage::Clipboard, &[clipboard]);
 
     // Snippets: list -> editor
     let snippets_list = gtk::ListBox::builder()
@@ -411,7 +408,7 @@ pub fn populate(
     add_page(SettingsPage::Launcher, &[launcher]);
 
     // Advanced
-    let advanced = adw::PreferencesGroup::new();
+    let advanced = group(&t("sections.advanced"));
     let w = window.clone();
     advanced.add(&link_row(
         &t("advanced.openConfigFolder"),
@@ -432,7 +429,7 @@ pub fn populate(
         "view-refresh-symbolic",
         move || e(Event::Reload),
     ));
-    add_page(SettingsPage::Advanced, &[advanced]);
+    add_page(SettingsPage::General, &[general, mouse, clipboard, advanced]);
 
     // About
     let about = adw::PreferencesGroup::new();

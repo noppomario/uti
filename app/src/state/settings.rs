@@ -3,39 +3,26 @@
 /// Settings window pages, in sidebar order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsPage {
+    /// General, mouse, clipboard and advanced settings.
     #[default]
     General,
-    Mouse,
     Appearance,
-    Clipboard,
     Snippets,
     Launcher,
-    Advanced,
     About,
 }
 
 impl SettingsPage {
-    pub const ALL: [SettingsPage; 8] = [
-        Self::General,
-        Self::Mouse,
-        Self::Appearance,
-        Self::Clipboard,
-        Self::Snippets,
-        Self::Launcher,
-        Self::Advanced,
-        Self::About,
-    ];
+    pub const ALL: [SettingsPage; 5] =
+        [Self::General, Self::Appearance, Self::Snippets, Self::Launcher, Self::About];
 
     /// Stack page name; also the `sections.<id>` translation key.
     pub fn id(self) -> &'static str {
         match self {
             Self::General => "general",
-            Self::Mouse => "mouse",
             Self::Appearance => "appearance",
-            Self::Clipboard => "clipboard",
             Self::Snippets => "snippets",
             Self::Launcher => "launcher",
-            Self::Advanced => "advanced",
             Self::About => "about",
         }
     }
