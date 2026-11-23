@@ -173,8 +173,12 @@ impl Nav {
     }
 
     /// GTK focus moved by mouse (e.g. a click into the search entry).
+    /// Ignored while a menu is open: the window reports no moves then, so
+    /// any that arrive are from before it opened.
     pub fn focus_moved(&mut self, focus: Focus) {
-        self.focus = focus;
+        if self.focus != Focus::Menu {
+            self.focus = focus;
+        }
     }
 
     /// `Ctrl+F`.
@@ -340,12 +344,15 @@ mod tests {
     }
 
     #[test]
-    fn menu_closed_keeps_focus_moved_elsewhere() {
+    fn focus_moves_reported_while_the_menu_is_open_are_stale() {
+        // Selecting the clicked row before opening the menu reports a focus
+        // move that arrives after the menu opened.
         let mut n = Nav::new();
         n.menu_opened();
-        n.focus_moved(Focus::Search);
+        n.focus_moved(Focus::List);
+        assert_eq!(n.focus(), Focus::Menu);
         n.menu_closed();
-        assert_eq!(n.focus(), Focus::Search);
+        assert_eq!(n.focus(), Focus::List);
     }
 
     #[test]
