@@ -17,11 +17,20 @@
   font-feature-settings: "tnum";
 }
 
-/* Jump buttons: small icons that do not set the row height. */
+/* Row buttons (jump list, more): small icons that do not set the row height. */
 .uti-row-button {
   min-width: 24px;
   min-height: 0;
   padding: 0;
+}
+
+/* "More" buttons show on the hovered or selected row only. */
+row .uti-more {
+  opacity: 0;
+}
+row:hover .uti-more,
+row:selected .uti-more {
+  opacity: 1;
 }
 
 /* Density: minimal / normal / wide (theme.size). libadwaita's 36px

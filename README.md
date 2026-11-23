@@ -125,7 +125,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 5. Press **Ctrl+F** to focus the search bar
 6. **Type to search**: Filter items or search system applications
 7. **Escape** clears search and returns focus to the list
-8. **Right-click** a row (or press **Menu** / **Shift+F10**) for its actions:
+8. **Right-click** a row, click its **⋮** button, or press **Menu** / **Shift+F10** for its actions:
    - Clipboard: Add to Snippets (**S**; the item stays in history), Delete from History (**Delete**)
    - Snippets: Edit (**F2**), New Snippet, Move Up / Down, Delete (**Delete**). Edit and New
      open Settings > Snippets, where snippets can also be added, edited, reordered and deleted

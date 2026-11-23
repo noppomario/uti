@@ -252,16 +252,20 @@ pub fn start(app: &adw::Application, minimized: bool) {
 
 impl App {
     fn update(&mut self, msg: Msg) {
+        if debug_keys()
+            && !matches!(msg, Msg::ClipboardText(_) | Msg::SearchChanged(_) | Msg::Key(_))
+        {
+            eprintln!(
+                "DEBUG msg={msg:?} active={} nav_focus={:?}",
+                self.ui.root.is_active(),
+                self.nav.focus()
+            );
+        }
         let command = match msg {
             Msg::Toggle => self.window.toggle(Instant::now()),
             Msg::Show => self.window.show(Instant::now()),
             Msg::Hide => self.window.hide(),
-            Msg::FocusChanged(false) => {
-                if std::env::var_os("UTI_DEBUG_KEYS").is_some() {
-                    eprintln!("DEBUG focus lost, nav_focus={:?}", self.nav.focus());
-                }
-                self.window.focus_lost()
-            },
+            Msg::FocusChanged(false) => self.window.focus_lost(),
             Msg::ShellPressed => self.window.shell_pressed(Instant::now()),
             Msg::DoubleClicked => self.window.double_clicked(),
             Msg::PointerOnDesktop(on) => self.window.pointer_on_desktop(on, Instant::now()),
@@ -332,7 +336,7 @@ impl App {
             Msg::Key(key) => {
                 let effect = self.nav.on_key(key);
                 let command = self.navigate(effect);
-                if std::env::var_os("UTI_DEBUG_KEYS").is_some() {
+                if debug_keys() {
                     let focused = gtk::prelude::GtkWindowExt::focus(&self.ui.root)
                         .map(|w| w.type_().name().to_string());
                     eprintln!(
@@ -413,6 +417,9 @@ impl App {
             Msg::JumpActivated(j) => self.launch_jump(j),
         };
         if let Some(command) = command {
+            if debug_keys() {
+                eprintln!("DEBUG command={command:?}");
+            }
             self.apply(command);
         }
     }
@@ -930,8 +937,9 @@ impl App {
                 text: &file.name,
                 tooltip: &file.path,
                 jump: false,
+                more: false,
             };
-            self.ui.jump_list.append(&ui::build_row(&spec, |_| {}));
+            self.ui.jump_list.append(&ui::build_row(&spec, |_| {}, |_, _| {}));
         }
         self.nav.jump_list_opened(files.len());
         self.jump = Some((c, files));
@@ -1065,9 +1073,14 @@ impl App {
                 text,
                 tooltip,
                 jump: jumpable.get(index).copied().unwrap_or(false),
+                more: tab != Tab::Launcher,
             };
-            let tx = self.tx.clone();
-            listbox.append(&ui::build_row(&spec, move |i| send(&tx, Msg::OpenJumpList(i))));
+            let (tx, tx2) = (self.tx.clone(), self.tx.clone());
+            listbox.append(&ui::build_row(
+                &spec,
+                move |i| send(&tx, Msg::OpenJumpList(i)),
+                move |i, point| send(&tx2, Msg::OpenMenu(i, point)),
+            ));
         }
         if self.nav.tab() == tab && self.ui.root.is_visible() {
             self.sync_focus();
@@ -1373,6 +1386,11 @@ fn spawn(command: &str, args: &[String], extra: Option<&str>) -> bool {
             false
         },
     }
+}
+
+/// Development aid: `UTI_DEBUG_KEYS` logs keys, messages and window commands.
+fn debug_keys() -> bool {
+    std::env::var_os("UTI_DEBUG_KEYS").is_some()
 }
 
 /// XDG variables `app/run-dev.sh` points at its sandbox.

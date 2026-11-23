@@ -36,10 +36,8 @@ pub fn search_placeholder(tab: Tab) -> &'static str {
 /// Footer key hints for a tab (Pango markup).
 pub fn key_hints(tab: Tab) -> &'static str {
     match tab {
-        Tab::Clipboard => {
-            "<b>↵</b> Copy   <b>1–9</b> Pick   <b>S</b> Add to Snippets   <b>Ctrl+F</b> Search"
-        },
-        Tab::Snippets => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>F2</b> Edit   <b>Ctrl+F</b> Search",
+        Tab::Clipboard => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>S</b> Add to Snippets",
+        Tab::Snippets => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>F2</b> Edit   <b>Del</b> Delete",
         Tab::Launcher => "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Recent Files",
     }
 }
@@ -109,11 +107,18 @@ pub struct RowSpec<'a> {
     pub tooltip: &'a str,
     /// The row has a jump list (recent files, opened with Right).
     pub jump: bool,
+    /// The row has a context menu, also opened by its "more" button.
+    pub more: bool,
 }
 
-/// Builds a list row; `on_jump` is called with the row's visible index when
-/// its jump list button is clicked.
-pub fn build_row(spec: &RowSpec<'_>, on_jump: impl Fn(usize) + 'static) -> gtk::ListBoxRow {
+/// Builds a list row. `on_jump` is called with the row's visible index when
+/// its jump list button is clicked; `on_more` with the index and the point
+/// below its "more" button, in list coordinates.
+pub fn build_row(
+    spec: &RowSpec<'_>,
+    on_jump: impl Fn(usize) + 'static,
+    on_more: impl Fn(usize, Option<(f64, f64)>) + 'static,
+) -> gtk::ListBoxRow {
     let first_line = spec.text.lines().find(|l| !l.trim().is_empty());
 
     // Number shortcut hint for 1-9; kept as an empty slot after that so the
@@ -155,6 +160,25 @@ pub fn build_row(spec: &RowSpec<'_>, on_jump: impl Fn(usize) + 'static) -> gtk::
         jump.connect_clicked(move |_| on_jump(index));
         content.append(&jump);
     }
+    if spec.more {
+        let more = gtk::Button::builder()
+            .icon_name("view-more-symbolic")
+            .tooltip_text("More (Menu)")
+            .valign(gtk::Align::Center)
+            .css_classes(["flat", "uti-row-button", "uti-more"])
+            .focusable(false)
+            .build();
+        let index = spec.index;
+        more.connect_clicked(move |b| {
+            let point = b.ancestor(gtk::ListBox::static_type()).and_then(|list| {
+                b.compute_bounds(&list)
+                    .map(|r| (f64::from(r.x() + r.width() / 2.0), f64::from(r.y() + r.height())))
+            });
+            on_more(index, point);
+        });
+        content.append(&more);
+    }
+
     gtk::ListBoxRow::builder()
         .child(&content)
         .tooltip_text(glib::markup_escape_text(spec.tooltip))
