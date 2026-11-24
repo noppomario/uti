@@ -2147,3 +2147,40 @@ re-implementation of libinput in the daemon; role split of ADR-031 kept.
 trigger daemon gestures; desktop double click with desktop-icons extensions
 (DING) is untested (#226); left long-press background menu is lost while the gesture
 feature is on.
+
+## ADR-036
+
+### Context menus in the popup: focus loss is ignored while a menu is open
+
+**Date**: 2026-11-23
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Row context menus (`gtk::PopoverMenu`) are the first popovers in the popup and
+the base for a later cascading launcher. Measured on GNOME 51 (Fedora 45):
+
+- Opening the menu moves keyboard focus to its xdg_popup: the window's
+  `is-active` turns false, which hid the unpinned popup (ADR-035: focus loss).
+- A popover stays in the window's widget tree (parented to the stack), so the
+  window-level capture key handler and the focus-follow handler see its keys
+  and focus.
+- While the menu's popup grab is on, presses on the menu reach the extension's
+  stage filter and were reported as `Shell1.ShellPressed`, hiding the popup.
+
+### Decision
+
+- `WindowState` ignores focus loss while a menu is open. After it closes, the
+  app checks `is-active` once; if focus went to another window, it hides as
+  for any focus loss. Shell presses hide as before.
+- While the menu is visible, the window's key and focus handlers do nothing.
+- The extension does not report presses inside client window actors (app
+  windows and their popups) as `ShellPressed`.
+
+### Consequences
+
+**Positive**: menus work unpinned; outside-click hiding is unchanged.
+
+**Negative**: the post-close check is a short timeout (focus returns only
+after the popup is gone); nested popovers must follow the same rules.

@@ -18,6 +18,8 @@ pub enum Focus {
     Pin,
     /// The Launcher jump list (recent files) next to the list.
     JumpList,
+    /// A row's context menu is open; it handles its own keys.
+    Menu,
 }
 
 /// What the UI must do after a key press, besides moving focus.
@@ -29,7 +31,11 @@ pub enum Effect {
     SelectRow(usize),
     /// Activate this row of the current tab.
     Activate(usize),
-    ToggleStar(usize),
+    AddSnippet(usize),
+    /// Open the context menu of this row (0 for an empty list).
+    OpenMenu(usize),
+    Delete(usize),
+    Edit(usize),
     OpenJumpList(usize),
     ClearQuery,
     TogglePin,
@@ -110,10 +116,25 @@ impl Nav {
         self.focus = Focus::JumpList;
     }
 
+    /// The menu asked for by [`Effect::OpenMenu`] is shown.
+    pub fn menu_opened(&mut self) {
+        self.focus = Focus::Menu;
+    }
+
+    /// The context menu closed; focus returns to the list.
+    pub fn menu_closed(&mut self) {
+        if self.focus == Focus::Menu {
+            self.focus = Focus::List;
+        }
+    }
+
     fn traits(&self, tab: Tab) -> TabTraits {
         let selected = self.lists.get(&tab).map_or(0, ListState::selected);
         TabTraits {
-            can_star: tab == Tab::Clipboard,
+            can_add_snippet: tab == Tab::Clipboard,
+            can_delete: matches!(tab, Tab::Clipboard | Tab::Snippets),
+            can_edit: tab == Tab::Snippets,
+            has_menu: matches!(tab, Tab::Clipboard | Tab::Snippets),
             right_opens_jump_list: self
                 .jumpable
                 .get(&tab)
@@ -137,7 +158,7 @@ impl Nav {
                 Action::Activate(i) => Some(Effect::JumpActivate(i)),
                 _ => None,
             },
-            Key::Right | Key::Star => None,
+            Key::Right | Key::AddSnippet | Key::Menu | Key::Delete | Key::Rename => None,
         }
     }
 
@@ -152,8 +173,12 @@ impl Nav {
     }
 
     /// GTK focus moved by mouse (e.g. a click into the search entry).
+    /// Ignored while a menu is open: the window reports no moves then, so
+    /// any that arrive are from before it opened.
     pub fn focus_moved(&mut self, focus: Focus) {
-        self.focus = focus;
+        if self.focus != Focus::Menu {
+            self.focus = focus;
+        }
     }
 
     /// `Ctrl+F`.
@@ -164,8 +189,10 @@ impl Nav {
     /// Handles a key; the caller then applies the effect and syncs focus.
     pub fn on_key(&mut self, key: Key) -> Option<Effect> {
         let tab = self.tab;
-        if self.focus == Focus::JumpList {
-            return self.on_jump_key(key);
+        match self.focus {
+            Focus::JumpList => return self.on_jump_key(key),
+            Focus::Menu => return None,
+            _ => {},
         }
         let traits = self.traits(tab);
         let list = self.lists.get_mut(&tab)?;
@@ -182,12 +209,15 @@ impl Nav {
             },
             Focus::Search => list.on_search_key(key)?,
             Focus::List => list.on_list_key(key, traits)?,
-            Focus::JumpList => unreachable!("handled above"),
+            Focus::JumpList | Focus::Menu => unreachable!("handled above"),
         };
         match action {
             Action::Select(i) => Some(Effect::SelectRow(i)),
             Action::Activate(i) => Some(Effect::Activate(i)),
-            Action::ToggleStar(i) => Some(Effect::ToggleStar(i)),
+            Action::AddSnippet(i) => Some(Effect::AddSnippet(i)),
+            Action::OpenMenu(i) => Some(Effect::OpenMenu(i)),
+            Action::Delete(i) => Some(Effect::Delete(i)),
+            Action::Edit(i) => Some(Effect::Edit(i)),
             Action::OpenJumpList(i) => Some(Effect::OpenJumpList(i)),
             Action::FocusSearch => {
                 self.focus = Focus::Search;
@@ -272,12 +302,57 @@ mod tests {
     }
 
     #[test]
-    fn list_keys_select_activate_and_star() {
+    fn list_keys_select_activate_and_add_snippet() {
         let mut n = nav_with(&[(Tab::Clipboard, 3)]);
         assert_eq!(n.on_key(Key::Down), Some(SelectRow(1)));
-        assert_eq!(n.on_key(Key::Star), Some(ToggleStar(1)));
+        assert_eq!(n.on_key(Key::AddSnippet), Some(AddSnippet(1)));
         assert_eq!(n.on_key(Key::Enter), Some(Activate(1)));
         assert_eq!(n.on_key(Key::Digit(3)), Some(Activate(2)));
+    }
+
+    #[test]
+    fn item_keys_per_tab() {
+        let mut n = nav_with(&[(Tab::Clipboard, 2), (Tab::Snippets, 2), (Tab::Launcher, 2)]);
+        assert_eq!(n.on_key(Key::Delete), Some(Delete(0)));
+        assert_eq!(n.on_key(Key::Rename), None);
+        assert_eq!(n.on_key(Key::Menu), Some(OpenMenu(0)));
+
+        n.select_tab(Tab::Snippets);
+        assert_eq!(n.on_key(Key::AddSnippet), None);
+        assert_eq!(n.on_key(Key::Delete), Some(Delete(0)));
+        assert_eq!(n.on_key(Key::Rename), Some(Edit(0)));
+        assert_eq!(n.on_key(Key::Menu), Some(OpenMenu(0)));
+
+        n.select_tab(Tab::Launcher);
+        for key in [Key::AddSnippet, Key::Delete, Key::Rename, Key::Menu] {
+            assert_eq!(n.on_key(key), None);
+        }
+    }
+
+    #[test]
+    fn open_menu_swallows_keys_until_closed() {
+        let mut n = nav_with(&[(Tab::Clipboard, 3)]);
+        n.on_key(Key::Menu);
+        n.menu_opened();
+        assert_eq!(n.focus(), Focus::Menu);
+        assert_eq!(n.on_key(Key::Down), None);
+        assert_eq!(n.on_key(Key::Enter), None);
+        assert_eq!(n.selected(), 0);
+        n.menu_closed();
+        assert_eq!(n.focus(), Focus::List);
+        assert_eq!(n.on_key(Key::Down), Some(SelectRow(1)));
+    }
+
+    #[test]
+    fn focus_moves_reported_while_the_menu_is_open_are_stale() {
+        // Selecting the clicked row before opening the menu reports a focus
+        // move that arrives after the menu opened.
+        let mut n = Nav::new();
+        n.menu_opened();
+        n.focus_moved(Focus::List);
+        assert_eq!(n.focus(), Focus::Menu);
+        n.menu_closed();
+        assert_eq!(n.focus(), Focus::List);
     }
 
     #[test]

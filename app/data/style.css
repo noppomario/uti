@@ -17,24 +17,20 @@
   font-feature-settings: "tnum";
 }
 
-/* Star / jump buttons: small icons that do not set the row height. */
+/* Row buttons (jump list, more): small icons that do not set the row height. */
 .uti-row-button {
   min-width: 24px;
   min-height: 0;
   padding: 0;
 }
 
-/* Star buttons stay quiet until hovered, selected or starred. */
-row .uti-star {
+/* "More" buttons show on the hovered or selected row only. */
+row .uti-more {
   opacity: 0;
 }
-row:hover .uti-star,
-row:selected .uti-star,
-row .uti-star.starred {
+row:hover .uti-more,
+row:selected .uti-more {
   opacity: 1;
-}
-row .uti-star.starred {
-  color: var(--accent-color);
 }
 
 /* Density: minimal / normal / wide (theme.size). libadwaita's 36px
@@ -99,6 +95,17 @@ window.density-minimal .uti-row-box {
 window.density-minimal .uti-row-button {
   min-width: 16px;
   -gtk-icon-size: 12px;
+}
+
+/* Without an overlay scrollbar (theme.scrollbar), the right padding
+ * matches the left. After the density rules so it wins over them. */
+window.scrollbar-always .uti-row-box,
+window.scrollbar-hidden .uti-row-box {
+  padding-right: 6px;
+}
+window.density-minimal.scrollbar-always .uti-row-box,
+window.density-minimal.scrollbar-hidden .uti-row-box {
+  padding-right: 4px;
 }
 
 /* Key hints under the list. */

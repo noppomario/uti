@@ -32,6 +32,8 @@ pub struct WindowState {
     shown_at: Option<Instant>,
     desktop_double_click: bool,
     left_right_click: bool,
+    /// A context menu is open; it takes keyboard focus from the window.
+    menu_open: bool,
 }
 
 impl WindowState {
@@ -119,9 +121,9 @@ impl WindowState {
         Some(WindowCommand::Hide)
     }
 
-    /// The window lost keyboard focus.
+    /// The window lost keyboard focus; ignored while a context menu has it.
     pub fn focus_lost(&mut self) -> Option<WindowCommand> {
-        if self.pinned {
+        if self.pinned || self.menu_open {
             None
         } else {
             self.hide()
@@ -137,6 +139,22 @@ impl WindowState {
             None
         } else {
             self.hide()
+        }
+    }
+
+    /// A context menu opened (focus moves to it).
+    pub fn menu_opened(&mut self) {
+        self.menu_open = true;
+    }
+
+    /// The context menu closed; `active` is whether the window has focus
+    /// again (not when the click that closed it went to another window).
+    pub fn menu_closed(&mut self, active: bool) -> Option<WindowCommand> {
+        self.menu_open = false;
+        if active {
+            None
+        } else {
+            self.focus_lost()
         }
     }
 
@@ -191,6 +209,38 @@ mod tests {
         s.set_pinned(true);
         assert_eq!(s.focus_lost(), None);
         assert!(s.is_visible());
+    }
+
+    #[test]
+    fn focus_moving_to_a_context_menu_keeps_the_window() {
+        let mut s = WindowState::new();
+        s.toggle(at(0));
+        s.menu_opened();
+        assert_eq!(s.focus_lost(), None);
+        assert_eq!(s.menu_closed(true), None);
+        assert!(s.is_visible());
+        assert_eq!(s.focus_lost(), Some(Hide));
+    }
+
+    #[test]
+    fn closing_a_menu_by_clicking_another_window_hides_unless_pinned() {
+        let mut s = WindowState::new();
+        s.toggle(at(0));
+        s.menu_opened();
+        assert_eq!(s.menu_closed(false), Some(Hide));
+
+        s.toggle(at(0));
+        s.set_pinned(true);
+        s.menu_opened();
+        assert_eq!(s.menu_closed(false), None);
+    }
+
+    #[test]
+    fn shell_press_hides_even_with_a_menu_open() {
+        let mut s = WindowState::new();
+        s.toggle(at(0));
+        s.menu_opened();
+        assert_eq!(s.shell_pressed(at(1000)), Some(Hide));
     }
 
     #[test]

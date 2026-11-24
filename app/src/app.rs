@@ -5,7 +5,7 @@
 //! never re-enter the model. Keyboard focus is decided by [`Nav`]; after
 //! every message the GTK focus is moved to match it.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Instant;
 
 use adw::prelude::*;
@@ -17,10 +17,13 @@ use crate::dbus;
 use crate::launcher::recent_files::RecentFile;
 use crate::launcher::{load_launcher_config, LauncherConfig};
 use crate::settings;
-use crate::snippets::{load_snippets, save_snippets, SnippetItem, SnippetsStore};
+use crate::snippets::{load_snippets, save_snippets, SnippetsStore};
 use crate::state::launcher::{rank_apps, AppText};
 use crate::state::list::{self, Key, Tab};
+use crate::state::menu::row_menu;
 use crate::state::nav::{Effect, Focus, Nav};
+use crate::state::scrollbar::Scrollbar;
+use crate::state::settings::{SettingsTarget, SnippetTarget};
 use crate::state::size::Size;
 use crate::state::window::{WindowCommand, WindowState};
 use crate::ui;
@@ -49,7 +52,8 @@ pub enum Msg {
     /// The daemon or the extension (re)appeared on the bus.
     ServicesAppeared,
     SetPinned(bool),
-    OpenSettings,
+    /// Opens the settings window, at the General page for `None`.
+    OpenSettings(Option<SettingsTarget>),
     CheckUpdates,
     Quit,
     /// A tab button was clicked.
@@ -64,7 +68,21 @@ pub enum Msg {
     SearchRevealed,
     /// A row was clicked; visible index in the current tab.
     Activate(usize),
-    ToggleStar(usize),
+    /// Context menu of a visible row, at this point in the list (`None`:
+    /// below the selected row). Index 0 on an empty list.
+    OpenMenu(usize, Option<ui::MenuAnchor>),
+    MenuClosed,
+    /// Shortly after the menu closed: hide if focus went to another window.
+    MenuSettled,
+    /// Visible Clipboard row to add to snippets.
+    AddSnippet(usize),
+    /// Visible row of the current tab to delete.
+    DeleteRow(usize),
+    /// Visible Snippets row to open in the settings editor.
+    EditSnippet(usize),
+    NewSnippet,
+    /// Visible Snippets row and how far to move it.
+    MoveSnippet(usize, isize),
     /// Jump list button of a visible Launcher row.
     OpenJumpList(usize),
     /// New clipboard text (extension signal or read on focus).
@@ -74,6 +92,8 @@ pub enum Msg {
     /// A jump list row was clicked.
     JumpActivated(usize),
     Setting(settings::Event),
+    /// Rebuild the settings window (language changed).
+    RepopulateSettings,
     SettingsClosed,
 }
 
@@ -114,6 +134,8 @@ struct Ui {
     jump_pane: gtk::ScrolledWindow,
     pin: gtk::ToggleButton,
     footer: gtk::Label,
+    /// Row context menu, parented to `stack`.
+    menu: gtk::PopoverMenu,
 }
 
 /// Main window model.
@@ -128,9 +150,6 @@ struct App {
     tabs: HashMap<Tab, TabData>,
     history: ClipboardStore,
     snippets: SnippetsStore,
-    /// Clipboard item ids starred since the window was shown; removed from
-    /// history when it hides (they now live in snippets).
-    starred: HashSet<String>,
     /// Window height already trimmed to whole rows.
     rows_fitted: bool,
     launcher: LauncherConfig,
@@ -141,7 +160,7 @@ struct App {
     /// Command whose jump list is open, and its files.
     jump: Option<(usize, Vec<RecentFile>)>,
     config: AppConfig,
-    settings: Option<adw::ApplicationWindow>,
+    settings: Option<settings::SettingsUi>,
 }
 
 /// Installed apps that should appear in launchers.
@@ -207,7 +226,6 @@ pub fn start(app: &adw::Application, minimized: bool) {
         tabs: Tab::ALL.iter().map(|t| (*t, TabData::default())).collect(),
         history,
         snippets: load_snippets(),
-        starred: HashSet::new(),
         rows_fitted: false,
         launcher: load_launcher_config(),
         apps: load_apps(),
@@ -218,6 +236,7 @@ pub fn start(app: &adw::Application, minimized: bool) {
     };
     let t = tx.clone();
     gio::AppInfoMonitor::get().connect_changed(move |_| send(&t, Msg::AppsChanged));
+    model.apply_scrollbar();
     for tab in Tab::ALL {
         model.refresh(tab);
     }
@@ -235,6 +254,15 @@ pub fn start(app: &adw::Application, minimized: bool) {
 
 impl App {
     fn update(&mut self, msg: Msg) {
+        if debug_keys()
+            && !matches!(msg, Msg::ClipboardText(_) | Msg::SearchChanged(_) | Msg::Key(_))
+        {
+            eprintln!(
+                "DEBUG msg={msg:?} active={} nav_focus={:?}",
+                self.ui.root.is_active(),
+                self.nav.focus()
+            );
+        }
         let command = match msg {
             Msg::Toggle => self.window.toggle(Instant::now()),
             Msg::Show => self.window.show(Instant::now()),
@@ -266,12 +294,16 @@ impl App {
                 debug_snapshot(&self.ui.root);
                 None
             },
-            Msg::OpenSettings => {
-                self.open_settings();
+            Msg::OpenSettings(target) => {
+                self.open_settings(target.unwrap_or_default());
                 None
             },
             Msg::Setting(event) => {
                 self.apply_setting(event);
+                None
+            },
+            Msg::RepopulateSettings => {
+                self.repopulate_settings();
                 None
             },
             Msg::SettingsClosed => {
@@ -306,7 +338,7 @@ impl App {
             Msg::Key(key) => {
                 let effect = self.nav.on_key(key);
                 let command = self.navigate(effect);
-                if std::env::var_os("UTI_DEBUG_KEYS").is_some() {
+                if debug_keys() {
                     let focused = gtk::prelude::GtkWindowExt::focus(&self.ui.root)
                         .map(|w| w.type_().name().to_string());
                     eprintln!(
@@ -335,8 +367,40 @@ impl App {
                 None
             },
             Msg::Activate(i) => self.activate(i),
-            Msg::ToggleStar(i) => {
-                self.toggle_star(i);
+            Msg::OpenMenu(i, point) => {
+                self.open_menu(i, point);
+                None
+            },
+            Msg::MenuClosed => {
+                self.nav.menu_closed();
+                self.sync_focus();
+                // Focus comes back to the window only after the popup is gone.
+                let t = self.tx.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
+                    send(&t, Msg::MenuSettled)
+                });
+                None
+            },
+            Msg::MenuSettled if self.ui.menu.is_visible() => None,
+            Msg::MenuSettled => self.window.menu_closed(self.ui.root.is_active()),
+            Msg::AddSnippet(i) => {
+                self.add_snippet(i);
+                None
+            },
+            Msg::DeleteRow(i) => {
+                self.delete_row(i);
+                None
+            },
+            Msg::EditSnippet(i) => {
+                self.edit_snippet(i);
+                None
+            },
+            Msg::NewSnippet => {
+                self.open_settings(SettingsTarget::snippet(SnippetTarget::New));
+                None
+            },
+            Msg::MoveSnippet(i, delta) => {
+                self.move_snippet(i, delta);
                 None
             },
             Msg::ClipboardText(text) => {
@@ -355,6 +419,9 @@ impl App {
             Msg::JumpActivated(j) => self.launch_jump(j),
         };
         if let Some(command) = command {
+            if debug_keys() {
+                eprintln!("DEBUG command={command:?}");
+            }
             self.apply(command);
         }
     }
@@ -367,8 +434,20 @@ impl App {
                 None
             },
             Some(Effect::Activate(i)) => self.activate(i),
-            Some(Effect::ToggleStar(i)) => {
-                self.toggle_star(i);
+            Some(Effect::AddSnippet(i)) => {
+                self.add_snippet(i);
+                None
+            },
+            Some(Effect::OpenMenu(i)) => {
+                self.open_menu(i, None);
+                None
+            },
+            Some(Effect::Delete(i)) => {
+                self.delete_row(i);
+                None
+            },
+            Some(Effect::Edit(i)) => {
+                self.edit_snippet(i);
                 None
             },
             Some(Effect::ClearQuery) => {
@@ -402,6 +481,8 @@ impl App {
         // Before focusing: a hidden search entry cannot take focus.
         self.sync_search_bar();
         match self.nav.focus() {
+            // The popover holds focus while it is open.
+            Focus::Menu => {},
             Focus::Search => {
                 self.ui.search.grab_focus();
             },
@@ -496,8 +577,8 @@ impl App {
                 }
             },
             WindowCommand::Hide => {
+                self.ui.menu.popdown();
                 self.ui.root.set_visible(false);
-                self.commit_starred();
             },
             WindowCommand::SetAbove(above) => {
                 if self.ui.pin.is_active() != above {
@@ -523,39 +604,149 @@ impl App {
         self.window.hide()
     }
 
-    fn toggle_star(&mut self, visible_index: usize) {
-        let Some(&source) =
-            self.tabs.get(&Tab::Clipboard).and_then(|d| d.visible.get(visible_index))
+    /// Source index of visible row `visible_index` of `tab`.
+    fn source(&self, tab: Tab, visible_index: usize) -> Option<usize> {
+        self.tabs.get(&tab)?.visible.get(visible_index).copied()
+    }
+
+    /// Shows the context menu of a visible row of the current tab.
+    fn open_menu(&mut self, visible_index: usize, anchor: Option<ui::MenuAnchor>) {
+        let tab = self.nav.tab();
+        let len = self.tabs.get(&tab).map_or(0, |d| d.visible.len());
+        let sections = row_menu(tab, visible_index, len);
+        let Some(listbox) = self.ui.lists.get(&tab) else {
+            return;
+        };
+        if sections.is_empty() {
+            return;
+        }
+        self.nav.set_selected(tab, visible_index);
+        self.sync_focus();
+        let row = listbox.row_at_index(visible_index as i32);
+        // The given anchor, or below the start of the row (keyboard).
+        let anchor = anchor.unwrap_or_else(|| {
+            let (x, y) = row
+                .as_ref()
+                .and_then(|r| r.compute_bounds(listbox))
+                .map_or((0.0, 0.0), |b| (f64::from(b.x() + 24.0), f64::from(b.y() + b.height())));
+            ui::MenuAnchor { x, y, end: false }
+        });
+        let Some(at) = listbox.compute_point(
+            &self.ui.stack,
+            &gtk::graphene::Point::new(anchor.x as f32, anchor.y as f32),
+        ) else {
+            return;
+        };
+        // A popover's halign sets which side of `pointing_to` it starts at.
+        self.ui.menu.set_halign(if anchor.end {
+            gtk::Align::End
+        } else {
+            gtk::Align::Start
+        });
+        self.ui.menu.set_menu_model(Some(&ui::menu_model(&sections, visible_index)));
+        self.ui.menu.set_pointing_to(Some(&gdk::Rectangle::new(
+            at.x() as i32,
+            at.y() as i32,
+            1,
+            1,
+        )));
+        self.nav.menu_opened();
+        self.window.menu_opened();
+        self.ui.menu.popup();
+        // GtkMenuSectionBox shows its separators from an idle callback, after
+        // the popup size is fixed; without a second layout the menu scrolls.
+        let menu = self.ui.menu.clone();
+        glib::idle_add_local_once(move || {
+            menu.queue_resize();
+            menu.present();
+        });
+    }
+
+    /// Adds a visible Clipboard row to snippets; the history item stays.
+    fn add_snippet(&mut self, visible_index: usize) {
+        let Some(item) = self
+            .source(Tab::Clipboard, visible_index)
+            .and_then(|i| self.history.items.get(i))
         else {
             return;
         };
-        let Some(item) = self.history.items.get(source) else {
+        self.snippets.add(item.text.clone(), None);
+        self.snippets_changed();
+    }
+
+    /// Deletes a visible row of the current tab (history item or snippet).
+    fn delete_row(&mut self, visible_index: usize) {
+        let tab = self.nav.tab();
+        let Some(source) = self.source(tab, visible_index) else {
             return;
         };
-        // Un-starring only clears the mark; the snippet already exists.
-        if !self.starred.remove(&item.id) {
-            self.starred.insert(item.id.clone());
-            self.snippets.items.push(SnippetItem::new(item.text.clone(), None));
-            if let Err(e) = save_snippets(&self.snippets) {
-                eprintln!("Failed to save snippets: {e}");
-            }
-            self.refresh(Tab::Snippets);
+        match tab {
+            Tab::Clipboard => {
+                let Some(id) = self.history.items.get(source).map(|i| i.id.clone()) else {
+                    return;
+                };
+                self.history.remove_by_id(&id);
+                self.save_history();
+                self.refresh(Tab::Clipboard);
+            },
+            Tab::Snippets => {
+                let Some(id) = self.snippets.items.get(source).map(|i| i.id.clone()) else {
+                    return;
+                };
+                self.snippets.remove(&id);
+                self.snippets_changed();
+            },
+            Tab::Launcher => return,
         }
-        self.refresh(Tab::Clipboard);
-        self.nav.set_selected(Tab::Clipboard, visible_index);
+        self.nav.set_selected(tab, visible_index);
         self.sync_focus();
     }
 
-    /// Removes items starred into snippets from history (by id).
-    fn commit_starred(&mut self) {
-        if self.starred.is_empty() {
+    /// Opens a visible Snippets row in the settings editor.
+    fn edit_snippet(&mut self, visible_index: usize) {
+        let Some(id) = self
+            .source(Tab::Snippets, visible_index)
+            .and_then(|i| self.snippets.items.get(i))
+            .map(|i| i.id.clone())
+        else {
+            return;
+        };
+        self.open_settings(SettingsTarget::snippet(SnippetTarget::Edit(id)));
+    }
+
+    /// Moves a visible Snippets row and keeps it selected.
+    fn move_snippet(&mut self, visible_index: usize, delta: isize) {
+        let Some(id) = self
+            .source(Tab::Snippets, visible_index)
+            .and_then(|i| self.snippets.items.get(i))
+            .map(|i| i.id.clone())
+        else {
+            return;
+        };
+        if !self.snippets.move_by(&id, delta) {
             return;
         }
-        for id in self.starred.drain() {
-            self.history.remove_by_id(&id);
+        self.snippets_changed();
+        let moved = self.snippets.items.iter().position(|i| i.id == id);
+        let visible = self
+            .tabs
+            .get(&Tab::Snippets)
+            .and_then(|d| d.visible.iter().position(|&i| Some(i) == moved));
+        if let Some(v) = visible {
+            self.nav.set_selected(Tab::Snippets, v);
+            self.sync_focus();
         }
-        self.save_history();
-        self.refresh(Tab::Clipboard);
+    }
+
+    /// Saves snippets and updates the Snippets tab and the settings window.
+    fn snippets_changed(&mut self) {
+        if let Err(e) = save_snippets(&self.snippets) {
+            eprintln!("Failed to save snippets: {e}");
+        }
+        self.refresh(Tab::Snippets);
+        if let Some(settings) = &self.settings {
+            settings.set_snippets(&self.snippets);
+        }
     }
 
     fn add_history(&mut self, text: String) {
@@ -607,8 +798,8 @@ impl App {
         self.window.hide()
     }
 
-    /// Shows the settings window, creating it on first use.
-    fn open_settings(&mut self) {
+    /// Shows the settings window at `target`, creating it on first use.
+    fn open_settings(&mut self, target: SettingsTarget) {
         if self.settings.is_none() {
             let Some(app) = self.ui.root.application().and_downcast::<adw::Application>() else {
                 return;
@@ -619,22 +810,35 @@ impl App {
                 send(&t, Msg::SettingsClosed);
                 glib::Propagation::Proceed
             });
-            self.populate_settings(&window);
-            self.settings = Some(window);
+            self.settings = Some(self.populate_settings(&window, target.page));
         }
-        if let Some(window) = &self.settings {
-            window.present();
-            debug_snapshot(window);
+        if let Some(ui) = &self.settings {
+            ui.open(&target, &self.snippets);
+            ui.window.present();
+            debug_snapshot(&ui.window);
         }
     }
 
-    fn populate_settings(&self, window: &adw::ApplicationWindow) {
+    fn populate_settings(
+        &self,
+        window: &adw::ApplicationWindow,
+        page: crate::state::settings::SettingsPage,
+    ) -> settings::SettingsUi {
         let t = self.tx.clone();
         settings::populate(
             window,
             &self.config,
+            &self.snippets,
+            page,
             std::rc::Rc::new(move |e| send(&t, Msg::Setting(e))),
-        );
+        )
+    }
+
+    /// Rebuilds the settings window (language or reload), on the same page.
+    fn repopulate_settings(&mut self) {
+        if let Some(ui) = self.settings.take() {
+            self.settings = Some(self.populate_settings(&ui.window, ui.page()));
+        }
     }
 
     /// Applies and saves a settings change.
@@ -646,21 +850,16 @@ impl App {
                 }
                 self.config.language = lang;
                 // Rebuilt after the combo's handler returns.
-                if let Some(window) = self.settings.clone() {
-                    let t = self.tx.clone();
-                    let config = self.config.clone();
-                    glib::idle_add_local_once(move || {
-                        settings::populate(
-                            &window,
-                            &config,
-                            std::rc::Rc::new(move |e| send(&t, Msg::Setting(e))),
-                        );
-                    });
-                }
+                let t = self.tx.clone();
+                glib::idle_add_local_once(move || send(&t, Msg::RepopulateSettings));
             },
             settings::Event::Size(size) => {
                 self.config.theme.size = size;
                 self.apply_size();
+            },
+            settings::Event::Scrollbar(scrollbar) => {
+                self.config.theme.scrollbar = scrollbar;
+                self.apply_scrollbar();
             },
             settings::Event::HistoryLimit(limit) => {
                 // Trimmed on the next add, like the startup sync.
@@ -676,6 +875,29 @@ impl App {
                 self.window.set_left_right_click(enabled);
                 self.sync_left_right_click();
             },
+            settings::Event::SnippetSave { id, label, value } => {
+                match id {
+                    Some(id) => {
+                        self.snippets.update(&id, label, value);
+                    },
+                    None => {
+                        self.snippets.add(value, label);
+                    },
+                }
+                self.snippets_changed();
+                return;
+            },
+            settings::Event::SnippetDelete(id) => {
+                self.snippets.remove(&id);
+                self.snippets_changed();
+                return;
+            },
+            settings::Event::SnippetMove(id, delta) => {
+                if self.snippets.move_by(&id, delta) {
+                    self.snippets_changed();
+                }
+                return;
+            },
             settings::Event::Reload => {
                 self.config = AppConfig::load();
                 self.window.set_desktop_double_click(self.config.mouse.desktop_double_click);
@@ -683,15 +905,14 @@ impl App {
                 self.sync_left_right_click();
                 self.history.max_items = self.config.clipboard_history_limit;
                 self.apply_size();
+                self.apply_scrollbar();
                 self.launcher = load_launcher_config();
                 self.snippets = load_snippets();
                 self.close_jump_list();
                 for tab in Tab::ALL {
                     self.refresh(tab);
                 }
-                if let Some(window) = self.settings.clone() {
-                    self.populate_settings(&window);
-                }
+                self.repopulate_settings();
                 return; // Nothing changed on disk.
             },
         }
@@ -715,6 +936,32 @@ impl App {
         self.rows_fitted = false;
     }
 
+    /// Applies `theme.scrollbar` to every list.
+    fn apply_scrollbar(&self) {
+        let style = Scrollbar::parse(&self.config.theme.scrollbar);
+        for other in Scrollbar::ALL {
+            self.ui.root.remove_css_class(other.css_class());
+        }
+        self.ui.root.add_css_class(style.css_class());
+        let policy = if style.visible() {
+            gtk::PolicyType::Automatic
+        } else {
+            // Scrolls without a scrollbar.
+            gtk::PolicyType::External
+        };
+        let panes = self
+            .ui
+            .lists
+            .values()
+            .filter_map(|l| l.ancestor(gtk::ScrolledWindow::static_type()))
+            .filter_map(|w| w.downcast::<gtk::ScrolledWindow>().ok())
+            .chain([self.ui.jump_pane.clone()]);
+        for pane in panes {
+            pane.set_vscrollbar_policy(policy);
+            pane.set_overlay_scrolling(style.overlays());
+        }
+    }
+
     /// Opens the jump list (recent files) of the visible Launcher row.
     fn open_jump_list(&mut self, visible_index: usize) {
         let Some(LauncherRow::Command(c)) = self.launcher_rows.get(visible_index).copied() else {
@@ -731,10 +978,10 @@ impl App {
                 index,
                 text: &file.name,
                 tooltip: &file.path,
-                star: None,
                 jump: false,
+                more: false,
             };
-            self.ui.jump_list.append(&ui::build_row(&spec, |_| {}, |_| {}));
+            self.ui.jump_list.append(&ui::build_row(&spec, |_| {}, |_, _| {}));
         }
         self.nav.jump_list_opened(files.len());
         self.jump = Some((c, files));
@@ -782,7 +1029,7 @@ impl App {
         let Some(listbox) = self.ui.lists.get(&tab) else {
             return;
         };
-        let rows: Vec<(String, String, Option<bool>)> = match tab {
+        let rows: Vec<(String, String)> = match tab {
             Tab::Clipboard => {
                 let texts = self.history.items.iter().map(|i| i.text.as_str());
                 data.visible = list::filter(texts, &data.query);
@@ -790,8 +1037,7 @@ impl App {
                     .iter()
                     .map(|&i| {
                         let item = &self.history.items[i];
-                        let starred = self.starred.contains(&item.id);
-                        (item.text.clone(), item.text.clone(), Some(starred))
+                        (item.text.clone(), item.text.clone())
                     })
                     .collect()
             },
@@ -809,7 +1055,7 @@ impl App {
                         let s = &self.snippets.items[i];
                         let label =
                             s.label.as_deref().filter(|l| !l.trim().is_empty()).unwrap_or(&s.value);
-                        (label.to_owned(), s.value.clone(), None)
+                        (label.to_owned(), s.value.clone())
                     })
                     .collect()
             },
@@ -837,12 +1083,12 @@ impl App {
                     .map(|row| match *row {
                         LauncherRow::Command(c) => {
                             let item = &self.launcher.commands[c];
-                            (item.name.clone(), item.command.clone(), None)
+                            (item.name.clone(), item.command.clone())
                         },
                         LauncherRow::App(a) => {
                             let app = &self.apps[a];
                             let tip = app.description().map(|d| d.to_string()).unwrap_or_default();
-                            (app.name().to_string(), tip, None)
+                            (app.name().to_string(), tip)
                         },
                     })
                     .collect()
@@ -863,19 +1109,19 @@ impl App {
         self.nav.set_jumpable(tab, jumpable.clone());
 
         listbox.remove_all();
-        for (index, (text, tooltip, star)) in rows.iter().enumerate() {
+        for (index, (text, tooltip)) in rows.iter().enumerate() {
             let spec = ui::RowSpec {
                 index,
                 text,
                 tooltip,
-                star: *star,
                 jump: jumpable.get(index).copied().unwrap_or(false),
+                more: tab != Tab::Launcher,
             };
             let (tx, tx2) = (self.tx.clone(), self.tx.clone());
             listbox.append(&ui::build_row(
                 &spec,
-                move |i| send(&tx, Msg::ToggleStar(i)),
-                move |i| send(&tx2, Msg::OpenJumpList(i)),
+                move |i| send(&tx, Msg::OpenJumpList(i)),
+                move |i, point| send(&tx2, Msg::OpenMenu(i, point)),
             ));
         }
         if self.nav.tab() == tab && self.ui.root.is_visible() {
@@ -1026,14 +1272,29 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
         glib::Propagation::Stop
     });
 
+    // The menu lives in the window's widget tree (parented to the stack), so
+    // its focus and keys reach the handlers below; both leave it alone.
+    let menu = gtk::PopoverMenu::builder()
+        .has_arrow(false)
+        .position(gtk::PositionType::Bottom)
+        .build();
+    menu.set_parent(&stack);
+    let t = tx.clone();
+    menu.connect_closed(move |_| send(&t, Msg::MenuClosed));
+    root.insert_action_group(ui::ROW_ACTIONS, Some(&row_actions(tx)));
+
     // Keep Nav in step when focus moves by mouse or the Tab key.
     let t = tx.clone();
+    let menu_f = menu.clone();
     let (search_f, pin_f, stack_f, jump_f) =
         (search.clone(), pin.clone(), stack.clone(), jump_list.clone());
     root.connect_focus_widget_notify(move |w| {
         let Some(widget) = gtk::prelude::GtkWindowExt::focus(w) else {
             return;
         };
+        if menu_f.is_visible() {
+            return;
+        }
         let focus = if widget.is_ancestor(&search_f) || widget == search_f {
             Focus::Search
         } else if widget == pin_f {
@@ -1054,8 +1315,11 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let t = tx.clone();
-    let (search_k, root_k) = (search.clone(), root.clone());
+    let (search_k, root_k, menu_k) = (search.clone(), root.clone(), menu.clone());
     keys.connect_key_pressed(move |_, key, _, state| {
+        if menu_k.is_visible() {
+            return glib::Propagation::Proceed;
+        }
         if state.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::f) {
             send(&t, Msg::FocusSearch);
             return glib::Propagation::Stop;
@@ -1065,7 +1329,10 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
         };
         let typing = gtk::prelude::GtkWindowExt::focus(&root_k)
             .is_some_and(|w| w.is_ancestor(&search_k) || w == search_k)
-            && matches!(k, Key::Digit(_) | Key::Star | Key::Up);
+            && matches!(
+                k,
+                Key::Digit(_) | Key::AddSnippet | Key::Up | Key::Delete | Key::Menu | Key::Rename
+            );
         if typing {
             return glib::Propagation::Proceed;
         }
@@ -1086,7 +1353,38 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
         jump_pane,
         pin,
         footer,
+        menu,
     }
+}
+
+/// A row action name and the message it sends for a visible row index.
+type RowActionSpec = (&'static str, fn(usize) -> Msg);
+
+/// Row index actions of the context menu (see [`ui::menu_model`]).
+fn row_actions(tx: &Sender) -> gio::SimpleActionGroup {
+    let group = gio::SimpleActionGroup::new();
+    let indexed: [RowActionSpec; 5] = [
+        ("add-snippet", Msg::AddSnippet),
+        ("delete", Msg::DeleteRow),
+        ("edit", Msg::EditSnippet),
+        ("move-up", |i| Msg::MoveSnippet(i, -1)),
+        ("move-down", |i| Msg::MoveSnippet(i, 1)),
+    ];
+    for (name, make) in indexed {
+        let action = gio::SimpleAction::new(name, Some(glib::VariantTy::INT32));
+        let t = tx.clone();
+        action.connect_activate(move |_, v| {
+            if let Some(i) = v.and_then(|v| v.get::<i32>()) {
+                send(&t, make(i.max(0) as usize));
+            }
+        });
+        group.add_action(&action);
+    }
+    let action = gio::SimpleAction::new("new", None);
+    let t = tx.clone();
+    action.connect_activate(move |_, _| send(&t, Msg::NewSnippet));
+    group.add_action(&action);
+    group
 }
 
 fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
@@ -1099,6 +1397,15 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
     listbox.set_placeholder(Some(&ui::empty_page(tab)));
     let t = tx.clone();
     listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
+    let right_click = gtk::GestureClick::builder().button(gdk::BUTTON_SECONDARY).build();
+    let t = tx.clone();
+    let lb = listbox.clone();
+    right_click.connect_pressed(move |gesture, _, x, y| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        let index = lb.row_at_y(y as i32).map_or(0, |r| r.index() as usize);
+        send(&t, Msg::OpenMenu(index, Some(ui::MenuAnchor { x, y, end: false })));
+    });
+    listbox.add_controller(right_click);
     listbox
 }
 
@@ -1121,6 +1428,11 @@ fn spawn(command: &str, args: &[String], extra: Option<&str>) -> bool {
             false
         },
     }
+}
+
+/// Development aid: `UTI_DEBUG_KEYS` logs keys, messages and window commands.
+fn debug_keys() -> bool {
+    std::env::var_os("UTI_DEBUG_KEYS").is_some()
 }
 
 /// XDG variables `app/run-dev.sh` points at its sandbox.
@@ -1217,7 +1529,7 @@ fn register_actions(app: &adw::Application, tx: &Sender) {
         ("toggle", || Msg::Toggle),
         ("show", || Msg::Show),
         ("hide", || Msg::Hide),
-        ("settings", || Msg::OpenSettings),
+        ("settings", || Msg::OpenSettings(None)),
         ("check-updates", || Msg::CheckUpdates),
         ("quit", || Msg::Quit),
     ];
@@ -1234,6 +1546,10 @@ fn register_actions(app: &adw::Application, tx: &Sender) {
                 Some("right") => Key::Right,
                 Some("enter") => Key::Enter,
                 Some("escape") => Key::Escape,
+                Some("s") => Key::AddSnippet,
+                Some("menu") => Key::Menu,
+                Some("delete") => Key::Delete,
+                Some("f2") => Key::Rename,
                 _ => return,
             };
             send(&t, Msg::Key(key));

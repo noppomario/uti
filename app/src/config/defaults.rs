@@ -9,6 +9,9 @@ pub const DEFAULT_COLOR: &str = "dark";
 /// Default size theme
 pub const DEFAULT_SIZE: &str = "normal";
 
+/// Default list scrollbar style
+pub const DEFAULT_SCROLLBAR: &str = "overlay";
+
 /// Default UI language
 pub const DEFAULT_LANGUAGE: &str = "en";
 
@@ -29,6 +32,8 @@ mod tests {
 
         // Size must be one of the valid options
         assert!(matches!(DEFAULT_SIZE, "minimal" | "normal" | "wide"));
+
+        assert!(matches!(DEFAULT_SCROLLBAR, "overlay" | "always" | "hidden"));
 
         // Language must be one of the valid options
         assert!(matches!(DEFAULT_LANGUAGE, "en" | "ja"));

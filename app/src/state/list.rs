@@ -47,8 +47,13 @@ pub enum Key {
     Escape,
     /// `1`-`9`
     Digit(u8),
-    /// `S`: star a clipboard item.
-    Star,
+    /// `S`: add a clipboard item to snippets.
+    AddSnippet,
+    /// `Menu` / `Shift+F10`: open the row's context menu.
+    Menu,
+    Delete,
+    /// `F2`: edit a snippet.
+    Rename,
 }
 
 /// Result of a key press for the UI layer to carry out.
@@ -64,8 +69,15 @@ pub enum Action {
     ClearQuery,
     PrevTab,
     NextTab,
-    /// Toggle the star on the visible item at this position.
-    ToggleStar(usize),
+    /// Add the visible clipboard item at this position to snippets.
+    AddSnippet(usize),
+    /// Open the context menu of the visible item at this position (0 for an
+    /// empty list).
+    OpenMenu(usize),
+    /// Delete the visible item at this position.
+    Delete(usize),
+    /// Edit the visible snippet at this position.
+    Edit(usize),
     /// Open the jump list of the visible item at this position.
     OpenJumpList(usize),
 }
@@ -73,8 +85,14 @@ pub enum Action {
 /// Per-tab behaviour switches.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TabTraits {
-    /// `S` stars items (Clipboard).
-    pub can_star: bool,
+    /// `S` adds items to snippets (Clipboard).
+    pub can_add_snippet: bool,
+    /// `Delete` deletes items.
+    pub can_delete: bool,
+    /// `F2` edits items (Snippets).
+    pub can_edit: bool,
+    /// `Menu` opens a context menu.
+    pub has_menu: bool,
     /// Right opens a jump list instead of moving to the next tab (Launcher).
     pub right_opens_jump_list: bool,
 }
@@ -133,8 +151,13 @@ impl ListState {
                 Some(Action::OpenJumpList(self.selected))
             },
             Key::Right => Some(Action::NextTab),
-            Key::Star if traits.can_star && has_items => Some(Action::ToggleStar(self.selected)),
-            Key::Star | Key::Escape => None,
+            Key::AddSnippet if traits.can_add_snippet && has_items => {
+                Some(Action::AddSnippet(self.selected))
+            },
+            Key::Delete if traits.can_delete && has_items => Some(Action::Delete(self.selected)),
+            Key::Rename if traits.can_edit && has_items => Some(Action::Edit(self.selected)),
+            Key::Menu if traits.has_menu => Some(Action::OpenMenu(self.selected)),
+            Key::AddSnippet | Key::Delete | Key::Rename | Key::Menu | Key::Escape => None,
         }
     }
 
@@ -146,7 +169,9 @@ impl ListState {
             Key::Escape => Some(Action::ClearQuery),
             Key::Left => Some(Action::PrevTab),
             Key::Right => Some(Action::NextTab),
-            Key::Up | Key::Digit(_) | Key::Star => None,
+            Key::Up | Key::Digit(_) | Key::AddSnippet | Key::Menu | Key::Delete | Key::Rename => {
+                None
+            },
         }
     }
 }
@@ -157,7 +182,10 @@ mod tests {
     use Action::*;
 
     const PLAIN: TabTraits = TabTraits {
-        can_star: false,
+        can_add_snippet: false,
+        can_delete: false,
+        can_edit: false,
+        has_menu: false,
         right_opens_jump_list: false,
     };
 
@@ -223,14 +251,39 @@ mod tests {
     }
 
     #[test]
-    fn star_only_where_allowed() {
+    fn item_keys_only_where_allowed() {
         let mut l = list(2);
-        assert_eq!(l.on_list_key(Key::Star, PLAIN), None);
-        let clipboard = TabTraits {
-            can_star: true,
+        for key in [Key::AddSnippet, Key::Delete, Key::Rename, Key::Menu] {
+            assert_eq!(l.on_list_key(key, PLAIN), None);
+        }
+        let all = TabTraits {
+            can_add_snippet: true,
+            can_delete: true,
+            can_edit: true,
+            has_menu: true,
             ..PLAIN
         };
-        assert_eq!(l.on_list_key(Key::Star, clipboard), Some(ToggleStar(0)));
+        l.on_list_key(Key::Down, all);
+        assert_eq!(l.on_list_key(Key::AddSnippet, all), Some(AddSnippet(1)));
+        assert_eq!(l.on_list_key(Key::Delete, all), Some(Delete(1)));
+        assert_eq!(l.on_list_key(Key::Rename, all), Some(Edit(1)));
+        assert_eq!(l.on_list_key(Key::Menu, all), Some(OpenMenu(1)));
+    }
+
+    #[test]
+    fn empty_list_only_opens_the_menu() {
+        let all = TabTraits {
+            can_add_snippet: true,
+            can_delete: true,
+            can_edit: true,
+            has_menu: true,
+            ..PLAIN
+        };
+        let mut l = list(0);
+        assert_eq!(l.on_list_key(Key::AddSnippet, all), None);
+        assert_eq!(l.on_list_key(Key::Delete, all), None);
+        assert_eq!(l.on_list_key(Key::Rename, all), None);
+        assert_eq!(l.on_list_key(Key::Menu, all), Some(OpenMenu(0)));
     }
 
     #[test]

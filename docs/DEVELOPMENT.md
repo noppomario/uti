@@ -103,7 +103,7 @@ gdbus call --session -d io.github.noppomario.uti -o /io/github/noppomario/uti \
 
 - → from the Launcher tab reaches the pin (an item with a jump list opens it instead); ← returns
 - Typing or Ctrl+F shows the search bar (hidden in `minimal` until searching)
-- The star button is clickable while the scrollbar is shown
+- The more button is clickable while the scrollbar is shown, in every `theme.scrollbar`
 
 ### Why input group?
 
