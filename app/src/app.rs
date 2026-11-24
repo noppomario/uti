@@ -70,7 +70,7 @@ pub enum Msg {
     Activate(usize),
     /// Context menu of a visible row, at this point in the list (`None`:
     /// below the selected row). Index 0 on an empty list.
-    OpenMenu(usize, Option<(f64, f64)>),
+    OpenMenu(usize, Option<ui::MenuAnchor>),
     MenuClosed,
     /// Shortly after the menu closed: hide if focus went to another window.
     MenuSettled,
@@ -610,7 +610,7 @@ impl App {
     }
 
     /// Shows the context menu of a visible row of the current tab.
-    fn open_menu(&mut self, visible_index: usize, point: Option<(f64, f64)>) {
+    fn open_menu(&mut self, visible_index: usize, anchor: Option<ui::MenuAnchor>) {
         let tab = self.nav.tab();
         let len = self.tabs.get(&tab).map_or(0, |d| d.visible.len());
         let sections = row_menu(tab, visible_index, len);
@@ -623,17 +623,26 @@ impl App {
         self.nav.set_selected(tab, visible_index);
         self.sync_focus();
         let row = listbox.row_at_index(visible_index as i32);
-        // In list coordinates: the click point, or below the row.
-        let (x, y) = point.unwrap_or_else(|| {
-            row.as_ref()
+        // The given anchor, or below the start of the row (keyboard).
+        let anchor = anchor.unwrap_or_else(|| {
+            let (x, y) = row
+                .as_ref()
                 .and_then(|r| r.compute_bounds(listbox))
-                .map_or((0.0, 0.0), |b| (f64::from(b.x() + 24.0), f64::from(b.y() + b.height())))
+                .map_or((0.0, 0.0), |b| (f64::from(b.x() + 24.0), f64::from(b.y() + b.height())));
+            ui::MenuAnchor { x, y, end: false }
         });
-        let Some(at) =
-            listbox.compute_point(&self.ui.stack, &gtk::graphene::Point::new(x as f32, y as f32))
-        else {
+        let Some(at) = listbox.compute_point(
+            &self.ui.stack,
+            &gtk::graphene::Point::new(anchor.x as f32, anchor.y as f32),
+        ) else {
             return;
         };
+        // A popover's halign sets which side of `pointing_to` it starts at.
+        self.ui.menu.set_halign(if anchor.end {
+            gtk::Align::End
+        } else {
+            gtk::Align::Start
+        });
         self.ui.menu.set_menu_model(Some(&ui::menu_model(&sections, visible_index)));
         self.ui.menu.set_pointing_to(Some(&gdk::Rectangle::new(
             at.x() as i32,
@@ -1394,7 +1403,7 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
     right_click.connect_pressed(move |gesture, _, x, y| {
         gesture.set_state(gtk::EventSequenceState::Claimed);
         let index = lb.row_at_y(y as i32).map_or(0, |r| r.index() as usize);
-        send(&t, Msg::OpenMenu(index, Some((x, y))));
+        send(&t, Msg::OpenMenu(index, Some(ui::MenuAnchor { x, y, end: false })));
     });
     listbox.add_controller(right_click);
     listbox

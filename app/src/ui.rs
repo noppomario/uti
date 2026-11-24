@@ -111,13 +111,23 @@ pub struct RowSpec<'a> {
     pub more: bool,
 }
 
+/// Where a row's context menu opens, in list coordinates.
+#[derive(Debug, Clone, Copy)]
+pub struct MenuAnchor {
+    pub x: f64,
+    pub y: f64,
+    /// The menu opens to the left of `x` (under a button at the right edge)
+    /// instead of to the right, as at the pointer.
+    pub end: bool,
+}
+
 /// Builds a list row. `on_jump` is called with the row's visible index when
-/// its jump list button is clicked; `on_more` with the index and the point
-/// below its "more" button, in list coordinates.
+/// its jump list button is clicked; `on_more` with the index and the anchor
+/// below its "more" button.
 pub fn build_row(
     spec: &RowSpec<'_>,
     on_jump: impl Fn(usize) + 'static,
-    on_more: impl Fn(usize, Option<(f64, f64)>) + 'static,
+    on_more: impl Fn(usize, Option<MenuAnchor>) + 'static,
 ) -> gtk::ListBoxRow {
     let first_line = spec.text.lines().find(|l| !l.trim().is_empty());
 
@@ -171,8 +181,11 @@ pub fn build_row(
         let index = spec.index;
         more.connect_clicked(move |b| {
             let point = b.ancestor(gtk::ListBox::static_type()).and_then(|list| {
-                b.compute_bounds(&list)
-                    .map(|r| (f64::from(r.x() + r.width() / 2.0), f64::from(r.y() + r.height())))
+                b.compute_bounds(&list).map(|r| MenuAnchor {
+                    x: f64::from(r.x() + r.width()),
+                    y: f64::from(r.y() + r.height()),
+                    end: true,
+                })
             });
             on_more(index, point);
         });
