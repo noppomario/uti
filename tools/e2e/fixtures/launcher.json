@@ -5,7 +5,7 @@
       "name": "Files",
       "command": "true",
       "args": ["files"],
-      "historySource": { "type": "recently-used", "path": "@DATA@/recently-used.xbel" }
+      "historySource": { "type": "recently-used", "path": "@DATA@/files.xbel" }
     },
     {
       "type": "folder",
@@ -26,6 +26,10 @@
       "children": [{ "type": "command", "name": "Writer", "command": "true", "args": ["writer"] }]
     },
     { "type": "separator" },
-    { "type": "command", "name": "Settings", "command": "true", "args": ["settings"] }
+    { "type": "command", "name": "Settings", "command": "true", "args": ["settings"] },
+    { "type": "separator" },
+    { "type": "apps" },
+    { "type": "app", "desktopId": "uti-e2e-editor.desktop" },
+    { "type": "power", "inline": true }
   ]
 }

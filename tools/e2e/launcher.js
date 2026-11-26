@@ -1,26 +1,15 @@
 // Launcher tree: hover delays, the diagonal grace, keys and clicks (ADR-037).
-// Fixture rows: 0 Files (recent files), 1 Dev/, 2 Office/, 3 ---, 4 Settings;
-// Dev: 0 Terminal, 1 ---, 2 Tools/ (Calculator).
+// Fixture rows: 0 Files (recent files), 1 Dev/, 2 Office/, 3 ---, 4 Settings
+// (then apps and power, see apps-power.js); Dev: 0 Terminal, 1 ---, 2 Tools/
+// (Calculator).
 
-import {action, check, finish, Input, Keys, log, rowCenter, sleep, snapshot, state, waitFor} from './lib.js';
+import {check, finish, Input, Keys, log, rowCenter, showLauncher, sleep, snapshot, state, waitFor} from './lib.js';
 
 const ORIGIN = [200, 150]; // the window opens with its top-left at the pointer
 const input = new Input();
 
 function show() {
-    action('hide');
-    waitFor(() => !state().visible);
-    input.moveTo(...ORIGIN);
-    action('show');
-    waitFor(() => state().visible);
-    sleep(600);
-    // A shown window may not get keyboard focus here: click its header.
-    input.moveTo(ORIGIN[0] + 190, ORIGIN[1] + 12);
-    input.click();
-    waitFor(() => state().active !== undefined && log().includes('active=true'));
-    input.key(Keys.Right);
-    input.key(Keys.Right);
-    return state();
+    return showLauncher(input, ORIGIN);
 }
 
 function levels() {
@@ -29,7 +18,7 @@ function levels() {
 
 check(waitFor(() => state() !== null, 15000), 'app answers debug-state');
 let s = show();
-check(s.tab === 'launcher', 'Right twice reaches the Launcher tab');
+check(s.tab === 'launcher', 'Right reaches the Launcher tab');
 
 // Hover: select at once, open after the delay.
 input.glide(...rowCenter(s, ORIGIN, 0, 1));
