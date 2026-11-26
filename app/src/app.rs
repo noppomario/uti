@@ -14,17 +14,18 @@ use gtk::{gdk, gio, glib};
 use crate::clipboard::ClipboardStore;
 use crate::config::AppConfig;
 use crate::dbus;
-use crate::launcher::recent_files::RecentFile;
-use crate::launcher::{load_launcher_config, LauncherConfig};
+use crate::launcher::entry::{self, Entry};
+use crate::launcher::{load_launcher_tree, LauncherNode, NodeKind};
 use crate::settings;
 use crate::snippets::{load_snippets, save_snippets, SnippetsStore};
-use crate::state::launcher::{rank_apps, AppText};
+use crate::state::launcher::{rank, SearchText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::menu::row_menu;
 use crate::state::nav::{Effect, Focus, Nav};
 use crate::state::scrollbar::Scrollbar;
 use crate::state::settings::{SettingsTarget, SnippetTarget};
 use crate::state::size::Size;
+use crate::state::tree::{self, Row, TreeAction, HOVER_DELAY};
 use crate::state::window::{WindowCommand, WindowState};
 use crate::ui;
 
@@ -83,27 +84,31 @@ pub enum Msg {
     NewSnippet,
     /// Visible Snippets row and how far to move it.
     MoveSnippet(usize, isize),
-    /// Jump list button of a visible Launcher row.
-    OpenJumpList(usize),
+    /// A Launcher row at this depth (0: the tab's list) was clicked.
+    TreeClick(usize, usize),
+    /// The pointer moved onto a Launcher row at this depth.
+    TreeHover(usize, usize),
+    /// The pointer left the rows of this Launcher depth.
+    TreeLeave(usize),
+    /// The hover delay of this token passed.
+    TreeHoverElapsed(u64),
     /// New clipboard text (extension signal or read on focus).
     ClipboardText(String),
     /// Installed applications changed.
     AppsChanged,
-    /// A jump list row was clicked.
-    JumpActivated(usize),
     Setting(settings::Event),
+    /// Development aid: `UTI_DEBUG_SNAPSHOT` after a `debug-key`.
+    DebugSnapshot,
     /// Rebuild the settings window (language changed).
     RepopulateSettings,
     SettingsClosed,
 }
 
-/// A visible Launcher row.
-#[derive(Debug, Clone, Copy)]
-enum LauncherRow {
-    /// Index into `launcher.json` commands.
-    Command(usize),
-    /// Index into the installed-app index.
-    App(usize),
+/// An open Launcher level below the tab's list.
+struct CascadeLevel {
+    popover: gtk::Popover,
+    list: gtk::ListBox,
+    entries: Vec<Entry>,
 }
 
 type Sender = async_channel::Sender<Msg>;
@@ -130,8 +135,6 @@ struct Ui {
     search_bar: gtk::SearchBar,
     toolbar: adw::ToolbarView,
     lists: HashMap<Tab, gtk::ListBox>,
-    jump_list: gtk::ListBox,
-    jump_pane: gtk::ScrolledWindow,
     pin: gtk::ToggleButton,
     footer: gtk::Label,
     /// Row context menu, parented to `stack`.
@@ -152,13 +155,14 @@ struct App {
     snippets: SnippetsStore,
     /// Window height already trimmed to whole rows.
     rows_fitted: bool,
-    launcher: LauncherConfig,
+    launcher: Vec<LauncherNode>,
     /// Installed apps shown in launcher search, loaded once and refreshed
     /// by `AppInfoMonitor` (no rescans per keystroke).
     apps: Vec<gio::AppInfo>,
-    launcher_rows: Vec<LauncherRow>,
-    /// Command whose jump list is open, and its files.
-    jump: Option<(usize, Vec<RecentFile>)>,
+    /// Rows of the Launcher tab's list.
+    launcher_rows: Vec<Entry>,
+    /// Open Launcher levels, mirroring `nav.tree()` depths 1..
+    cascade: Vec<CascadeLevel>,
     config: AppConfig,
     settings: Option<settings::SettingsUi>,
 }
@@ -227,10 +231,10 @@ pub fn start(app: &adw::Application, minimized: bool) {
         history,
         snippets: load_snippets(),
         rows_fitted: false,
-        launcher: load_launcher_config(),
+        launcher: load_launcher_tree(),
         apps: load_apps(),
         launcher_rows: Vec::new(),
-        jump: None,
+        cascade: Vec::new(),
         config,
         settings: None,
     };
@@ -267,7 +271,13 @@ impl App {
             Msg::Toggle => self.window.toggle(Instant::now()),
             Msg::Show => self.window.show(Instant::now()),
             Msg::Hide => self.window.hide(),
-            Msg::FocusChanged(false) => self.window.focus_lost(),
+            Msg::FocusChanged(false) => {
+                // Pinned: a click on another window closes the open levels.
+                if self.ui.pin.is_active() {
+                    self.close_cascade();
+                }
+                self.window.focus_lost()
+            },
             Msg::ShellPressed => self.window.shell_pressed(Instant::now()),
             Msg::DoubleClicked => self.window.double_clicked(),
             Msg::PointerOnDesktop(on) => self.window.pointer_on_desktop(on, Instant::now()),
@@ -291,7 +301,7 @@ impl App {
                     // After the first layout, so rows have their real size.
                     glib::idle_add_local_once(move || fit_to_rows(&root, &lists, tab));
                 }
-                debug_snapshot(&self.ui.root);
+                debug_snapshot(&self.ui.root, &[]);
                 None
             },
             Msg::OpenSettings(target) => {
@@ -304,6 +314,12 @@ impl App {
             },
             Msg::RepopulateSettings => {
                 self.repopulate_settings();
+                None
+            },
+            Msg::DebugSnapshot => {
+                let popovers: Vec<gtk::Popover> =
+                    self.cascade.iter().map(|l| l.popover.clone()).collect();
+                debug_snapshot(&self.ui.root, &popovers);
                 None
             },
             Msg::SettingsClosed => {
@@ -382,7 +398,7 @@ impl App {
                 None
             },
             Msg::MenuSettled if self.ui.menu.is_visible() => None,
-            Msg::MenuSettled => self.window.menu_closed(self.ui.root.is_active()),
+            Msg::MenuSettled => self.window.popover_closed(self.ui.root.is_active()),
             Msg::AddSnippet(i) => {
                 self.add_snippet(i);
                 None
@@ -412,11 +428,31 @@ impl App {
                 self.refresh(Tab::Launcher);
                 None
             },
-            Msg::OpenJumpList(i) => {
-                self.nav.set_selected(Tab::Launcher, i);
-                self.navigate(Some(Effect::OpenJumpList(i)))
+            Msg::TreeClick(depth, index) => {
+                if depth == 0 {
+                    self.nav.focus_moved(Focus::List);
+                }
+                let action = self.nav.tree_mut().click(depth, index);
+                self.tree_action(action)
             },
-            Msg::JumpActivated(j) => self.launch_jump(j),
+            Msg::TreeHover(depth, index) => {
+                if let Some(token) = self.nav.tree_mut().hover(depth, index) {
+                    let t = self.tx.clone();
+                    glib::timeout_add_local_once(HOVER_DELAY, move || {
+                        send(&t, Msg::TreeHoverElapsed(token))
+                    });
+                }
+                self.sync_tree();
+                None
+            },
+            Msg::TreeLeave(depth) => {
+                self.nav.tree_mut().leave(depth);
+                None
+            },
+            Msg::TreeHoverElapsed(token) => {
+                let action = self.nav.tree_mut().hover_elapsed(token);
+                self.tree_action(action)
+            },
         };
         if let Some(command) = command {
             if debug_keys() {
@@ -455,21 +491,155 @@ impl App {
                 None
             },
             Some(Effect::TogglePin) => self.window.set_pinned(!self.ui.pin.is_active()),
-            // Selection is applied by sync_focus; jump lists come with PR 3.
-            Some(Effect::OpenJumpList(i)) => {
-                self.open_jump_list(i);
+            Some(Effect::TreeOpen {
+                depth,
+                index,
+                enter,
+            }) => {
+                self.open_level(depth, index, enter);
                 None
             },
-            Some(Effect::JumpActivate(j)) => self.launch_jump(j),
-            Some(Effect::CloseJumpList) => {
-                self.close_jump_list();
-                None
-            },
-            // Selections are applied by sync_focus.
-            Some(Effect::SelectRow(_) | Effect::JumpSelect(_)) | None => None,
+            Some(Effect::TreeActivate { depth, index }) => self.activate_entry(depth, index),
+            // Selections are applied by sync_tree / sync_focus.
+            Some(Effect::SelectRow(_) | Effect::TreeChanged) | None => None,
         };
+        self.sync_tree();
         self.sync_focus();
         command
+    }
+
+    /// Applies a tree action from pointer input, then mirrors the tree.
+    fn tree_action(&mut self, action: Option<TreeAction>) -> Option<WindowCommand> {
+        let command = match action {
+            Some(TreeAction::Open {
+                depth,
+                index,
+                enter,
+            }) => {
+                self.open_level(depth, index, enter);
+                None
+            },
+            Some(TreeAction::Activate { depth, index }) => self.activate_entry(depth, index),
+            Some(TreeAction::Unhandled) | None => None,
+        };
+        self.sync_tree();
+        command
+    }
+
+    /// Rows of Launcher level `depth` (0: the tab's list).
+    fn level_entries(&self, depth: usize) -> Option<&[Entry]> {
+        match depth {
+            0 => Some(&self.launcher_rows),
+            d => self.cascade.get(d - 1).map(|l| l.entries.as_slice()),
+        }
+    }
+
+    fn level_list(&self, depth: usize) -> Option<&gtk::ListBox> {
+        match depth {
+            0 => self.ui.lists.get(&Tab::Launcher),
+            d => self.cascade.get(d - 1).map(|l| &l.list),
+        }
+    }
+
+    /// Opens the children of row `index` at `depth` beside it.
+    fn open_level(&mut self, depth: usize, index: usize, enter: bool) {
+        let Some(entry) = self.level_entries(depth).and_then(|e| e.get(index)).cloned() else {
+            return;
+        };
+        let Some(parent) = self.level_list(depth).cloned() else {
+            return;
+        };
+        let Some(row) = parent.row_at_index(index as i32) else {
+            return;
+        };
+        self.truncate_cascade(depth);
+        let entries = entry::children(&self.launcher, &entry);
+        let empty = if entry::folder_children(&self.launcher, &entry).is_some() {
+            "Empty"
+        } else {
+            "No recent files"
+        };
+        let (popover, list) = ui::cascade_popover(&parent);
+        self.fill_level(&list, &entries, false);
+        if entries.is_empty() {
+            list.append(&ui::empty_row(empty));
+        }
+        self.style_scrolled(&list);
+        let t = self.tx.clone();
+        let d = depth + 1;
+        list.connect_row_activated(move |_, r| send(&t, Msg::TreeClick(d, r.index() as usize)));
+        track_pointer(&list, d, &self.tx);
+        if let Some(b) = row.compute_bounds(&parent) {
+            popover.set_pointing_to(Some(&gdk::Rectangle::new(
+                0,
+                b.y() as i32,
+                parent.width(),
+                b.height() as i32,
+            )));
+        }
+        let rows = entries.iter().map(|e| e.row(&self.launcher)).collect();
+        self.nav.tree_mut().push(depth, index, rows, enter);
+        popover.popup();
+        self.cascade.push(CascadeLevel {
+            popover,
+            list,
+            entries,
+        });
+    }
+
+    /// Closes the popovers of levels deeper than `depth`.
+    fn truncate_cascade(&mut self, depth: usize) {
+        while self.cascade.len() > depth {
+            if let Some(level) = self.cascade.pop() {
+                level.popover.popdown();
+                level.popover.unparent();
+            }
+        }
+    }
+
+    fn close_cascade(&mut self) {
+        self.nav.tree_mut().close_all();
+        self.sync_tree();
+    }
+
+    /// Mirrors the Launcher tree: open popovers, selections, open path.
+    fn sync_tree(&mut self) {
+        let tree = self.nav.tree();
+        let depth = tree.depth();
+        let active = tree.active();
+        let selected: Vec<Option<usize>> = (0..=depth).map(|d| tree.selected(d)).collect();
+        let owners: Vec<Option<usize>> = (1..=depth + 1).map(|d| tree.owner(d)).collect();
+        self.truncate_cascade(depth);
+        for d in 0..=depth {
+            let Some(list) = self.level_list(d) else {
+                continue;
+            };
+            if d == active {
+                list.remove_css_class("uti-tree-inactive");
+            } else {
+                list.add_css_class("uti-tree-inactive");
+            }
+            match selected[d].and_then(|i| list.row_at_index(i as i32)) {
+                Some(row) => list.select_row(Some(&row)),
+                None => list.unselect_all(),
+            }
+            let mut i = 0;
+            while let Some(row) = list.row_at_index(i) {
+                if owners[d] == Some(i as usize) {
+                    row.add_css_class("uti-path");
+                } else {
+                    row.remove_css_class("uti-path");
+                }
+                i += 1;
+            }
+        }
+        if self.nav.tab() == Tab::Launcher {
+            self.ui.footer.set_markup(if depth > 0 {
+                ui::CASCADE_HINTS
+            } else {
+                ui::key_hints(Tab::Launcher)
+            });
+        }
     }
 
     /// Puts GTK focus where [`Nav`] says it is.
@@ -488,14 +658,6 @@ impl App {
             },
             Focus::Pin => {
                 self.ui.pin.grab_focus();
-            },
-            Focus::JumpList => {
-                if let Some(row) = self.ui.jump_list.row_at_index(self.nav.jump_selected() as i32) {
-                    self.ui.jump_list.select_row(Some(&row));
-                    row.grab_focus();
-                } else {
-                    self.ui.jump_list.grab_focus();
-                }
             },
             Focus::List => {
                 let Some(listbox) = self.ui.lists.get(&self.nav.tab()) else {
@@ -578,6 +740,7 @@ impl App {
             },
             WindowCommand::Hide => {
                 self.ui.menu.popdown();
+                self.close_cascade();
                 self.ui.root.set_visible(false);
             },
             WindowCommand::SetAbove(above) => {
@@ -598,7 +761,7 @@ impl App {
         let text = match tab {
             Tab::Clipboard => self.history.items.get(source)?.text.clone(),
             Tab::Snippets => self.snippets.items.get(source)?.value.clone(),
-            Tab::Launcher => return self.launch_row(visible_index),
+            Tab::Launcher => return self.activate_entry(0, visible_index),
         };
         self.ui.root.clipboard().set_text(&text);
         self.window.hide()
@@ -651,7 +814,7 @@ impl App {
             1,
         )));
         self.nav.menu_opened();
-        self.window.menu_opened();
+        self.window.popover_opened();
         self.ui.menu.popup();
         // GtkMenuSectionBox shows its separators from an idle callback, after
         // the popup size is fixed; without a second layout the menu scrolls.
@@ -775,14 +938,19 @@ impl App {
         });
     }
 
-    /// Launches the visible Launcher row and hides the window.
-    fn launch_row(&mut self, visible_index: usize) -> Option<WindowCommand> {
-        match *self.launcher_rows.get(visible_index)? {
-            LauncherRow::Command(c) => {
-                let item = self.launcher.commands.get(c)?;
+    /// Launches Launcher row `index` at `depth` and hides the window.
+    fn activate_entry(&mut self, depth: usize, index: usize) -> Option<WindowCommand> {
+        let entry = self.level_entries(depth)?.get(index)?.clone();
+        match entry {
+            Entry::Node(path) => {
+                let item = entry::command_at(&self.launcher, &path)?;
                 spawn(&item.command, &item.args, None);
             },
-            LauncherRow::App(a) => {
+            Entry::Recent { command, file } => {
+                let item = entry::command_at(&self.launcher, &command)?;
+                spawn(&item.command, &item.args, Some(&file.path));
+            },
+            Entry::App(a) => {
                 let app = self.apps.get(a)?;
                 let context = gtk::prelude::WidgetExt::display(&self.ui.root).app_launch_context();
                 if dev_sandbox() {
@@ -795,6 +963,7 @@ impl App {
                 }
             },
         }
+        self.close_cascade();
         self.window.hide()
     }
 
@@ -815,7 +984,7 @@ impl App {
         if let Some(ui) = &self.settings {
             ui.open(&target, &self.snippets);
             ui.window.present();
-            debug_snapshot(&ui.window);
+            debug_snapshot(&ui.window, &[]);
         }
     }
 
@@ -906,9 +1075,8 @@ impl App {
                 self.history.max_items = self.config.clipboard_history_limit;
                 self.apply_size();
                 self.apply_scrollbar();
-                self.launcher = load_launcher_config();
+                self.launcher = load_launcher_tree();
                 self.snippets = load_snippets();
-                self.close_jump_list();
                 for tab in Tab::ALL {
                     self.refresh(tab);
                 }
@@ -943,71 +1111,32 @@ impl App {
             self.ui.root.remove_css_class(other.css_class());
         }
         self.ui.root.add_css_class(style.css_class());
-        let policy = if style.visible() {
+        let lists = self.ui.lists.values().chain(self.cascade.iter().map(|l| &l.list));
+        for list in lists {
+            self.style_scrolled(list);
+        }
+    }
+
+    /// Applies `theme.scrollbar` to the scrolled window around `list`.
+    fn style_scrolled(&self, list: &gtk::ListBox) {
+        let style = Scrollbar::parse(&self.config.theme.scrollbar);
+        let Some(pane) = list
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+        else {
+            return;
+        };
+        pane.set_vscrollbar_policy(if style.visible() {
             gtk::PolicyType::Automatic
         } else {
             // Scrolls without a scrollbar.
             gtk::PolicyType::External
-        };
-        let panes = self
-            .ui
-            .lists
-            .values()
-            .filter_map(|l| l.ancestor(gtk::ScrolledWindow::static_type()))
-            .filter_map(|w| w.downcast::<gtk::ScrolledWindow>().ok())
-            .chain([self.ui.jump_pane.clone()]);
-        for pane in panes {
-            pane.set_vscrollbar_policy(policy);
-            pane.set_overlay_scrolling(style.overlays());
-        }
-    }
-
-    /// Opens the jump list (recent files) of the visible Launcher row.
-    fn open_jump_list(&mut self, visible_index: usize) {
-        let Some(LauncherRow::Command(c)) = self.launcher_rows.get(visible_index).copied() else {
-            return;
-        };
-        let Some(source) = self.launcher.commands.get(c).and_then(|i| i.history_source.as_ref())
-        else {
-            return;
-        };
-        let files = source.recent_files();
-        self.ui.jump_list.remove_all();
-        for (index, file) in files.iter().enumerate() {
-            let spec = ui::RowSpec {
-                index,
-                text: &file.name,
-                tooltip: &file.path,
-                jump: false,
-                more: false,
-            };
-            self.ui.jump_list.append(&ui::build_row(&spec, |_| {}, |_, _| {}));
-        }
-        self.nav.jump_list_opened(files.len());
-        self.jump = Some((c, files));
-        self.ui.jump_pane.set_visible(true);
-        self.ui.footer.set_markup(ui::JUMP_LIST_HINTS);
-    }
-
-    fn close_jump_list(&mut self) {
-        self.jump = None;
-        self.ui.jump_pane.set_visible(false);
-        self.ui.footer.set_markup(ui::key_hints(self.nav.tab()));
-    }
-
-    /// Opens a recent file with its command and hides the window.
-    fn launch_jump(&mut self, index: usize) -> Option<WindowCommand> {
-        let (c, files) = self.jump.as_ref()?;
-        let item = self.launcher.commands.get(*c)?;
-        let file = files.get(index)?;
-        spawn(&item.command, &item.args, Some(&file.path));
-        self.close_jump_list();
-        self.window.hide()
+        });
+        pane.set_overlay_scrolling(style.overlays());
     }
 
     /// Shows `tab`'s page, tab button state, search text and footer.
     fn show_tab(&self, tab: Tab) {
-        self.ui.jump_pane.set_visible(false);
         let name = ui::page_name(tab);
         self.ui.stack.set_visible_child_name(name);
         if self.ui.tab_group.active_name().as_deref() != Some(name) {
@@ -1023,6 +1152,10 @@ impl App {
 
     /// Recomputes the visible rows of `tab` and re-renders its list.
     fn refresh(&mut self, tab: Tab) {
+        if tab == Tab::Launcher {
+            self.refresh_launcher();
+            return;
+        }
         let Some(data) = self.tabs.get_mut(&tab) else {
             return;
         };
@@ -1059,75 +1192,145 @@ impl App {
                     })
                     .collect()
             },
-            Tab::Launcher => {
-                self.launcher_rows = if data.query.trim().is_empty() {
-                    (0..self.launcher.commands.len()).map(LauncherRow::Command).collect()
-                } else {
-                    let names: Vec<(String, String)> = self
-                        .apps
-                        .iter()
-                        .map(|a| {
-                            let desc = a.description().map(|d| d.to_string()).unwrap_or_default();
-                            (a.name().to_string(), desc)
-                        })
-                        .collect();
-                    let texts: Vec<AppText<'_>> = names
-                        .iter()
-                        .map(|(name, description)| AppText { name, description })
-                        .collect();
-                    rank_apps(&texts, &data.query).into_iter().map(LauncherRow::App).collect()
-                };
-                data.visible = (0..self.launcher_rows.len()).collect();
-                self.launcher_rows
-                    .iter()
-                    .map(|row| match *row {
-                        LauncherRow::Command(c) => {
-                            let item = &self.launcher.commands[c];
-                            (item.name.clone(), item.command.clone())
-                        },
-                        LauncherRow::App(a) => {
-                            let app = &self.apps[a];
-                            let tip = app.description().map(|d| d.to_string()).unwrap_or_default();
-                            (app.name().to_string(), tip)
-                        },
-                    })
-                    .collect()
-            },
+            Tab::Launcher => unreachable!("handled above"),
         };
         self.nav.set_len(tab, rows.len());
-        let jumpable: Vec<bool> = if tab == Tab::Launcher {
-            self.launcher_rows
-                .iter()
-                .map(|row| match *row {
-                    LauncherRow::Command(c) => self.launcher.commands[c].history_source.is_some(),
-                    LauncherRow::App(_) => false,
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        self.nav.set_jumpable(tab, jumpable.clone());
-
         listbox.remove_all();
         for (index, (text, tooltip)) in rows.iter().enumerate() {
             let spec = ui::RowSpec {
                 index,
+                hint: (index < 9).then_some(index + 1),
                 text,
                 tooltip,
-                jump: jumpable.get(index).copied().unwrap_or(false),
-                more: tab != Tab::Launcher,
+                branch: false,
+                more: true,
             };
-            let (tx, tx2) = (self.tx.clone(), self.tx.clone());
-            listbox.append(&ui::build_row(
-                &spec,
-                move |i| send(&tx, Msg::OpenJumpList(i)),
-                move |i, point| send(&tx2, Msg::OpenMenu(i, point)),
-            ));
+            let tx = self.tx.clone();
+            listbox
+                .append(&ui::build_row(&spec, move |i, point| send(&tx, Msg::OpenMenu(i, point))));
         }
         if self.nav.tab() == tab && self.ui.root.is_visible() {
             self.sync_focus();
         }
     }
+
+    /// Recomputes the Launcher tab's rows: the tree's root, or while
+    /// searching, matching commands of the whole tree and installed apps.
+    /// Closes the open levels.
+    fn refresh_launcher(&mut self) {
+        let query = self.tabs.get(&Tab::Launcher).map(|d| d.query.clone()).unwrap_or_default();
+        let searching = !query.trim().is_empty();
+        self.launcher_rows = if searching {
+            let commands = entry::searchable(&self.launcher);
+            let apps: Vec<(String, String)> = self
+                .apps
+                .iter()
+                .map(|a| {
+                    let desc = a.description().map(|d| d.to_string()).unwrap_or_default();
+                    (a.name().to_string(), desc)
+                })
+                .collect();
+            let texts: Vec<SearchText<'_>> = commands
+                .iter()
+                .map(|c| SearchText {
+                    name: &c.command.name,
+                    description: &c.command.command,
+                })
+                .chain(apps.iter().map(|(name, description)| SearchText { name, description }))
+                .collect();
+            rank(&texts, &query)
+                .into_iter()
+                .map(|i| match commands.get(i) {
+                    Some(c) => Entry::Node(c.path.clone()),
+                    None => Entry::App(i - commands.len()),
+                })
+                .collect()
+        } else {
+            entry::root_entries(&self.launcher)
+        };
+        if let Some(data) = self.tabs.get_mut(&Tab::Launcher) {
+            data.visible = (0..self.launcher_rows.len()).collect();
+        }
+        let rows = self.launcher_rows.iter().map(|e| e.row(&self.launcher)).collect();
+        self.nav.set_launcher_rows(rows);
+        if let Some(list) = self.ui.lists.get(&Tab::Launcher) {
+            self.fill_level(list, &self.launcher_rows, searching);
+        }
+        self.sync_tree();
+        if self.nav.tab() == Tab::Launcher && self.ui.root.is_visible() {
+            self.sync_focus();
+        }
+    }
+
+    /// Renders Launcher rows into `list`; `searching` shows each command's
+    /// folders as its tooltip.
+    fn fill_level(&self, list: &gtk::ListBox, entries: &[Entry], searching: bool) {
+        list.remove_all();
+        let rows: Vec<Row> = entries.iter().map(|e| e.row(&self.launcher)).collect();
+        let hints = tree::hints(&rows);
+        for (index, (entry, row)) in entries.iter().zip(&rows).enumerate() {
+            if !row.selectable {
+                list.append(&ui::separator_row());
+                continue;
+            }
+            let (text, tooltip) = self.entry_text(entry, searching);
+            let spec = ui::RowSpec {
+                index,
+                hint: hints[index],
+                text: &text,
+                tooltip: &tooltip,
+                branch: row.branch,
+                more: false,
+            };
+            list.append(&ui::build_row(&spec, |_, _| {}));
+        }
+    }
+
+    /// Label and tooltip of a Launcher row.
+    fn entry_text(&self, entry: &Entry, searching: bool) -> (String, String) {
+        match entry {
+            Entry::Node(path) => match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
+                Some(NodeKind::Folder { name, .. }) => (name.clone(), name.clone()),
+                Some(NodeKind::Command(c)) => {
+                    let tip = if searching {
+                        entry::breadcrumb(&self.launcher, path)
+                    } else {
+                        c.command.clone()
+                    };
+                    (c.name.clone(), tip)
+                },
+                _ => Default::default(),
+            },
+            Entry::Recent { file, .. } => (file.name.clone(), file.path.clone()),
+            Entry::App(a) => self.apps.get(*a).map_or_else(Default::default, |app| {
+                let tip = app.description().map(|d| d.to_string()).unwrap_or_default();
+                (app.name().to_string(), tip)
+            }),
+        }
+    }
+}
+
+/// Sends hover and leave messages for the rows of Launcher level `depth`.
+fn track_pointer(list: &gtk::ListBox, depth: usize, tx: &Sender) {
+    let motion = gtk::EventControllerMotion::new();
+    let last = std::rc::Rc::new(std::cell::Cell::new(-1));
+    let (t, l, lb) = (tx.clone(), last.clone(), list.clone());
+    let on_move = move |y: f64| {
+        let index = lb.row_at_y(y as i32).map_or(-1, |r| r.index());
+        if index >= 0 && index != l.get() {
+            send(&t, Msg::TreeHover(depth, index as usize));
+        }
+        l.set(index);
+    };
+    let enter = on_move.clone();
+    motion.connect_enter(move |_, _, y| enter(y));
+    motion.connect_motion(move |_, _, y| on_move(y));
+    let t = tx.clone();
+    motion.connect_leave(move |_| {
+        last.set(-1);
+        send(&t, Msg::TreeLeave(depth));
+    });
+    list.add_controller(motion);
 }
 
 fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
@@ -1140,28 +1343,6 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
 
     // Every tab has the same structure (a list with an empty placeholder), so
     // there is always a focus target.
-    let jump_list = gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::Single)
-        .activate_on_single_click(true)
-        .focusable(true)
-        .css_classes(["navigation-sidebar"])
-        .build();
-    jump_list.set_placeholder(Some(
-        &gtk::Label::builder()
-            .label("No recent files")
-            .css_classes(["dim-label"])
-            .build(),
-    ));
-    let t = tx.clone();
-    jump_list
-        .connect_row_activated(move |_, row| send(&t, Msg::JumpActivated(row.index() as usize)));
-    let jump_pane = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .hexpand(true)
-        .child(&jump_list)
-        .visible(false)
-        .build();
-
     for tab in Tab::ALL {
         let listbox = build_list(tab, tx);
         lists.insert(tab, listbox.clone());
@@ -1171,16 +1352,7 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
             .hexpand(true)
             .child(&listbox)
             .build();
-        let page: gtk::Widget = if tab == Tab::Launcher {
-            // The jump list opens beside the launcher list (half width each).
-            let split = gtk::Box::builder().homogeneous(true).build();
-            split.append(&scrolled);
-            split.append(&jump_pane);
-            split.upcast()
-        } else {
-            scrolled.upcast()
-        };
-        stack.add_named(&page, Some(ui::page_name(tab)));
+        stack.add_named(&scrolled, Some(ui::page_name(tab)));
 
         let (title, icon) = ui::tab_label(tab);
         tab_group.add(
@@ -1286,8 +1458,7 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
     // Keep Nav in step when focus moves by mouse or the Tab key.
     let t = tx.clone();
     let menu_f = menu.clone();
-    let (search_f, pin_f, stack_f, jump_f) =
-        (search.clone(), pin.clone(), stack.clone(), jump_list.clone());
+    let (search_f, pin_f, stack_f) = (search.clone(), pin.clone(), stack.clone());
     root.connect_focus_widget_notify(move |w| {
         let Some(widget) = gtk::prelude::GtkWindowExt::focus(w) else {
             return;
@@ -1299,9 +1470,6 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
             Focus::Search
         } else if widget == pin_f {
             Focus::Pin
-        } else if widget == jump_f || widget.is_ancestor(&jump_f) {
-            // Checked before the stack: the jump list lives inside it.
-            Focus::JumpList
         } else if widget.is_ancestor(&stack_f) {
             Focus::List
         } else {
@@ -1349,8 +1517,6 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
         search_bar,
         toolbar,
         lists,
-        jump_list,
-        jump_pane,
         pin,
         footer,
         menu,
@@ -1396,7 +1562,14 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
         .build();
     listbox.set_placeholder(Some(&ui::empty_page(tab)));
     let t = tx.clone();
-    listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
+    if tab == Tab::Launcher {
+        listbox.add_css_class("uti-tree");
+        listbox
+            .connect_row_activated(move |_, row| send(&t, Msg::TreeClick(0, row.index() as usize)));
+        track_pointer(&listbox, 0, tx);
+    } else {
+        listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
+    }
     let right_click = gtk::GestureClick::builder().button(gdk::BUTTON_SECONDARY).build();
     let t = tx.clone();
     let lb = listbox.clone();
@@ -1499,19 +1672,43 @@ fn fit_to_rows(root: &adw::ApplicationWindow, lists: &HashMap<Tab, gtk::ListBox>
 }
 
 /// Development aid: with `UTI_DEBUG_SNAPSHOT=<file.png>`, renders the window
-/// to a PNG shortly after it is shown.
-fn debug_snapshot(root: &adw::ApplicationWindow) {
+/// and the given popovers (separate surfaces) to one PNG, shortly after.
+fn debug_snapshot(root: &adw::ApplicationWindow, popovers: &[gtk::Popover]) {
     let Ok(path) = std::env::var("UTI_DEBUG_SNAPSHOT") else {
         return;
     };
     let root = root.clone();
+    let popovers = popovers.to_vec();
     glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-        let (w, h) = (f64::from(root.width()), f64::from(root.height()));
         let snapshot = gtk::Snapshot::new();
-        gtk::WidgetPaintable::new(Some(&root)).snapshot(&snapshot, w, h);
-        if let (Some(node), Some(renderer)) =
-            (snapshot.to_node(), root.native().and_then(|n| n.renderer()))
-        {
+        let (x, y) = root.surface_transform();
+        let at = |s: &gtk::Snapshot, w: &gtk::Widget, x: f64, y: f64| {
+            s.save();
+            s.translate(&gtk::graphene::Point::new(x as f32, y as f32));
+            gtk::WidgetPaintable::new(Some(w)).snapshot(
+                s,
+                f64::from(w.width()),
+                f64::from(w.height()),
+            );
+            s.restore();
+        };
+        at(&snapshot, root.upcast_ref(), x, y);
+        for popover in popovers.iter().filter(|p| p.is_visible()) {
+            // Popup positions are relative to the parent's surface.
+            let (mut px, mut py) = popover.surface_transform();
+            let mut native: Option<gtk::Native> = Some(popover.clone().upcast());
+            while let Some(n) =
+                native.filter(|n| n.upcast_ref::<gtk::Widget>() != root.upcast_ref::<gtk::Widget>())
+            {
+                if let Some(popup) = n.surface().and_downcast::<gdk::Popup>() {
+                    px += f64::from(popup.position_x());
+                    py += f64::from(popup.position_y());
+                }
+                native = n.upcast_ref::<gtk::Widget>().parent().and_then(|w| w.native());
+            }
+            at(&snapshot, popover.upcast_ref(), px, py);
+        }
+        if let (Some(node), Some(renderer)) = (snapshot.to_node(), root.renderer()) {
             if let Err(e) = renderer.render_texture(&node, None).save_to_png(&path) {
                 eprintln!("Snapshot failed: {e}");
             }
@@ -1550,7 +1747,8 @@ fn register_actions(app: &adw::Application, tx: &Sender) {
                 Some("menu") => Key::Menu,
                 Some("delete") => Key::Delete,
                 Some("f2") => Key::Rename,
-                _ => return,
+                // Anything else: `UTI_DEBUG_SNAPSHOT` with open popovers.
+                _ => return send(&t, Msg::DebugSnapshot),
             };
             send(&t, Msg::Key(key));
         });

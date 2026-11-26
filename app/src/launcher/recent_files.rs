@@ -14,7 +14,7 @@ use std::path::PathBuf;
 const MAX_FILES_PER_COMMAND: usize = 10;
 
 /// Recent file entry returned to frontend
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentFile {
     pub path: String,

@@ -1,7 +1,7 @@
 {
-  "commands": [
+  "items": [
     {
-      "id": "nautilus",
+      "type": "command",
       "name": "Files",
       "command": "nautilus",
       "args": ["--new-window"],
@@ -11,10 +11,9 @@
       }
     },
     {
-      "id": "gnome-text-editor",
+      "type": "command",
       "name": "Text Editor",
       "command": "gnome-text-editor",
-      "args": [],
       "historySource": {
         "type": "recently-used",
         "appName": "gnome-text-editor",
@@ -22,20 +21,31 @@
       }
     },
     {
-      "id": "vscode-insiders",
-      "name": "VSCode Insiders",
-      "command": "code-insiders",
-      "args": [],
-      "historySource": {
-        "type": "vscode",
-        "path": "~/.config/Code - Insiders/User/globalStorage/state.vscdb"
-      }
+      "type": "folder",
+      "name": "Dev",
+      "children": [
+        {
+          "type": "command",
+          "name": "VSCode Insiders",
+          "command": "code-insiders",
+          "historySource": {
+            "type": "vscode",
+            "path": "~/.config/Code - Insiders/User/globalStorage/state.vscdb"
+          }
+        },
+        {
+          "type": "command",
+          "name": "Terminal",
+          "command": "ptyxis",
+          "args": ["--new-window"]
+        }
+      ]
     },
+    { "type": "separator" },
     {
-      "id": "terminal",
-      "name": "Terminal",
-      "command": "ptyxis",
-      "args": ["--new-window"]
+      "type": "command",
+      "name": "Settings",
+      "command": "gnome-control-center"
     }
   ]
 }

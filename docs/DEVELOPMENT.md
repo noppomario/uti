@@ -90,7 +90,9 @@ just run          # ./app/run-dev.sh [--reset]
 
 ### Debug Aids
 
-- `UTI_DEBUG_SNAPSHOT=file.png`: render the main or settings window to PNG after it is shown
+- `UTI_DEBUG_SNAPSHOT=file.png`: render the main or settings window to PNG after it is shown;
+  with `UTI_DEBUG_KEYS`, `debug-key '[<"snap">]'` renders the main window with its open
+  Launcher levels
 - `UTI_DEBUG_KEYS=1`: add a `debug-key` action that injects a key press:
 
 ```bash
@@ -101,7 +103,8 @@ gdbus call --session -d io.github.noppomario.uti -o /io/github/noppomario/uti \
 `debug-key` skips GTK's key handling, so check these by hand after UI changes, in every
 `theme.size` (Settings > Window Size applies it live):
 
-- → from the Launcher tab reaches the pin (an item with a jump list opens it instead); ← returns
+- → from the Launcher tab reaches the pin (an item with children opens it instead); ← returns
+- Launcher levels open on hover after the delay, and moving diagonally into an open level keeps it
 - Typing or Ctrl+F shows the search bar (hidden in `minimal` until searching)
 - The more button is clickable while the scrollbar is shown, in every `theme.scrollbar`
 

@@ -8,16 +8,16 @@
 use std::collections::HashMap;
 
 use super::list::{Action, Key, ListState, Tab, TabTraits};
+use super::tree::{Row, Tree, TreeAction};
 
 /// Where keyboard focus is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
-    /// The current tab's list (or its empty placeholder).
+    /// The current tab's list (or its empty placeholder). On the Launcher
+    /// tab this includes its open levels, which never take GTK focus.
     List,
     Search,
     Pin,
-    /// The Launcher jump list (recent files) next to the list.
-    JumpList,
     /// A row's context menu is open; it handles its own keys.
     Menu,
 }
@@ -36,12 +36,21 @@ pub enum Effect {
     OpenMenu(usize),
     Delete(usize),
     Edit(usize),
-    OpenJumpList(usize),
     ClearQuery,
     TogglePin,
-    JumpSelect(usize),
-    JumpActivate(usize),
-    CloseJumpList,
+    /// Build the children of a Launcher row and push them ([`Nav::tree_mut`]).
+    TreeOpen {
+        depth: usize,
+        index: usize,
+        enter: bool,
+    },
+    /// Activate a Launcher row.
+    TreeActivate {
+        depth: usize,
+        index: usize,
+    },
+    /// The Launcher levels or their selections changed.
+    TreeChanged,
 }
 
 /// Focus and selection state of the main window.
@@ -50,9 +59,8 @@ pub struct Nav {
     tab: Tab,
     focus: Focus,
     lists: HashMap<Tab, ListState>,
-    /// Per tab: which visible rows have a jump list.
-    jumpable: HashMap<Tab, Vec<bool>>,
-    jump: ListState,
+    /// Launcher levels; the root is the Launcher tab's list.
+    tree: Tree,
 }
 
 impl Default for Nav {
@@ -61,8 +69,25 @@ impl Default for Nav {
             tab: Tab::Clipboard,
             focus: Focus::List,
             lists: Tab::ALL.iter().map(|t| (*t, ListState::default())).collect(),
-            jumpable: HashMap::new(),
-            jump: ListState::default(),
+            tree: Tree::new(),
+        }
+    }
+}
+
+impl From<TreeAction> for Effect {
+    fn from(action: TreeAction) -> Self {
+        match action {
+            TreeAction::Open {
+                depth,
+                index,
+                enter,
+            } => Effect::TreeOpen {
+                depth,
+                index,
+                enter,
+            },
+            TreeAction::Activate { depth, index } => Effect::TreeActivate { depth, index },
+            TreeAction::Unhandled => Effect::TreeChanged,
         }
     }
 }
@@ -81,14 +106,21 @@ impl Nav {
         self.focus
     }
 
-    /// Selected row of the current tab.
+    /// Selected row of the current tab (the Launcher root on the Launcher).
     pub fn selected(&self) -> usize {
+        if self.tab == Tab::Launcher {
+            return self.tree.selected(0).unwrap_or(0);
+        }
         self.lists.get(&self.tab).map_or(0, ListState::selected)
     }
 
-    /// Selected row of the open jump list.
-    pub fn jump_selected(&self) -> usize {
-        self.jump.selected()
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    /// For pointer input and pushing opened levels.
+    pub fn tree_mut(&mut self) -> &mut Tree {
+        &mut self.tree
     }
 
     /// Visible row count of `tab` changed (resets its selection).
@@ -98,22 +130,19 @@ impl Nav {
         }
     }
 
+    /// New Launcher root rows: closes its levels.
+    pub fn set_launcher_rows(&mut self, rows: Vec<Row>) {
+        self.set_len(Tab::Launcher, rows.len());
+        self.tree.set_root(rows);
+    }
+
     /// Restores a selection after re-rendering `tab`.
     pub fn set_selected(&mut self, tab: Tab, index: usize) {
-        if let Some(list) = self.lists.get_mut(&tab) {
+        if tab == Tab::Launcher {
+            self.tree.select_root(index);
+        } else if let Some(list) = self.lists.get_mut(&tab) {
             list.set_selected(index);
         }
-    }
-
-    /// Which visible rows of `tab` have a jump list.
-    pub fn set_jumpable(&mut self, tab: Tab, rows: Vec<bool>) {
-        self.jumpable.insert(tab, rows);
-    }
-
-    /// The jump list asked for by [`Effect::OpenJumpList`] is shown.
-    pub fn jump_list_opened(&mut self, len: usize) {
-        self.jump.set_len(len);
-        self.focus = Focus::JumpList;
     }
 
     /// The menu asked for by [`Effect::OpenMenu`] is shown.
@@ -128,46 +157,22 @@ impl Nav {
         }
     }
 
-    fn traits(&self, tab: Tab) -> TabTraits {
-        let selected = self.lists.get(&tab).map_or(0, ListState::selected);
+    fn traits(tab: Tab) -> TabTraits {
         TabTraits {
             can_add_snippet: tab == Tab::Clipboard,
             can_delete: matches!(tab, Tab::Clipboard | Tab::Snippets),
             can_edit: tab == Tab::Snippets,
             has_menu: matches!(tab, Tab::Clipboard | Tab::Snippets),
-            right_opens_jump_list: self
-                .jumpable
-                .get(&tab)
-                .and_then(|rows| rows.get(selected))
-                .copied()
-                .unwrap_or(false),
         }
     }
 
-    fn on_jump_key(&mut self, key: Key) -> Option<Effect> {
-        match key {
-            Key::Left | Key::Escape => {
-                self.focus = Focus::List;
-                Some(Effect::CloseJumpList)
-            },
-            Key::Up | Key::Down => match self.jump.on_list_key(key, TabTraits::default())? {
-                Action::Select(i) => Some(Effect::JumpSelect(i)),
-                _ => None, // Up at the top stays in the jump list.
-            },
-            Key::Enter | Key::Digit(_) => match self.jump.on_list_key(key, TabTraits::default())? {
-                Action::Activate(i) => Some(Effect::JumpActivate(i)),
-                _ => None,
-            },
-            Key::Right | Key::AddSnippet | Key::Menu | Key::Delete | Key::Rename => None,
-        }
-    }
-
-    /// A tab button was clicked.
+    /// A tab button was clicked. Leaving the Launcher closes its levels.
     pub fn select_tab(&mut self, tab: Tab) -> Option<Effect> {
         self.focus = Focus::List;
         if tab == self.tab {
             return None;
         }
+        self.tree.close_all();
         self.tab = tab;
         Some(Effect::ShowTab(tab))
     }
@@ -189,14 +194,8 @@ impl Nav {
     /// Handles a key; the caller then applies the effect and syncs focus.
     pub fn on_key(&mut self, key: Key) -> Option<Effect> {
         let tab = self.tab;
-        match self.focus {
-            Focus::JumpList => return self.on_jump_key(key),
-            Focus::Menu => return None,
-            _ => {},
-        }
-        let traits = self.traits(tab);
-        let list = self.lists.get_mut(&tab)?;
         let action = match self.focus {
+            Focus::Menu => return None,
             Focus::Pin => {
                 return match key {
                     Key::Left | Key::Down | Key::Escape => {
@@ -207,18 +206,29 @@ impl Nav {
                     _ => None,
                 };
             },
-            Focus::Search => list.on_search_key(key)?,
-            Focus::List => list.on_list_key(key, traits)?,
-            Focus::JumpList | Focus::Menu => unreachable!("handled above"),
+            Focus::List if tab == Tab::Launcher => match self.tree.on_key(key) {
+                Some(TreeAction::Unhandled) => match key {
+                    Key::Up => Action::FocusSearch,
+                    Key::Left => Action::PrevTab,
+                    Key::Right => Action::NextTab,
+                    _ => return None,
+                },
+                Some(action) => return Some(action.into()),
+                None => return Some(Effect::TreeChanged),
+            },
+            Focus::Search => self.lists.get_mut(&tab)?.on_search_key(key)?,
+            Focus::List => self.lists.get_mut(&tab)?.on_list_key(key, Self::traits(tab))?,
         };
         match action {
+            Action::Activate(index) if tab == Tab::Launcher => {
+                Some(Effect::TreeActivate { depth: 0, index })
+            },
             Action::Select(i) => Some(Effect::SelectRow(i)),
             Action::Activate(i) => Some(Effect::Activate(i)),
             Action::AddSnippet(i) => Some(Effect::AddSnippet(i)),
             Action::OpenMenu(i) => Some(Effect::OpenMenu(i)),
             Action::Delete(i) => Some(Effect::Delete(i)),
             Action::Edit(i) => Some(Effect::Edit(i)),
-            Action::OpenJumpList(i) => Some(Effect::OpenJumpList(i)),
             Action::FocusSearch => {
                 self.focus = Focus::Search;
                 None
@@ -369,51 +379,51 @@ mod tests {
         assert_eq!(n.focus(), Focus::List);
     }
 
-    #[test]
-    fn launcher_right_opens_jump_list_only_for_items_with_history() {
-        let mut n = nav_with(&[(Tab::Launcher, 2)]);
-        n.set_jumpable(Tab::Launcher, vec![true, false]);
+    fn launcher(rows: &[Row]) -> Nav {
+        let mut n = Nav::new();
+        n.set_launcher_rows(rows.to_vec());
         n.select_tab(Tab::Launcher);
-        assert_eq!(n.on_key(Key::Right), Some(OpenJumpList(0)));
-        assert_eq!(n.focus(), Focus::List);
+        n
+    }
 
-        n.on_key(Key::Down);
+    #[test]
+    fn launcher_keys_drive_the_tree() {
+        let mut n = launcher(&[Row::FOLDER, Row::LEAF]);
+        assert_eq!(
+            n.on_key(Key::Right),
+            Some(TreeOpen {
+                depth: 0,
+                index: 0,
+                enter: true
+            })
+        );
+        n.tree_mut().push(0, 0, vec![Row::LEAF, Row::LEAF], true);
+        assert_eq!(n.on_key(Key::Down), Some(TreeChanged));
+        assert_eq!(n.tree().selected(1), Some(1));
+        assert_eq!(n.on_key(Key::Enter), Some(TreeActivate { depth: 1, index: 1 }));
+        assert_eq!(n.on_key(Key::Left), Some(TreeChanged));
+        assert_eq!(n.tree().depth(), 0);
+        assert_eq!(n.on_key(Key::Left), Some(ShowTab(Tab::Snippets)));
+    }
+
+    #[test]
+    fn launcher_root_falls_back_to_tabs_pin_and_search() {
+        let mut n = launcher(&[Row::LEAF]);
         assert_eq!(n.on_key(Key::Right), None);
         assert_eq!(n.focus(), Focus::Pin);
-    }
-
-    #[test]
-    fn jump_list_keys() {
-        let mut n = nav_with(&[(Tab::Launcher, 1)]);
-        n.set_jumpable(Tab::Launcher, vec![true]);
-        n.select_tab(Tab::Launcher);
-        n.on_key(Key::Right);
-        n.jump_list_opened(3);
-        assert_eq!(n.focus(), Focus::JumpList);
-        assert_eq!(n.on_key(Key::Down), Some(JumpSelect(1)));
-        assert_eq!(n.on_key(Key::Up), Some(JumpSelect(0)));
+        n.on_key(Key::Left);
         assert_eq!(n.on_key(Key::Up), None);
-        assert_eq!(n.focus(), Focus::JumpList);
-        assert_eq!(n.on_key(Key::Digit(3)), Some(JumpActivate(2)));
-        assert_eq!(n.on_key(Key::Enter), Some(JumpActivate(0)));
-        assert_eq!(n.on_key(Key::Left), Some(CloseJumpList));
-        assert_eq!((n.tab(), n.focus()), (Tab::Launcher, Focus::List));
+        assert_eq!(n.focus(), Focus::Search);
+        assert_eq!(n.on_key(Key::Enter), Some(TreeActivate { depth: 0, index: 0 }));
     }
 
     #[test]
-    fn escape_closes_jump_list_and_tab_change_resets_it() {
-        let mut n = nav_with(&[(Tab::Launcher, 1)]);
-        n.set_jumpable(Tab::Launcher, vec![true]);
-        n.select_tab(Tab::Launcher);
+    fn leaving_the_launcher_closes_its_levels() {
+        let mut n = launcher(&[Row::FOLDER]);
         n.on_key(Key::Right);
-        n.jump_list_opened(0);
-        assert_eq!(n.on_key(Key::Escape), Some(CloseJumpList));
-        assert_eq!(n.focus(), Focus::List);
-
-        n.on_key(Key::Right);
-        n.jump_list_opened(2);
+        n.tree_mut().push(0, 0, vec![Row::LEAF], true);
         n.select_tab(Tab::Clipboard);
-        assert_eq!(n.focus(), Focus::List);
+        assert_eq!(n.tree().depth(), 0);
     }
 
     #[test]

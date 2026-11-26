@@ -78,8 +78,6 @@ pub enum Action {
     Delete(usize),
     /// Edit the visible snippet at this position.
     Edit(usize),
-    /// Open the jump list of the visible item at this position.
-    OpenJumpList(usize),
 }
 
 /// Per-tab behaviour switches.
@@ -93,8 +91,6 @@ pub struct TabTraits {
     pub can_edit: bool,
     /// `Menu` opens a context menu.
     pub has_menu: bool,
-    /// Right opens a jump list instead of moving to the next tab (Launcher).
-    pub right_opens_jump_list: bool,
 }
 
 /// Selection over the currently visible (filtered) items of one tab.
@@ -147,9 +143,6 @@ impl ListState {
                 (i < self.len).then_some(Action::Activate(i))
             },
             Key::Left => Some(Action::PrevTab),
-            Key::Right if traits.right_opens_jump_list && has_items => {
-                Some(Action::OpenJumpList(self.selected))
-            },
             Key::Right => Some(Action::NextTab),
             Key::AddSnippet if traits.can_add_snippet && has_items => {
                 Some(Action::AddSnippet(self.selected))
@@ -186,7 +179,6 @@ mod tests {
         can_delete: false,
         can_edit: false,
         has_menu: false,
-        right_opens_jump_list: false,
     };
 
     fn list(len: usize) -> ListState {
@@ -237,17 +229,10 @@ mod tests {
     }
 
     #[test]
-    fn left_right_switch_tabs_or_open_jump_list() {
+    fn left_right_switch_tabs() {
         let mut l = list(2);
         assert_eq!(l.on_list_key(Key::Left, PLAIN), Some(PrevTab));
         assert_eq!(l.on_list_key(Key::Right, PLAIN), Some(NextTab));
-        let launcher = TabTraits {
-            right_opens_jump_list: true,
-            ..PLAIN
-        };
-        assert_eq!(l.on_list_key(Key::Right, launcher), Some(OpenJumpList(0)));
-        // Nothing to open: Right moves on (to the pin button after the last tab).
-        assert_eq!(list(0).on_list_key(Key::Right, launcher), Some(NextTab));
     }
 
     #[test]
@@ -261,7 +246,6 @@ mod tests {
             can_delete: true,
             can_edit: true,
             has_menu: true,
-            ..PLAIN
         };
         l.on_list_key(Key::Down, all);
         assert_eq!(l.on_list_key(Key::AddSnippet, all), Some(AddSnippet(1)));
@@ -277,7 +261,6 @@ mod tests {
             can_delete: true,
             can_edit: true,
             has_menu: true,
-            ..PLAIN
         };
         let mut l = list(0);
         assert_eq!(l.on_list_key(Key::AddSnippet, all), None);

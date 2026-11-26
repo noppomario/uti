@@ -7,4 +7,5 @@ pub mod nav;
 pub mod scrollbar;
 pub mod settings;
 pub mod size;
+pub mod tree;
 pub mod window;

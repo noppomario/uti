@@ -84,9 +84,10 @@ Main application with Clipboard, Snippets and Launcher tabs, plus a settings win
 
 **Launcher Features:**
 
-- Configurable application commands and installed app search (`gio::AppInfo`) with keyboard navigation
-- Jump lists showing recent files from system history (recently-used.xbel)
-- VSCode recent files support via SQLite database
+- `launcher.json` tree (folders, commands, separators) shown as cascading levels; navigation
+  in `state/tree.rs`, levels are non-grabbing popovers (ADR-037)
+- Commands with `historySource` open their recent files (recently-used.xbel, VSCode SQLite)
+- Search covers the whole tree and installed apps (`gio::AppInfo`)
 
 ### uti for GNOME
 

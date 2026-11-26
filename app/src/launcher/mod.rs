@@ -2,15 +2,16 @@
 //!
 //! Provides launcher configuration and recent files functionality.
 
+pub mod entry;
 pub mod recent_files;
 mod store;
 
-pub use store::{get_launcher_config_path, load_launcher_config};
+pub use store::{get_launcher_config_path, load_launcher_tree};
 
 use serde::{Deserialize, Serialize};
 
 /// History source for retrieving recent files
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum HistorySource {
     /// Use recently-used.xbel
@@ -47,188 +48,234 @@ impl HistorySource {
     }
 }
 
-/// A command entry in the launcher configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A command to start: `command args..` (plus a recent file when opened
+/// from its children).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct LauncherItem {
-    /// Unique identifier for the command
-    pub id: String,
+pub struct CommandItem {
     /// Display name
     pub name: String,
     /// Command to execute
     pub command: String,
-    /// Additional arguments (optional)
     #[serde(default)]
     pub args: Vec<String>,
-    /// History source for jump list (optional)
-    /// If not specified, will try to auto-detect from recently-used.xbel
-    #[serde(default)]
+    /// Recent files shown as the command's children.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history_source: Option<HistorySource>,
 }
 
-/// Launcher configuration file structure
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LauncherConfig {
-    /// List of launcher commands
+/// One node of the launcher tree (`items` in `launcher.json`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LauncherNode {
+    /// Stable id for editing; generated at load when missing (not saved).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    #[serde(flatten)]
+    pub kind: NodeKind,
+}
+
+/// Node types, by their `type` field. Later types (`app`, `apps`,
+/// `directory`, `power`, `file`, `url`, `recent`, `snippets`) are added
+/// here; see ADR-037.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum NodeKind {
+    Folder {
+        name: String,
+        #[serde(default)]
+        children: Vec<LauncherNode>,
+    },
+    Command(CommandItem),
+    Separator,
+    /// A type this version does not know; dropped at load.
+    #[serde(other)]
+    Unknown,
+}
+
+/// Entry of the pre-tree `commands` array.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegacyCommand {
     #[serde(default)]
-    pub commands: Vec<LauncherItem>,
+    pub id: String,
+    #[serde(flatten)]
+    pub item: CommandItem,
+}
+
+/// Launcher configuration file structure
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct LauncherConfig {
+    #[serde(default)]
+    pub items: Option<Vec<LauncherNode>>,
+    /// Read as `command` items when `items` is absent.
+    #[serde(default)]
+    pub commands: Vec<LegacyCommand>,
+}
+
+impl LauncherConfig {
+    /// The tree to show: `items`, or else the old `commands`. Unknown node
+    /// types are dropped and missing ids generated.
+    pub fn into_tree(self) -> Vec<LauncherNode> {
+        let mut nodes = match self.items {
+            Some(items) => {
+                if !self.commands.is_empty() {
+                    eprintln!("launcher.json: \"commands\" is ignored because \"items\" is set");
+                }
+                items
+            },
+            None => self
+                .commands
+                .into_iter()
+                .map(|c| LauncherNode {
+                    id: c.id,
+                    kind: NodeKind::Command(c.item),
+                })
+                .collect(),
+        };
+        normalize(&mut nodes);
+        nodes
+    }
+}
+
+fn normalize(nodes: &mut Vec<LauncherNode>) {
+    nodes.retain(|n| {
+        let known = n.kind != NodeKind::Unknown;
+        if !known {
+            eprintln!("launcher.json: skipping an item of unknown type");
+        }
+        known
+    });
+    for node in nodes {
+        if node.id.is_empty() {
+            node.id = uuid::Uuid::new_v4().to_string();
+        }
+        if let NodeKind::Folder { children, .. } = &mut node.kind {
+            normalize(children);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_deserialize_launcher_item_minimal() {
-        let json = r#"{
-            "id": "nautilus",
-            "name": "Files",
-            "command": "nautilus"
-        }"#;
+    fn tree(json: &str) -> Vec<LauncherNode> {
+        serde_json::from_str::<LauncherConfig>(json).unwrap().into_tree()
+    }
 
-        let item: LauncherItem = serde_json::from_str(json).unwrap();
-        assert_eq!(item.id, "nautilus");
-        assert_eq!(item.name, "Files");
-        assert_eq!(item.command, "nautilus");
-        assert!(item.args.is_empty());
-        assert!(item.history_source.is_none());
+    fn command(node: &LauncherNode) -> &CommandItem {
+        match &node.kind {
+            NodeKind::Command(c) => c,
+            other => panic!("expected a command, got {other:?}"),
+        }
     }
 
     #[test]
-    fn test_deserialize_launcher_item_with_history_source() {
-        let json = r#"{
-            "id": "vscode",
-            "name": "Visual Studio Code",
-            "command": "code",
-            "historySource": {
-                "type": "vscode",
-                "path": "~/.config/Code/User/History"
-            }
-        }"#;
-
-        let item: LauncherItem = serde_json::from_str(json).unwrap();
-        assert_eq!(item.id, "vscode");
-        assert!(matches!(item.history_source, Some(HistorySource::Vscode { .. })));
-    }
-
-    #[test]
-    fn test_deserialize_launcher_item_with_recently_used() {
-        let json = r#"{
-            "id": "nautilus",
-            "name": "Files",
-            "command": "nautilus",
-            "historySource": {
-                "type": "recently-used",
-                "appName": "org.gnome.Nautilus"
-            }
-        }"#;
-
-        let item: LauncherItem = serde_json::from_str(json).unwrap();
+    fn items_are_a_tree_of_typed_nodes() {
+        let nodes = tree(
+            r#"{"items": [
+                {"type": "folder", "id": "dev", "name": "Dev", "children": [
+                    {"type": "command", "name": "Code", "command": "code", "args": ["-n"]}
+                ]},
+                {"type": "separator"},
+                {"type": "command", "name": "Files", "command": "nautilus",
+                 "historySource": {"type": "recently-used", "appName": "org.gnome.Nautilus"}}
+            ]}"#,
+        );
+        assert_eq!(nodes.len(), 3);
+        let NodeKind::Folder { name, children } = &nodes[0].kind else {
+            panic!("expected a folder");
+        };
+        assert_eq!((nodes[0].id.as_str(), name.as_str()), ("dev", "Dev"));
+        assert_eq!(command(&children[0]).args, ["-n"]);
+        assert_eq!(nodes[1].kind, NodeKind::Separator);
         assert!(matches!(
-            item.history_source,
-            Some(HistorySource::RecentlyUsed { app_name: Some(ref name), path: _ }) if name == "org.gnome.Nautilus"
+            command(&nodes[2]).history_source,
+            Some(HistorySource::RecentlyUsed { app_name: Some(ref a), path: None }) if a == "org.gnome.Nautilus"
         ));
     }
 
     #[test]
-    fn test_deserialize_launcher_config() {
-        let json = r#"{
-            "commands": [
-                {
-                    "id": "nautilus",
-                    "name": "Files",
-                    "command": "nautilus"
-                },
-                {
-                    "id": "gnome-text-editor",
-                    "name": "Text Editor",
-                    "command": "gnome-text-editor"
-                }
-            ]
-        }"#;
-
-        let config: LauncherConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.commands.len(), 2);
-        assert_eq!(config.commands[0].id, "nautilus");
-        assert_eq!(config.commands[1].id, "gnome-text-editor");
+    fn missing_ids_are_generated_and_unique() {
+        let nodes = tree(
+            r#"{"items": [{"type": "folder", "name": "A", "children": [{"type": "separator"}]},
+                          {"type": "separator"}]}"#,
+        );
+        let NodeKind::Folder { children, .. } = &nodes[0].kind else {
+            panic!("expected a folder");
+        };
+        let ids = [&nodes[0].id, &nodes[1].id, &children[0].id];
+        assert!(ids.iter().all(|id| !id.is_empty()));
+        assert_ne!(ids[0], ids[1]);
+        assert_ne!(ids[0], ids[2]);
     }
 
     #[test]
-    fn test_deserialize_empty_config() {
-        let json = "{}";
-
-        let config: LauncherConfig = serde_json::from_str(json).unwrap();
-        assert!(config.commands.is_empty());
+    fn unknown_types_are_dropped_at_any_depth() {
+        let nodes = tree(
+            r#"{"items": [{"type": "power"},
+                          {"type": "folder", "name": "A", "children": [{"type": "apps", "inline": true}]}]}"#,
+        );
+        assert_eq!(nodes.len(), 1);
+        assert!(matches!(&nodes[0].kind, NodeKind::Folder { children, .. } if children.is_empty()));
     }
 
     #[test]
-    fn test_serialize_launcher_item() {
-        let item = LauncherItem {
-            id: "test".to_string(),
-            name: "Test".to_string(),
-            command: "test-cmd".to_string(),
-            args: vec!["--arg1".to_string()],
-            history_source: Some(HistorySource::RecentlyUsed {
-                app_name: Some("org.test.App".to_string()),
-                path: None,
+    fn old_commands_are_read_as_command_items() {
+        let nodes = tree(
+            r#"{"commands": [
+                {"id": "nautilus", "name": "Files", "command": "nautilus",
+                 "historySource": {"type": "vscode", "path": "~/x.vscdb"}},
+                {"name": "Terminal", "command": "ptyxis", "args": ["--new-window"]}
+            ]}"#,
+        );
+        assert_eq!(nodes[0].id, "nautilus");
+        assert!(matches!(command(&nodes[0]).history_source, Some(HistorySource::Vscode { .. })));
+        assert_eq!(command(&nodes[1]).args, ["--new-window"]);
+        assert!(!nodes[1].id.is_empty());
+    }
+
+    #[test]
+    fn items_win_over_commands() {
+        let nodes = tree(
+            r#"{"items": [{"type": "separator"}], "commands": [{"name": "A", "command": "a"}]}"#,
+        );
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].kind, NodeKind::Separator);
+        assert!(tree("{}").is_empty());
+    }
+
+    #[test]
+    fn nodes_serialize_with_their_type() {
+        let node = LauncherNode {
+            id: "t".to_string(),
+            kind: NodeKind::Command(CommandItem {
+                name: "Test".to_string(),
+                command: "test-cmd".to_string(),
+                args: vec![],
+                history_source: None,
             }),
         };
-
-        let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"id\":\"test\""));
-        assert!(json.contains("\"historySource\""));
+        let json = serde_json::to_value(&node).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"id": "t", "type": "command", "name": "Test", "command": "test-cmd", "args": []})
+        );
+        assert_eq!(serde_json::from_value::<LauncherNode>(json).unwrap(), node);
     }
 
     #[test]
-    fn test_deserialize_launcher_item_with_custom_xbel_path() {
-        let json = r#"{
-            "id": "gnome-text-editor",
-            "name": "Text Editor",
-            "command": "gnome-text-editor",
-            "historySource": {
-                "type": "recently-used",
-                "appName": "gnome-text-editor",
-                "path": "~/.local/share/org.gnome.TextEditor/recently-used.xbel"
-            }
-        }"#;
-
-        let item: LauncherItem = serde_json::from_str(json).unwrap();
-        match item.history_source {
-            Some(HistorySource::RecentlyUsed { app_name, path }) => {
-                assert_eq!(app_name, Some("gnome-text-editor".to_string()));
-                assert_eq!(
-                    path,
-                    Some("~/.local/share/org.gnome.TextEditor/recently-used.xbel".to_string())
-                );
-            },
-            _ => panic!("Expected RecentlyUsed with path"),
-        }
-    }
-
-    #[test]
-    fn test_deserialize_launcher_item_with_path_only() {
-        // Test that appName is optional when path is specified
-        let json = r#"{
-            "id": "gnome-text-editor",
-            "name": "Text Editor",
-            "command": "gnome-text-editor",
-            "historySource": {
-                "type": "recently-used",
-                "path": "~/.local/share/org.gnome.TextEditor/recently-used.xbel"
-            }
-        }"#;
-
-        let item: LauncherItem = serde_json::from_str(json).unwrap();
-        match item.history_source {
-            Some(HistorySource::RecentlyUsed { app_name, path }) => {
-                assert_eq!(app_name, None);
-                assert_eq!(
-                    path,
-                    Some("~/.local/share/org.gnome.TextEditor/recently-used.xbel".to_string())
-                );
-            },
-            _ => panic!("Expected RecentlyUsed with path only"),
-        }
+    fn per_app_xbel_needs_no_app_name() {
+        let nodes = tree(
+            r#"{"items": [{"type": "command", "name": "Text Editor", "command": "gnome-text-editor",
+                "historySource": {"type": "recently-used", "path": "~/.local/share/x.xbel"}}]}"#,
+        );
+        assert_eq!(
+            command(&nodes[0]).history_source,
+            Some(HistorySource::RecentlyUsed {
+                app_name: None,
+                path: Some("~/.local/share/x.xbel".to_string()),
+            })
+        );
     }
 
     #[test]
