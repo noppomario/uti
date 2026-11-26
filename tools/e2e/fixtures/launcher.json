@@ -30,6 +30,10 @@
     { "type": "separator" },
     { "type": "apps" },
     { "type": "app", "desktopId": "uti-e2e-editor.desktop" },
-    { "type": "power", "inline": true }
+    { "type": "apps", "category": "Development" },
+    { "type": "power" },
+    { "type": "power", "action": "lock" },
+    { "type": "power", "action": "suspend" },
+    { "type": "power", "action": "powerOff", "name": "Shut Down" }
   ]
 }

@@ -93,20 +93,24 @@ impl Sources<'_> {
         }
     }
 
-    /// Rows for the nodes at `paths`: `inline` generated nodes are replaced
-    /// by their children, `app` nodes of missing apps are left out.
-    fn level(&self, paths: impl Iterator<Item = Vec<usize>>) -> Vec<Entry> {
-        let mut out = Vec::new();
-        for path in paths {
-            match node_at(self.nodes, &path).map(|n| &n.kind) {
-                Some(NodeKind::Apps { inline: true, .. }) => out.extend(self.categories()),
-                Some(NodeKind::Power { inline: true, .. }) => out.extend(power_entries()),
-                Some(NodeKind::App { .. }) if self.app_at(&path).is_none() => {},
-                Some(_) => out.push(Entry::Node(path)),
-                None => {},
-            }
+    /// The action of a `power` node of one action at `path`.
+    pub fn power_at(&self, path: &[usize]) -> Option<PowerAction> {
+        match &node_at(self.nodes, path)?.kind {
+            NodeKind::Power { action, .. } => *action,
+            _ => None,
         }
-        out
+    }
+
+    /// Rows for the nodes at `paths`; `app` nodes of missing apps are left
+    /// out.
+    fn level(&self, paths: impl Iterator<Item = Vec<usize>>) -> Vec<Entry> {
+        paths
+            .filter(|path| match node_at(self.nodes, path).map(|n| &n.kind) {
+                Some(NodeKind::App { .. }) => self.app_at(path).is_some(),
+                node => node.is_some(),
+            })
+            .map(Entry::Node)
+            .collect()
     }
 
     fn categories(&self) -> Vec<Entry> {
@@ -125,15 +129,18 @@ impl Sources<'_> {
             Entry::Category(c) => {
                 Some(apps::in_category(self.apps, *c).into_iter().map(Entry::App).collect())
             },
-            Entry::Node(path) => {
-                match &node_at(self.nodes, path)?.kind {
-                    NodeKind::Folder { children, .. } => Some(self.level(
+            Entry::Node(path) => match &node_at(self.nodes, path)?.kind {
+                NodeKind::Folder { children, .. } => {
+                    Some(self.level(
                         (0..children.len()).map(|i| path.iter().copied().chain([i]).collect()),
-                    )),
-                    NodeKind::Apps { .. } => Some(self.categories()),
-                    NodeKind::Power { .. } => Some(power_entries()),
-                    _ => None,
-                }
+                    ))
+                },
+                NodeKind::Apps { category: None, .. } => Some(self.categories()),
+                NodeKind::Apps {
+                    category: Some(c), ..
+                } => Some(apps::in_category(self.apps, *c).into_iter().map(Entry::App).collect()),
+                NodeKind::Power { action: None, .. } => Some(power_entries()),
+                _ => None,
             },
             _ => None,
         }
@@ -181,9 +188,12 @@ impl Sources<'_> {
     pub fn row(&self, entry: &Entry) -> Row {
         match entry {
             Entry::Node(path) => match node_at(self.nodes, path).map(|n| &n.kind) {
-                Some(NodeKind::Folder { .. } | NodeKind::Apps { .. } | NodeKind::Power { .. }) => {
-                    Row::FOLDER
-                },
+                Some(
+                    NodeKind::Folder { .. }
+                    | NodeKind::Apps { .. }
+                    | NodeKind::Power { action: None, .. },
+                ) => Row::FOLDER,
+                Some(NodeKind::Power { .. }) => Row::LEAF,
                 Some(NodeKind::Command(c)) if c.history_source.is_some() => Row::BRANCH_LEAF,
                 Some(NodeKind::Command(_)) => Row::LEAF,
                 Some(NodeKind::App { .. }) => {
@@ -198,13 +208,17 @@ impl Sources<'_> {
     }
 
     /// Display name of a node: folders, commands and apps by their name,
-    /// `apps` and `power` by theirs or the default.
+    /// `apps` and `power` by theirs or that of their category or action.
     pub fn node_name(&self, path: &[usize]) -> Option<&str> {
         Some(match &node_at(self.nodes, path)?.kind {
             NodeKind::Folder { name, .. } => name,
             NodeKind::Command(c) => &c.name,
-            NodeKind::Apps { name, .. } => name.as_deref().unwrap_or("Applications"),
-            NodeKind::Power { name, .. } => name.as_deref().unwrap_or("Power"),
+            NodeKind::Apps { name, category } => name
+                .as_deref()
+                .unwrap_or_else(|| category.map_or("Applications", Category::label)),
+            NodeKind::Power { name, action } => {
+                name.as_deref().unwrap_or_else(|| action.map_or("Power", PowerAction::label))
+            },
             NodeKind::App { .. } => &self.apps[self.app_at(path)?].name,
             NodeKind::Separator | NodeKind::Unknown => return None,
         })
@@ -390,18 +404,24 @@ mod tests {
     }
 
     #[test]
-    fn inline_nodes_put_their_children_in_place() {
+    fn category_and_action_nodes_stand_alone() {
         let n = nodes(
-            r#"{"items": [{"type": "separator"}, {"type": "apps", "inline": true},
-                          {"type": "folder", "name": "F", "children": [{"type": "power", "inline": true}]}]}"#,
+            r#"{"items": [{"type": "apps", "category": "Development"},
+                          {"type": "power", "action": "lock", "name": "Lock Screen"},
+                          {"type": "power", "action": "powerOff"}]}"#,
         );
         with(&n, |s| {
             let root = s.root_entries();
-            assert_eq!(root.len(), 1 + 3 + 1);
-            assert_eq!(root[1], Entry::Category(Category::Game));
-            let folder = s.children(&root[4]);
-            assert_eq!(folder[0], Entry::Power(PowerAction::Lock));
-            assert_eq!(folder[4], Entry::Power(PowerAction::PowerOff));
+            assert_eq!(root, [Entry::Node(vec![0]), Entry::Node(vec![1]), Entry::Node(vec![2])]);
+            assert_eq!(s.row(&root[0]), Row::FOLDER);
+            assert_eq!(s.children(&root[0]), [Entry::App(1)]);
+            assert_eq!(s.node_name(&[0]), Some("Programming"));
+            assert_eq!(s.row(&root[1]), Row::LEAF);
+            assert_eq!(s.menu_children(&root[1]), None);
+            assert_eq!(s.node_name(&[1]), Some("Lock Screen"));
+            assert_eq!(s.node_name(&[2]), Some("Power Off"));
+            assert_eq!(s.power_at(&[2]), Some(PowerAction::PowerOff));
+            assert_eq!(s.power_at(&[0]), None);
         });
     }
 

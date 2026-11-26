@@ -44,6 +44,8 @@
     { "type": "app", "desktopId": "org.gnome.Settings.desktop" },
     { "type": "apps" },
     { "type": "separator" },
-    { "type": "power", "inline": true }
+    { "type": "apps", "category": "Development" },
+    { "type": "power", "action": "lock" },
+    { "type": "power" }
   ]
 }

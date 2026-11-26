@@ -1,7 +1,11 @@
 //! Power actions and the D-Bus calls behind them (no GIO types)
 
-/// A session or power action of the `power` node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+/// A session or power action of the `power` node; serialized in camelCase
+/// (`logOut`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PowerAction {
     Lock,
     Suspend,

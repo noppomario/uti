@@ -1,5 +1,5 @@
-// Generated nodes: installed apps by category, one app, power actions inline
-// (ADR-037). Power actions only log their D-Bus call (UTI_DRY_POWER).
+// Generated nodes: installed apps by category, one category, one app, the
+// power menu and single power actions (ADR-037). Power actions only log their D-Bus call (UTI_DRY_POWER).
 
 import {check, finish, Input, Keys, log, rowCenter, showLauncher, sleep, snapshot, state, waitFor} from './lib.js';
 
@@ -23,8 +23,8 @@ let s = show();
 const root = s.levels[0].texts;
 check(root.includes('Applications') && root.includes('E2E Editor'), 'apps and app nodes are rows');
 check(
-    root.slice(-5).join(',') === 'Lock,Suspend,Log Out,Restart,Power Off',
-    'inline power puts its actions in place',
+    root.slice(-5).join(',') === 'Programming,Power,Lock,Suspend,Shut Down',
+    'category and action nodes are rows of their own',
 );
 
 // Applications > Programming > E2E Editor > its recent file.
@@ -46,6 +46,19 @@ sleep(300);
 check(log().includes('DEBUG launch Some("uti-e2e-editor.desktop") Some("/tmp/e2e/draft.txt")'), 'a recent file opens with the app');
 check(!state().visible, 'launching hides the popup');
 
+// A category node lists its apps; the power node lists every action.
+show();
+check(clickRow(0, 'Programming'), 'the category node is clickable');
+check(state().levels[1]?.texts.includes('E2E Editor'), 'the category node lists its apps');
+show();
+check(clickRow(0, 'Power'), 'the power node is clickable');
+check(
+    state().levels[1]?.texts.join(',') === 'Lock,Suspend,Log Out,Restart,Power Off',
+    'the power node lists every action',
+);
+check(clickRow(1, 'Restart'), 'Restart is clickable');
+check(log().includes('power: Reboot via org.gnome.SessionManager'), 'Restart calls org.gnome.SessionManager');
+
 // The app node launches the app.
 show();
 check(clickRow(0, 'E2E Editor'), 'the app node is clickable');
@@ -55,7 +68,7 @@ check(log().includes('DEBUG launch Some("uti-e2e-editor.desktop") None'), 'a cli
 for (const [label, line] of [
     ['Lock', 'power: Lock via org.gnome.ScreenSaver'],
     ['Suspend', 'power: Suspend via org.freedesktop.login1'],
-    ['Power Off', 'power: Shutdown via org.gnome.SessionManager'],
+    ['Shut Down', 'power: Shutdown via org.gnome.SessionManager'],
 ]) {
     show();
     clickRow(0, label);

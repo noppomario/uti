@@ -10,6 +10,8 @@ mod store;
 
 pub use store::{get_launcher_config_path, load_launcher_tree};
 
+use apps::Category;
+use power::PowerAction;
 use serde::{Deserialize, Serialize};
 
 /// History source for retrieving recent files
@@ -92,26 +94,24 @@ pub enum NodeKind {
     },
     Command(CommandItem),
     Separator,
-    /// Installed apps by main category; `inline` puts the categories in
-    /// place of the node.
+    /// Installed apps: a menu of every main category, or the apps of one.
     Apps {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        inline: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        category: Option<Category>,
     },
     /// One installed app.
     App {
         #[serde(rename = "desktopId")]
         desktop_id: String,
     },
-    /// Lock, suspend, log out, restart and power off; `inline` puts them in
-    /// place of the node.
+    /// One session or power action, or a menu of all of them.
     Power {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        inline: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        action: Option<PowerAction>,
     },
     /// A type this version does not know; dropped at load.
     #[serde(other)]
@@ -164,26 +164,25 @@ impl LauncherConfig {
     }
 }
 
-/// The tree without a configuration: installed apps, then power actions in
-/// place.
+/// The tree without a configuration: installed apps, then every power
+/// action as its own node.
 pub fn default_tree() -> Vec<LauncherNode> {
-    [
-        NodeKind::Apps {
-            name: None,
-            inline: false,
-        },
-        NodeKind::Separator,
-        NodeKind::Power {
-            name: None,
-            inline: true,
-        },
-    ]
-    .into_iter()
-    .map(|kind| LauncherNode {
-        id: String::new(),
-        kind,
-    })
-    .collect()
+    let apps = NodeKind::Apps {
+        name: None,
+        category: None,
+    };
+    let power = PowerAction::ALL.map(|a| NodeKind::Power {
+        name: None,
+        action: Some(a),
+    });
+    [apps, NodeKind::Separator]
+        .into_iter()
+        .chain(power)
+        .map(|kind| LauncherNode {
+            id: String::new(),
+            kind,
+        })
+        .collect()
 }
 
 fn normalize(nodes: &mut Vec<LauncherNode>) {
@@ -297,7 +296,9 @@ mod tests {
     #[test]
     fn generated_nodes_read_their_options() {
         let nodes = tree(
-            r#"{"items": [{"type": "apps", "name": "Programs"}, {"type": "power", "inline": true},
+            r#"{"items": [{"type": "apps", "name": "Programs"},
+                          {"type": "apps", "category": "AudioVideo"},
+                          {"type": "power", "action": "logOut"},
                           {"type": "app", "desktopId": "org.gnome.Nautilus.desktop"}]}"#,
         );
         let kinds: Vec<&NodeKind> = nodes.iter().map(|n| &n.kind).collect();
@@ -306,41 +307,48 @@ mod tests {
             [
                 &NodeKind::Apps {
                     name: Some("Programs".to_string()),
-                    inline: false
+                    category: None
+                },
+                &NodeKind::Apps {
+                    name: None,
+                    category: Some(Category::AudioVideo)
                 },
                 &NodeKind::Power {
                     name: None,
-                    inline: true
+                    action: Some(PowerAction::LogOut)
                 },
                 &NodeKind::App {
                     desktop_id: "org.gnome.Nautilus.desktop".to_string()
                 },
             ]
         );
-        let json = serde_json::to_value(&nodes[1]).unwrap();
+        let json = serde_json::to_value(&nodes[2]).unwrap();
         assert_eq!(json["type"], "power");
-        assert_eq!(json["inline"], true);
+        assert_eq!(json["action"], "logOut");
         assert!(json.get("name").is_none());
+        let json = serde_json::to_value(&nodes[0]).unwrap();
+        assert!(json.get("category").is_none());
     }
 
     #[test]
     fn without_items_or_commands_the_default_tree_is_shown() {
         let kinds: Vec<NodeKind> = tree("{}").into_iter().map(|n| n.kind).collect();
+        let power = PowerAction::ALL.map(|a| NodeKind::Power {
+            name: None,
+            action: Some(a),
+        });
         assert_eq!(
-            kinds,
+            kinds[..2],
             [
                 NodeKind::Apps {
                     name: None,
-                    inline: false
+                    category: None
                 },
-                NodeKind::Separator,
-                NodeKind::Power {
-                    name: None,
-                    inline: true
-                },
+                NodeKind::Separator
             ]
         );
-        assert_eq!(tree(r#"{"commands": []}"#).len(), 3);
+        assert_eq!(kinds[2..], power);
+        assert_eq!(tree(r#"{"commands": []}"#).len(), 7);
     }
 
     #[test]

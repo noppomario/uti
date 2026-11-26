@@ -1,5 +1,7 @@
 //! Installed apps grouped by freedesktop main category (no GIO types)
 
+use serde::{Deserialize, Serialize};
+
 /// What the launcher needs of an installed app (`gio::DesktopAppInfo`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AppMeta {
@@ -13,8 +15,9 @@ pub struct AppMeta {
     pub categories: Vec<String>,
 }
 
-/// A freedesktop main category, in display order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A freedesktop main category, in display order; serialized by its
+/// freedesktop name (`AudioVideo`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Category {
     Utility,
     Education,

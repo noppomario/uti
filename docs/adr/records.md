@@ -2213,15 +2213,17 @@ interactive mock.
   variants: `directory` {path}, `file`, `url`, `recent`, `snippets`.
   Unknown types are skipped. Without `items`, the old `commands` array is
   read as `command` items; with neither, the default tree is `apps`,
-  `separator`, `power` (inline).
+  `separator` and one `power` node per action.
 - Generated nodes (phase 2): `apps` lists installed apps (`should_show`)
   in one sub-level per freedesktop main category (an app's first one, else
   "Other"; GNOME's classic menu names, symbolic theme icons); the XDG menu
   files are not parsed. `app` {desktopId} is one installed app, left out
   when missing. `power`: Lock (`org.gnome.ScreenSaver`), Suspend (logind),
   Log Out / Restart / Power Off (`org.gnome.SessionManager`, which shows
-  GNOME's confirmation). `inline: true` on `apps` and `power` shows their
-  children in place of the node.
+  GNOME's confirmation). `apps` {category} is one category and `power`
+  {action} one action; without them they are menus of all. Every visible
+  row is one node, so it can be edited and dragged on its own: no node
+  expands in place.
 - An app row (from `apps` or `app`) has its recent files as children when
   `recently-used.xbel` records it under its desktop id, program or name.
 - A `command` with `historySource` has its recent files as children; the

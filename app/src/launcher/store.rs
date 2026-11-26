@@ -62,6 +62,6 @@ mod tests {
 
     #[test]
     fn missing_config_shows_the_default_tree() {
-        assert_eq!(empty_config().into_tree().len(), 3);
+        assert_eq!(empty_config().into_tree().len(), crate::launcher::default_tree().len());
     }
 }

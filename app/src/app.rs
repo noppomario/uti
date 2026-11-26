@@ -14,7 +14,7 @@ use gtk::{gdk, gio, glib};
 use crate::clipboard::ClipboardStore;
 use crate::config::AppConfig;
 use crate::dbus;
-use crate::launcher::apps::AppMeta;
+use crate::launcher::apps::{AppMeta, Category};
 use crate::launcher::entry::{self, Entry, Opener, Sources};
 use crate::launcher::power::{CallArgs, PowerAction};
 use crate::launcher::recent_files;
@@ -1005,12 +1005,16 @@ impl App {
     fn activate_entry(&mut self, depth: usize, index: usize) -> Option<WindowCommand> {
         let entry = self.level_entries(depth)?.get(index)?.clone();
         match entry {
-            Entry::Node(path) => match self.sources().app_at(&path) {
-                Some(a) => self.launch_app(a, None),
-                None => {
+            Entry::Node(path) => {
+                let src = self.sources();
+                if let Some(a) = src.app_at(&path) {
+                    self.launch_app(a, None);
+                } else if let Some(action) = src.power_at(&path) {
+                    self.power(action);
+                } else {
                     let item = entry::command_at(&self.launcher, &path)?;
                     spawn(&item.command, &item.args, None);
-                },
+                }
             },
             Entry::Recent {
                 opener: Opener::Command(command),
@@ -1430,8 +1434,12 @@ impl App {
         match entry {
             Entry::Node(path) => match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
                 Some(NodeKind::Folder { .. }) => themed(&["folder"]),
-                Some(NodeKind::Apps { .. }) => themed(&["view-app-grid-symbolic"]),
-                Some(NodeKind::Power { .. }) => themed(&["system-shutdown-symbolic"]),
+                Some(NodeKind::Apps { category, .. }) => {
+                    themed(category.map_or(&["view-app-grid-symbolic"], Category::icons))
+                },
+                Some(NodeKind::Power { action, .. }) => {
+                    themed(action.map_or(&["system-shutdown-symbolic"], PowerAction::icons))
+                },
                 Some(NodeKind::App { .. }) => {
                     self.sources().app_at(path).map_or_else(generic, app_icon)
                 },
