@@ -38,12 +38,12 @@ pub fn key_hints(tab: Tab) -> &'static str {
     match tab {
         Tab::Clipboard => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>S</b> Add to Snippets",
         Tab::Snippets => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>F2</b> Edit   <b>Del</b> Delete",
-        Tab::Launcher => "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Recent Files",
+        Tab::Launcher => "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Open",
     }
 }
 
-/// Footer key hints while the Launcher jump list is open.
-pub const JUMP_LIST_HINTS: &str = "<b>↵</b> Open   <b>1–9</b> Pick   <b>←</b> Back";
+/// Footer key hints while a Launcher level is open.
+pub const CASCADE_HINTS: &str = "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Open   <b>←</b> Back";
 
 /// Empty-state page shown as the list placeholder.
 pub fn empty_page(tab: Tab) -> adw::StatusPage {
@@ -100,13 +100,26 @@ pub fn map_key(key: gdk::Key, state: gdk::ModifierType) -> Option<Key> {
     })
 }
 
-/// One row of a list tab.
+/// What opens beside a row.
+#[derive(Debug, Clone, Copy)]
+pub enum Branch {
+    Folder,
+    /// A command's recent files.
+    RecentFiles,
+}
+
+/// One row of a list.
 pub struct RowSpec<'a> {
+    /// Visible index, passed to `on_more`.
     pub index: usize,
+    /// Number shortcut shown (1-9).
+    pub hint: Option<usize>,
+    /// Shown in place of the number (Launcher rows).
+    pub icon: Option<gio::Icon>,
     pub text: &'a str,
     pub tooltip: &'a str,
-    /// The row has a jump list (recent files, opened with Right).
-    pub jump: bool,
+    /// Marker for children that open beside the row.
+    pub branch: Option<Branch>,
     /// The row has a context menu, also opened by its "more" button.
     pub more: bool,
 }
@@ -121,12 +134,10 @@ pub struct MenuAnchor {
     pub end: bool,
 }
 
-/// Builds a list row. `on_jump` is called with the row's visible index when
-/// its jump list button is clicked; `on_more` with the index and the anchor
-/// below its "more" button.
+/// Builds a list row; `on_more` is called with the row's index and the
+/// anchor below its "more" button.
 pub fn build_row(
     spec: &RowSpec<'_>,
-    on_jump: impl Fn(usize) + 'static,
     on_more: impl Fn(usize, Option<MenuAnchor>) + 'static,
 ) -> gtk::ListBoxRow {
     let first_line = spec.text.lines().find(|l| !l.trim().is_empty());
@@ -134,11 +145,7 @@ pub fn build_row(
     // Number shortcut hint for 1-9; kept as an empty slot after that so the
     // text stays aligned.
     let hint = gtk::Label::builder()
-        .label(if spec.index < 9 {
-            (spec.index + 1).to_string()
-        } else {
-            String::new()
-        })
+        .label(spec.hint.map(|n| n.to_string()).unwrap_or_default())
         .xalign(0.5)
         .width_chars(2)
         .valign(gtk::Align::Center)
@@ -151,24 +158,43 @@ pub fn build_row(
         .valign(gtk::Align::Center)
         .lines(1)
         .ellipsize(gtk::pango::EllipsizeMode::End)
+        // Bounds the natural width of Launcher levels, which size to fit.
+        .max_width_chars(40)
         .build();
 
     let content = gtk::Box::builder().spacing(12).css_classes(["uti-row-box"]).build();
-    content.append(&hint);
+    match &spec.icon {
+        Some(icon) => content.append(
+            &gtk::Image::builder()
+                .gicon(icon)
+                .pixel_size(16)
+                .valign(gtk::Align::Center)
+                .css_classes(["uti-row-icon"])
+                .build(),
+        ),
+        None => content.append(&hint),
+    }
     content.append(&title);
 
-    if spec.jump {
-        // A chevron, as on GNOME rows that lead to a sub-page.
-        let jump = gtk::Button::builder()
-            .icon_name("go-next-symbolic")
-            .tooltip_text("Recent Files (→)")
-            .valign(gtk::Align::Center)
-            .css_classes(["flat", "uti-row-button"])
-            .focusable(false)
-            .build();
-        let index = spec.index;
-        jump.connect_clicked(move |_| on_jump(index));
-        content.append(&jump);
+    if let Some(branch) = spec.branch {
+        if matches!(branch, Branch::RecentFiles) {
+            // Split look (as Windows 7 jump lists): the name launches, the
+            // part after the line lists recent files.
+            content.append(
+                &gtk::Separator::builder()
+                    .orientation(gtk::Orientation::Vertical)
+                    .css_classes(["uti-row-split"])
+                    .build(),
+            );
+        }
+        // A marker, not a button: hovering or clicking the row opens it.
+        content.append(
+            &gtk::Image::builder()
+                .icon_name("go-next-symbolic")
+                .valign(gtk::Align::Center)
+                .css_classes(["dim-label", "uti-row-button"])
+                .build(),
+        );
     }
     if spec.more {
         let more = gtk::Button::builder()
@@ -196,6 +222,77 @@ pub fn build_row(
         .child(&content)
         .tooltip_text(glib::markup_escape_text(spec.tooltip))
         .css_classes(["uti-row"])
+        .build()
+}
+
+/// A Launcher level beside a row of `parent` (ADR-037): a list styled like
+/// the main one, in a popover that does not grab the pointer or keyboard.
+/// The caller sets `pointing_to`.
+pub fn cascade_popover(parent: &gtk::ListBox) -> (gtk::Popover, gtk::ListBox) {
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::Single)
+        .activate_on_single_click(true)
+        .focusable(false)
+        .css_classes(["navigation-sidebar", "uti-tree"])
+        .build();
+    let max_height = parent
+        .native()
+        .and_then(|n| n.surface())
+        .and_then(|surface| parent.display().monitor_at_surface(&surface))
+        .map_or(600, |m| m.geometry().height() - 64);
+    let scrolled = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_width(true)
+        .propagate_natural_height(true)
+        .max_content_height(max_height)
+        .child(&list)
+        .build();
+    let popover = gtk::Popover::builder()
+        .has_arrow(false)
+        .position(gtk::PositionType::Right)
+        // Top edge at the row's top, growing down like classic menus.
+        .valign(gtk::Align::Start)
+        // No grab: the main window keeps keyboard focus and its clicks.
+        .autohide(false)
+        .css_classes(["uti-cascade"])
+        .child(&scrolled)
+        .build();
+    popover.set_offset(CASCADE_OVERLAP, -CASCADE_PADDING);
+    popover.set_parent(parent);
+    (popover, list)
+}
+
+/// Pixels a Launcher level overlaps the level it opens from.
+const CASCADE_OVERLAP: i32 = -2;
+/// Padding above a level's first row (`popover.uti-cascade > contents`), so
+/// the row lines up with the row it opened from.
+const CASCADE_PADDING: i32 = 4;
+
+/// A dim row saying a level has nothing to show (a list placeholder is not
+/// shown in a list that never had rows).
+pub fn empty_row(text: &str) -> gtk::ListBoxRow {
+    gtk::ListBoxRow::builder()
+        .child(
+            &gtk::Label::builder()
+                .label(text)
+                .xalign(0.0)
+                .css_classes(["dim-label", "uti-row-box"])
+                .build(),
+        )
+        .selectable(false)
+        .activatable(false)
+        .focusable(false)
+        .build()
+}
+
+/// A separator row between list rows (not selectable or activatable).
+pub fn separator_row() -> gtk::ListBoxRow {
+    gtk::ListBoxRow::builder()
+        .child(&gtk::Separator::new(gtk::Orientation::Horizontal))
+        .selectable(false)
+        .activatable(false)
+        .focusable(false)
+        .css_classes(["uti-separator"])
         .build()
 }
 

@@ -37,7 +37,7 @@ lint-gha: (_need "actionlint") (_need "shellcheck")
 
 # Shell scripts shipped or run by users
 lint-sh: (_need "shellcheck")
-    shellcheck install.sh packaging/make-srpm.sh app/run-dev.sh .claude/skills/release/wait-copr.sh
+    shellcheck install.sh packaging/make-srpm.sh app/run-dev.sh tools/e2e/run.sh .claude/skills/release/wait-copr.sh
 
 lint: lint-rust lint-md lint-ext lint-gha lint-sh
 
@@ -47,6 +47,10 @@ deny: (_need "cargo-deny")
 
 test:
     cargo test --workspace --locked
+
+# End-to-end checks in a headless GNOME Shell (local only; see tools/e2e/run.sh)
+e2e *args:
+    tools/e2e/run.sh {{args}}
 
 # Everything CI checks
 ci: lint deny test

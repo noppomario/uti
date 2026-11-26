@@ -10,29 +10,35 @@ This document explains how to configure `~/.config/uti/launcher.json`.
 
 ## Basic Structure
 
+`items` is a tree. Folders open beside their row (hover or →), like classic cascading menus.
+
 ```json
 {
-  "commands": [
-    {
-      "id": "unique-id",
-      "name": "Display Name",
-      "command": "executable-name",
-      "args": ["--optional", "--arguments"],
-      "historySource": { ... }
-    }
+  "items": [
+    { "type": "folder", "name": "Dev", "children": [
+      { "type": "command", "name": "Terminal", "command": "ptyxis", "args": ["--new-window"] }
+    ]},
+    { "type": "separator" },
+    { "type": "command", "name": "Files", "command": "nautilus", "historySource": { ... } }
   ]
 }
 ```
 
-## Fields
+## Item Types
 
-| Field           | Required | Description                                      |
-| --------------- | -------- | ------------------------------------------------ |
-| `id`            | Yes      | Unique identifier for the command                |
-| `name`          | Yes      | Display name shown in the launcher               |
-| `command`       | Yes      | Executable name or path                          |
-| `args`          | No       | Array of command-line arguments (default: `[]`)  |
-| `historySource` | No       | Configuration for jump list (recent files)       |
+| `type`      | Fields                                                  | Row                                     |
+| ----------- | ------------------------------------------------------- | --------------------------------------- |
+| `folder`    | `name`, `children` (items)                              | Opens its children                      |
+| `command`   | `name`, `command`, `args` (default `[]`), `historySource`, `icon` | Launches; recent files open as children |
+| `separator` | -                                                       | A line                                  |
+
+A command shows the icon of the installed app that runs the same program (and, when several
+do, the same arguments); set `icon` to an icon name or an absolute file path to override it.
+
+Every item may have an `id`; uti generates one when it is missing. Items of an unknown `type`
+are skipped.
+
+A file with the older `"commands": [...]` array (commands only) is still read as `command` items.
 
 ## History Source Types
 
@@ -110,14 +116,14 @@ For applications without recent files (e.g., terminals):
 
 ```json
 {
-  "id": "terminal",
+  "type": "command",
   "name": "Terminal",
   "command": "gnome-terminal",
   "args": ["--new-window"]
 }
 ```
 
-Items without `historySource` will not show a `>` expand indicator.
+Commands without `historySource` have no children (no `›` marker).
 
 ## Complete Example
 
@@ -148,14 +154,14 @@ grep "org.gnome.Nautilus" ~/.local/share/recently-used.xbel
 The `args` array is used for:
 
 1. **Direct launch** (clicking the app item): `command + args`
-2. **File launch** (clicking a file in jump list): `command + args + filePath`
+2. **File launch** (clicking one of its recent files): `command + args + filePath`
 
 If you want different behavior for file launch, consider removing `--new-window`
 from `args` to let the app decide how to open the file.
 
 ## Supported Apps
 
-Jump lists (recent files) are supported for:
+Recent files are supported for:
 
 | Type               | Apps                                        | Notes                                          |
 | ------------------ | ------------------------------------------- | ---------------------------------------------- |
@@ -170,7 +176,7 @@ Jump lists (recent files) are supported for:
 
 ## Troubleshooting
 
-### Jump list is empty
+### Recent files are empty
 
 1. Check if `appName` matches exactly (case-sensitive)
 2. For per-app XBEL, verify the file exists at the specified `path`

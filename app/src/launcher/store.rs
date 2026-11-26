@@ -2,7 +2,7 @@
 //!
 //! Handles loading and saving launcher configuration from JSON file.
 
-use super::LauncherConfig;
+use super::{LauncherConfig, LauncherNode};
 use std::path::PathBuf;
 
 /// Get the path to the launcher configuration file
@@ -15,11 +15,16 @@ pub fn get_launcher_config_path() -> PathBuf {
         .join("launcher.json")
 }
 
+/// The launcher tree from `launcher.json` (empty when missing or invalid).
+pub fn load_launcher_tree() -> Vec<LauncherNode> {
+    load_launcher_config().into_tree()
+}
+
 /// Load launcher configuration from file
 ///
 /// If the file doesn't exist, returns empty configuration.
 /// If the file is invalid JSON, logs error and returns empty configuration.
-pub fn load_launcher_config() -> LauncherConfig {
+fn load_launcher_config() -> LauncherConfig {
     let path = get_launcher_config_path();
 
     match std::fs::read_to_string(&path) {
@@ -43,9 +48,8 @@ pub fn load_launcher_config() -> LauncherConfig {
     }
 }
 
-/// Create empty launcher configuration
 fn empty_config() -> LauncherConfig {
-    LauncherConfig { commands: vec![] }
+    LauncherConfig::default()
 }
 
 #[cfg(test)]
@@ -60,17 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_config_has_no_commands() {
-        let config = empty_config();
-        assert!(config.commands.is_empty());
-    }
-
-    #[test]
-    fn test_load_launcher_config_returns_valid_config() {
-        // This test uses the actual filesystem
-        // If the user doesn't have a config file, it should return empty config
-        let config = load_launcher_config();
-        // Just verify the function doesn't panic and returns a valid LauncherConfig
-        let _ = config.commands;
+    fn test_empty_config_has_no_items() {
+        assert!(empty_config().into_tree().is_empty());
     }
 }

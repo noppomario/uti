@@ -2183,4 +2183,72 @@ the base for a later cascading launcher. Measured on GNOME 51 (Fedora 45):
 **Positive**: menus work unpinned; outside-click hiding is unchanged.
 
 **Negative**: the post-close check is a short timeout (focus returns only
-after the popup is gone); nested popovers must follow the same rules.
+after the popup is gone); nested popovers must follow the same rules
+(extended by ADR-037).
+
+## ADR-037
+
+### Launcher tree and cascading levels
+
+**Date**: 2026-11-26
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+The Launcher becomes an Orchis-style menu launcher: folders cascade sideways,
+later with app categories, directories, power actions and drag-and-drop
+editing. In Orchis, child levels are "child windows" that look like the
+launcher itself and open on hover; registering by drag-and-drop needs the
+launcher pinned. A first spike with plain GTK popovers (bubbles, every row a
+branch, no hover rules) felt wrong; the agreed behavior comes from an
+interactive mock.
+
+### Decision
+
+- `launcher.json` `items` is a tree of nodes typed by `type`: `folder`
+  {name, children}, `command` {name, command, args, historySource},
+  `separator`. Every node has an optional `id`, generated at load when
+  missing (the file is not rewritten). Later types are new `NodeKind`
+  variants: `app` {desktopId}, `apps` (main categories), `directory`
+  {path}, `power`, `file`, `url`, `recent`, `snippets`; generated ones get an
+  `inline: true` option (children shown in place). Unknown types are skipped.
+  Without `items`, the old `commands` array is read as `command` items.
+- A `command` with `historySource` has its recent files as children; the
+  side jump list is gone.
+- Navigation is a content-agnostic stack of levels (`state/tree.rs`), so
+  snippet groups can reuse it. Level 0 is the tab's list; deeper levels are
+  `gtk::Popover`s to the right of the row (top edges aligned, flipped by
+  GTK at screen edges), styled like the main list.
+- Behavior: hovering a row selects it (one highlight for pointer and keys);
+  a row with children opens after 300 ms, a click opens at once. Hovering
+  another row closes the open child only after the same delay, so moving
+  into the child keeps it (no menu-aim). Rows on the open path keep a
+  neutral highlight. Keys: Up/Down in the active level (closing its
+  children), Right opens, Left/Esc close one level, Enter launches or opens
+  folders, 1-9 pick in the active level.
+- Rows show a 16px icon instead of a number (1-9 still pick): folders and
+  file types from the icon theme, commands the icon of the installed app
+  running the same program (same arguments when several do), overridable
+  with `icon`.
+- Typing searches commands of the whole tree and installed apps as one flat
+  list; tree items win over apps of the same name.
+- Levels are popovers without `autohide`: no grab, so the main window keeps
+  keyboard focus (keys go through the window's handler to `Nav`), clicks on
+  the main list are not swallowed, and focus loss still hides the unpinned
+  popup. Pinned, focus loss closes the open levels. `WindowState` counts
+  focus-taking popovers (ADR-036 menus) instead of a flag, so one opened
+  from inside a level works.
+- Drag-and-drop (spike on GNOME 51): between nested non-grab popovers, drops
+  arrive and no popover closes; the main window loses `is-active` during the
+  drag. Drops from other apps: not confirmed yet; phase 4 adds it to the e2e
+  checks (`tools/e2e`, headless GNOME Shell with RemoteDesktop input), which
+  verify the hover, key and click behavior above.
+
+### Consequences
+
+**Positive**: one tree model and navigation for all later node types;
+levels behave like classic cascading menus; no focus juggling for levels.
+
+**Negative**: editing by drag-and-drop must ignore focus loss while a drag
+is in progress; levels can only be checked by hand (hover timing).

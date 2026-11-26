@@ -27,7 +27,7 @@
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - ⭐ **Snippets**: Keep frequently used text; add from clipboard history, manage in Settings
-- 🚀 **App Launcher**: Quick-launch configured applications with jump lists (recent files)
+- 🚀 **App Launcher**: Cascading folders of configured commands, with recent files for each app
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **Panel Menu**: Show/Hide, Settings and more from the GNOME panel (uti for GNOME)
@@ -129,7 +129,7 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
    - Clipboard: Add to Snippets (**S**; the item stays in history), Delete from History (**Delete**)
    - Snippets: Edit (**F2**), New Snippet, Move Up / Down, Delete (**Delete**). Edit and New
      open Settings > Snippets, where snippets can also be added, edited, reordered and deleted
-9. In **Launcher tab**, press **→** to expand jump list (recent files)
+9. In **Launcher tab**, hover a row with **›** or press **→** to open its folder or recent files
 10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
     - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
@@ -281,7 +281,7 @@ sudo gpasswd -d $USER input
 
 - **Window appears in dock (non-GNOME)**: Hiding the window from the dash / Alt+Tab requires uti for GNOME.
 - **Window position (non-GNOME)**: On non-GNOME Wayland environments (KDE, Sway, etc.), window always appears at screen center. Enable uti for GNOME for cursor positioning.
-- **Jump list app support**: Only apps that write to `recently-used.xbel` (GTK/GNOME apps) and VSCode are supported. KDE apps and most Electron apps are not supported.
+- **Recent files support**: Only apps that write to `recently-used.xbel` (GTK/GNOME apps) and VSCode are supported. KDE apps and most Electron apps are not supported.
 
 ## 🏗️ Architecture
 

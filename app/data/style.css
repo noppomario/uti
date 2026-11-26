@@ -108,6 +108,44 @@ window.density-minimal.scrollbar-hidden .uti-row-box {
   padding-right: 4px;
 }
 
+/* Launcher levels (ADR-037): one highlight that follows both the pointer
+ * and the keys; rows of the open path and of inactive levels keep a
+ * neutral one. */
+.uti-tree > row:hover {
+  background-color: transparent;
+}
+.uti-tree > row:focus-visible {
+  outline-color: transparent;
+}
+.uti-tree > row.uti-path,
+.uti-tree.uti-tree-inactive > row:selected {
+  background-color: alpha(currentColor, 0.1);
+}
+.uti-tree:not(.uti-tree-inactive) > row:selected {
+  background-color: alpha(@accent_bg_color, 0.25);
+}
+.uti-tree > row.uti-separator {
+  min-height: 0;
+  padding: 3px 8px;
+  background-color: transparent;
+}
+
+.uti-row-split {
+  margin: 5px 0;
+}
+
+/* A level looks like the main list continued, not like a bubble. */
+popover.uti-cascade > contents {
+  min-width: 160px;
+  padding: 4px 0;
+  border-radius: 8px;
+  background-color: @window_bg_color;
+  color: @window_fg_color;
+}
+popover.uti-cascade .navigation-sidebar {
+  padding: 0;
+}
+
 /* Key hints under the list. */
 .uti-footer {
   padding: 6px 12px;
