@@ -2227,6 +2227,10 @@ interactive mock.
   neutral highlight. Keys: Up/Down in the active level (closing its
   children), Right opens, Left/Esc close one level, Enter launches or opens
   folders, 1-9 pick in the active level.
+- Rows show a 16px icon instead of a number (1-9 still pick): folders and
+  file types from the icon theme, commands the icon of the installed app
+  running the same program (same arguments when several do), overridable
+  with `icon`.
 - Typing searches commands of the whole tree and installed apps as one flat
   list; tree items win over apps of the same name.
 - Levels are popovers without `autohide`: no grab, so the main window keeps

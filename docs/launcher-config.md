@@ -29,8 +29,11 @@ This document explains how to configure `~/.config/uti/launcher.json`.
 | `type`      | Fields                                                  | Row                                     |
 | ----------- | ------------------------------------------------------- | --------------------------------------- |
 | `folder`    | `name`, `children` (items)                              | Opens its children                      |
-| `command`   | `name`, `command`, `args` (default `[]`), `historySource` | Launches; recent files open as children |
+| `command`   | `name`, `command`, `args` (default `[]`), `historySource`, `icon` | Launches; recent files open as children |
 | `separator` | -                                                       | A line                                  |
+
+A command shows the icon of the installed app that runs the same program (and, when several
+do, the same arguments); set `icon` to an icon name or an absolute file path to override it.
 
 Every item may have an `id`; uti generates one when it is missing. Items of an unknown `type`
 are skipped.

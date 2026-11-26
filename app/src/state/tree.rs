@@ -116,21 +116,6 @@ impl Default for Tree {
     }
 }
 
-/// Number hints (1-9) of `rows`; rows that cannot be selected get none.
-pub fn hints(rows: &[Row]) -> Vec<Option<usize>> {
-    let mut n = 0;
-    rows.iter()
-        .map(|r| {
-            r.selectable
-                .then(|| {
-                    n += 1;
-                    n
-                })
-                .filter(|n| *n <= 9)
-        })
-        .collect()
-}
-
 impl Tree {
     /// An empty root level.
     pub fn new() -> Self {
@@ -632,15 +617,5 @@ mod tests {
         let mut t = entered();
         t.set_root(vec![S, L]);
         assert_eq!((t.depth(), t.active(), t.selected(0)), (0, 0, Some(1)));
-    }
-
-    #[test]
-    fn hints_skip_separators_and_stop_after_nine() {
-        let mut rows = vec![S, L, S];
-        rows.extend([L; 9]);
-        let h = hints(&rows);
-        assert_eq!(&h[..4], &[None, Some(1), None, Some(2)]);
-        assert_eq!(h[10], Some(9));
-        assert_eq!(h[11], None);
     }
 }

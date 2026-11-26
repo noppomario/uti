@@ -42,6 +42,26 @@ pub fn rank(items: &[SearchText<'_>], query: &str) -> Vec<usize> {
     hits.into_iter().take(MAX_RESULTS).map(|(_, _, i)| i).collect()
 }
 
+/// The installed app a launcher command starts, to borrow its icon: the
+/// one whose command line has the same program (by file name), or among
+/// several, the one with the same arguments too. `apps` holds each app's
+/// command line without field codes (`%U`); `None` when unclear.
+pub fn match_command(command: &str, args: &[String], apps: &[Vec<String>]) -> Option<usize> {
+    let program = |p: &str| p.rsplit('/').next().unwrap_or(p).to_owned();
+    let name = program(command);
+    let candidates: Vec<usize> = (0..apps.len())
+        .filter(|&i| apps[i].first().is_some_and(|p| program(p) == name))
+        .collect();
+    match candidates.as_slice() {
+        [one] => Some(*one),
+        many => {
+            let same: Vec<usize> =
+                many.iter().copied().filter(|&i| apps[i][1..] == *args).collect();
+            (same.len() == 1).then(|| same[0])
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -54,6 +74,27 @@ mod tests {
 
     fn names<'a>(apps: &'a [SearchText<'a>], idx: &[usize]) -> Vec<&'a str> {
         idx.iter().map(|&i| apps[i].name).collect()
+    }
+
+    fn argv(lines: &[&str]) -> Vec<Vec<String>> {
+        lines.iter().map(|l| l.split(' ').map(String::from).collect()).collect()
+    }
+
+    #[test]
+    fn commands_match_apps_by_program_name() {
+        let apps = argv(&["nautilus --new-window", "/usr/share/code/code", "gnome-text-editor"]);
+        assert_eq!(match_command("nautilus", &[], &apps), Some(0));
+        assert_eq!(match_command("/usr/bin/code", &["-n".into()], &apps), Some(1));
+        assert_eq!(match_command("ptyxis", &[], &apps), None);
+    }
+
+    #[test]
+    fn shared_programs_need_the_same_arguments() {
+        let apps =
+            argv(&["libreoffice --writer", "libreoffice --calc", "flatpak run a", "flatpak run b"]);
+        assert_eq!(match_command("libreoffice", &["--calc".into()], &apps), Some(1));
+        assert_eq!(match_command("libreoffice", &[], &apps), None);
+        assert_eq!(match_command("flatpak", &["run".into(), "b".into()], &apps), Some(3));
     }
 
     #[test]

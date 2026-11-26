@@ -106,6 +106,8 @@ pub struct RowSpec<'a> {
     pub index: usize,
     /// Number shortcut shown (1-9).
     pub hint: Option<usize>,
+    /// Shown in place of the number (Launcher rows).
+    pub icon: Option<gio::Icon>,
     pub text: &'a str,
     pub tooltip: &'a str,
     /// The row has children that open beside it (shows a chevron).
@@ -153,7 +155,17 @@ pub fn build_row(
         .build();
 
     let content = gtk::Box::builder().spacing(12).css_classes(["uti-row-box"]).build();
-    content.append(&hint);
+    match &spec.icon {
+        Some(icon) => content.append(
+            &gtk::Image::builder()
+                .gicon(icon)
+                .pixel_size(16)
+                .valign(gtk::Align::Center)
+                .css_classes(["uti-row-icon"])
+                .build(),
+        ),
+        None => content.append(&hint),
+    }
     content.append(&title);
 
     if spec.branch {

@@ -62,6 +62,10 @@ pub struct CommandItem {
     /// Recent files shown as the command's children.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history_source: Option<HistorySource>,
+    /// Icon name or file path; by default the icon of the installed app
+    /// with the same command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 /// One node of the launcher tree (`items` in `launcher.json`).
@@ -253,6 +257,7 @@ mod tests {
                 command: "test-cmd".to_string(),
                 args: vec![],
                 history_source: None,
+                icon: None,
             }),
         };
         let json = serde_json::to_value(&node).unwrap();

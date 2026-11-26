@@ -18,14 +18,14 @@ use crate::launcher::entry::{self, Entry};
 use crate::launcher::{load_launcher_tree, LauncherNode, NodeKind};
 use crate::settings;
 use crate::snippets::{load_snippets, save_snippets, SnippetsStore};
-use crate::state::launcher::{rank, SearchText};
+use crate::state::launcher::{match_command, rank, SearchText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::menu::row_menu;
 use crate::state::nav::{Effect, Focus, Nav};
 use crate::state::scrollbar::Scrollbar;
 use crate::state::settings::{SettingsTarget, SnippetTarget};
 use crate::state::size::Size;
-use crate::state::tree::{self, Row, TreeAction, HOVER_DELAY};
+use crate::state::tree::{Row, TreeAction, HOVER_DELAY};
 use crate::state::window::{WindowCommand, WindowState};
 use crate::ui;
 
@@ -159,6 +159,8 @@ struct App {
     /// Installed apps shown in launcher search, loaded once and refreshed
     /// by `AppInfoMonitor` (no rescans per keystroke).
     apps: Vec<gio::AppInfo>,
+    /// Command line of each app (field codes removed), for command icons.
+    app_argv: Vec<Vec<String>>,
     /// Rows of the Launcher tab's list.
     launcher_rows: Vec<Entry>,
     /// Open Launcher levels, mirroring `nav.tree()` depths 1..
@@ -170,6 +172,21 @@ struct App {
 /// Installed apps that should appear in launchers.
 fn load_apps() -> Vec<gio::AppInfo> {
     gio::AppInfo::all().into_iter().filter(|a| a.should_show()).collect()
+}
+
+/// Each app's command line without `%` field codes.
+fn app_argv(apps: &[gio::AppInfo]) -> Vec<Vec<String>> {
+    apps.iter()
+        .map(|a| {
+            a.commandline()
+                .and_then(|c| glib::shell_parse_argv(c).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|s| s.to_string_lossy().into_owned())
+                .filter(|s| !s.starts_with('%'))
+                .collect()
+        })
+        .collect()
 }
 
 /// Bus name watchers, unwatched on drop.
@@ -219,6 +236,7 @@ pub fn start(app: &adw::Application, minimized: bool) {
         let t = tx.clone();
         dbus::watch_services(conn, move || send(&t, Msg::ServicesAppeared))
     });
+    let apps = load_apps();
     let mut model = App {
         tx: tx.clone(),
         ui,
@@ -232,7 +250,8 @@ pub fn start(app: &adw::Application, minimized: bool) {
         snippets: load_snippets(),
         rows_fitted: false,
         launcher: load_launcher_tree(),
-        apps: load_apps(),
+        app_argv: app_argv(&apps),
+        apps,
         launcher_rows: Vec::new(),
         cascade: Vec::new(),
         config,
@@ -425,6 +444,7 @@ impl App {
             },
             Msg::AppsChanged => {
                 self.apps = load_apps();
+                self.app_argv = app_argv(&self.apps);
                 self.refresh(Tab::Launcher);
                 None
             },
@@ -1200,6 +1220,7 @@ impl App {
             let spec = ui::RowSpec {
                 index,
                 hint: (index < 9).then_some(index + 1),
+                icon: None,
                 text,
                 tooltip,
                 branch: false,
@@ -1267,7 +1288,6 @@ impl App {
     fn fill_level(&self, list: &gtk::ListBox, entries: &[Entry], searching: bool) {
         list.remove_all();
         let rows: Vec<Row> = entries.iter().map(|e| e.row(&self.launcher)).collect();
-        let hints = tree::hints(&rows);
         for (index, (entry, row)) in entries.iter().zip(&rows).enumerate() {
             if !row.selectable {
                 list.append(&ui::separator_row());
@@ -1276,13 +1296,48 @@ impl App {
             let (text, tooltip) = self.entry_text(entry, searching);
             let spec = ui::RowSpec {
                 index,
-                hint: hints[index],
+                hint: None,
+                icon: Some(self.entry_icon(entry)),
                 text: &text,
                 tooltip: &tooltip,
                 branch: row.branch,
                 more: false,
             };
             list.append(&ui::build_row(&spec, |_, _| {}));
+        }
+    }
+
+    /// Icon of a Launcher row: folders and file types by theme name, apps
+    /// their own; a command its `icon`, else the icon of the installed app
+    /// it starts, else a generic one.
+    fn entry_icon(&self, entry: &Entry) -> gio::Icon {
+        let themed = |name: &str| gio::ThemedIcon::new(name).upcast::<gio::Icon>();
+        match entry {
+            Entry::Node(path) => match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
+                Some(NodeKind::Folder { .. }) => themed("folder"),
+                Some(NodeKind::Command(c)) => {
+                    if let Some(icon) = &c.icon {
+                        return if icon.starts_with('/') {
+                            gio::FileIcon::new(&gio::File::for_path(icon)).upcast()
+                        } else {
+                            themed(icon)
+                        };
+                    }
+                    match_command(&c.command, &c.args, &self.app_argv)
+                        .and_then(|i| self.apps.get(i)?.icon())
+                        .unwrap_or_else(|| themed("application-x-executable"))
+                },
+                _ => themed("application-x-executable"),
+            },
+            Entry::Recent { file, .. } => {
+                let (content_type, _) = gio::content_type_guess(Some(&file.path), None);
+                gio::content_type_get_icon(&content_type)
+            },
+            Entry::App(a) => self
+                .apps
+                .get(*a)
+                .and_then(|app| app.icon())
+                .unwrap_or_else(|| themed("application-x-executable")),
         }
     }
 
