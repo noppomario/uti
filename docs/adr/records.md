@@ -2241,7 +2241,9 @@ interactive mock.
   from inside a level works.
 - Drag-and-drop (spike on GNOME 51): between nested non-grab popovers, drops
   arrive and no popover closes; the main window loses `is-active` during the
-  drag. Drops from Nautilus: not yet confirmed.
+  drag. Drops from other apps: not confirmed yet; phase 4 adds it to the e2e
+  checks (`tools/e2e`, headless GNOME Shell with RemoteDesktop input), which
+  verify the hover, key and click behavior above.
 
 ### Consequences
 

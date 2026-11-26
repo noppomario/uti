@@ -100,6 +100,12 @@ gdbus call --session -d io.github.noppomario.uti -o /io/github/noppomario/uti \
   -m org.freedesktop.Application.ActivateAction debug-key '[<"right">]' '{}'
 ```
 
+`just e2e` drives the app in a headless GNOME Shell (private bus, fixtures from
+`tools/e2e/fixtures`): scenarios in `tools/e2e/*.js` move the pointer and type through
+Mutter's RemoteDesktop API and assert on the app's `debug-state` (Launcher levels and row
+positions). `E2E_SIZE=minimal just e2e` repeats them per `theme.size`; snapshots land in
+`target/e2e/`. Needs `gnome-shell` and `gjs`; not run in CI.
+
 `debug-key` skips GTK's key handling, so check these by hand after UI changes, in every
 `theme.size` (Settings > Window Size applies it live):
 

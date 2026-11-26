@@ -99,6 +99,8 @@ pub enum Msg {
     Setting(settings::Event),
     /// Development aid: `UTI_DEBUG_SNAPSHOT` after a `debug-key`.
     DebugSnapshot,
+    /// Development aid: write the Launcher state and row positions as JSON.
+    DebugState(String),
     /// Rebuild the settings window (language changed).
     RepopulateSettings,
     SettingsClosed,
@@ -339,6 +341,16 @@ impl App {
                 let popovers: Vec<gtk::Popover> =
                     self.cascade.iter().map(|l| l.popover.clone()).collect();
                 debug_snapshot(&self.ui.root, &popovers);
+                None
+            },
+            Msg::DebugState(path) => {
+                // Written whole, then renamed: readers poll for the file.
+                let tmp = format!("{path}.tmp");
+                let written = std::fs::write(&tmp, self.debug_state().to_string())
+                    .and_then(|()| std::fs::rename(&tmp, &path));
+                if let Err(e) = written {
+                    eprintln!("Debug state failed: {e}");
+                }
                 None
             },
             Msg::SettingsClosed => {
@@ -1346,6 +1358,52 @@ impl App {
         }
     }
 
+    /// Launcher tree state and each level's row rectangles (main window
+    /// coordinates; its top-left is at the pointer when shown), for e2e tests.
+    fn debug_state(&self) -> serde_json::Value {
+        let tree = self.nav.tree();
+        let root = &self.ui.root;
+        let levels: Vec<serde_json::Value> = (0..=tree.depth())
+            .map(|d| {
+                let (list, origin) = match d {
+                    0 => (self.ui.lists.get(&Tab::Launcher), (0.0, 0.0)),
+                    d => match self.cascade.get(d - 1) {
+                        Some(l) => (Some(&l.list), popover_origin(root, &l.popover)),
+                        None => (None, (0.0, 0.0)),
+                    },
+                };
+                let base: &gtk::Widget = match d {
+                    0 => root.upcast_ref(),
+                    d => self.cascade[d - 1].popover.upcast_ref(),
+                };
+                let mut rows = Vec::new();
+                let mut i = 0;
+                while let Some(row) = list.and_then(|l| l.row_at_index(i)) {
+                    let b = row.compute_bounds(base).unwrap_or_else(gtk::graphene::Rect::zero);
+                    rows.push(serde_json::json!([
+                        f64::from(b.x()) + origin.0,
+                        f64::from(b.y()) + origin.1,
+                        b.width(),
+                        b.height()
+                    ]));
+                    i += 1;
+                }
+                serde_json::json!({
+                    "selected": tree.selected(d),
+                    "owner": tree.owner(d),
+                    "rows": rows,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "visible": root.is_visible(),
+            "pinned": self.ui.pin.is_active(),
+            "tab": ui::page_name(self.nav.tab()),
+            "active": tree.active(),
+            "levels": levels,
+        })
+    }
+
     /// Label and tooltip of a Launcher row.
     fn entry_text(&self, entry: &Entry, searching: bool) -> (String, String) {
         match entry {
@@ -1648,6 +1706,9 @@ fn spawn(command: &str, args: &[String], extra: Option<&str>) -> bool {
     let mut argv: Vec<&std::ffi::OsStr> = vec![command.as_ref()];
     argv.extend(args.iter().map(std::ffi::OsStr::new));
     argv.extend(extra.map(std::ffi::OsStr::new));
+    if debug_keys() {
+        eprintln!("DEBUG spawn {argv:?}");
+    }
     let launcher = gio::SubprocessLauncher::new(gio::SubprocessFlags::NONE);
     if dev_sandbox() {
         for var in SANDBOX_VARS {
@@ -1731,6 +1792,24 @@ fn fit_to_rows(root: &adw::ApplicationWindow, lists: &HashMap<Tab, gtk::ListBox>
     }
 }
 
+/// Origin of `popover` in `root` widget coordinates (popup positions are
+/// relative to the parent's surface).
+fn popover_origin(root: &adw::ApplicationWindow, popover: &gtk::Popover) -> (f64, f64) {
+    let (mut x, mut y) = popover.surface_transform();
+    let mut native: Option<gtk::Native> = Some(popover.clone().upcast());
+    while let Some(n) =
+        native.filter(|n| n.upcast_ref::<gtk::Widget>() != root.upcast_ref::<gtk::Widget>())
+    {
+        if let Some(popup) = n.surface().and_downcast::<gdk::Popup>() {
+            x += f64::from(popup.position_x());
+            y += f64::from(popup.position_y());
+        }
+        native = n.upcast_ref::<gtk::Widget>().parent().and_then(|w| w.native());
+    }
+    let (rx, ry) = root.surface_transform();
+    (x - rx, y - ry)
+}
+
 /// Development aid: with `UTI_DEBUG_SNAPSHOT=<file.png>`, renders the window
 /// and the given popovers (separate surfaces) to one PNG, shortly after.
 fn debug_snapshot(root: &adw::ApplicationWindow, popovers: &[gtk::Popover]) {
@@ -1741,32 +1820,19 @@ fn debug_snapshot(root: &adw::ApplicationWindow, popovers: &[gtk::Popover]) {
     let popovers = popovers.to_vec();
     glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
         let snapshot = gtk::Snapshot::new();
-        let (x, y) = root.surface_transform();
-        let at = |s: &gtk::Snapshot, w: &gtk::Widget, x: f64, y: f64| {
-            s.save();
-            s.translate(&gtk::graphene::Point::new(x as f32, y as f32));
+        let at = |w: &gtk::Widget, (x, y): (f64, f64)| {
+            snapshot.save();
+            snapshot.translate(&gtk::graphene::Point::new(x as f32, y as f32));
             gtk::WidgetPaintable::new(Some(w)).snapshot(
-                s,
+                &snapshot,
                 f64::from(w.width()),
                 f64::from(w.height()),
             );
-            s.restore();
+            snapshot.restore();
         };
-        at(&snapshot, root.upcast_ref(), x, y);
+        at(root.upcast_ref(), (0.0, 0.0));
         for popover in popovers.iter().filter(|p| p.is_visible()) {
-            // Popup positions are relative to the parent's surface.
-            let (mut px, mut py) = popover.surface_transform();
-            let mut native: Option<gtk::Native> = Some(popover.clone().upcast());
-            while let Some(n) =
-                native.filter(|n| n.upcast_ref::<gtk::Widget>() != root.upcast_ref::<gtk::Widget>())
-            {
-                if let Some(popup) = n.surface().and_downcast::<gdk::Popup>() {
-                    px += f64::from(popup.position_x());
-                    py += f64::from(popup.position_y());
-                }
-                native = n.upcast_ref::<gtk::Widget>().parent().and_then(|w| w.native());
-            }
-            at(&snapshot, popover.upcast_ref(), px, py);
+            at(popover.upcast_ref(), popover_origin(&root, popover));
         }
         if let (Some(node), Some(renderer)) = (snapshot.to_node(), root.renderer()) {
             if let Err(e) = renderer.render_texture(&node, None).save_to_png(&path) {
@@ -1811,6 +1877,14 @@ fn register_actions(app: &adw::Application, tx: &Sender) {
                 _ => return send(&t, Msg::DebugSnapshot),
             };
             send(&t, Msg::Key(key));
+        });
+        app.add_action(&action);
+        let action = gio::SimpleAction::new("debug-state", Some(glib::VariantTy::STRING));
+        let t = tx.clone();
+        action.connect_activate(move |_, v| {
+            if let Some(path) = v.and_then(|v| v.get::<String>()) {
+                send(&t, Msg::DebugState(path));
+            }
         });
         app.add_action(&action);
     }

@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "type": "command",
+      "name": "Files",
+      "command": "true",
+      "args": ["files"],
+      "historySource": { "type": "recently-used", "path": "@DATA@/recently-used.xbel" }
+    },
+    {
+      "type": "folder",
+      "name": "Dev",
+      "children": [
+        { "type": "command", "name": "Terminal", "command": "true", "args": ["terminal"] },
+        { "type": "separator" },
+        {
+          "type": "folder",
+          "name": "Tools",
+          "children": [{ "type": "command", "name": "Calculator", "command": "true", "args": ["calculator"] }]
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Office",
+      "children": [{ "type": "command", "name": "Writer", "command": "true", "args": ["writer"] }]
+    },
+    { "type": "separator" },
+    { "type": "command", "name": "Settings", "command": "true", "args": ["settings"] }
+  ]
+}
