@@ -2210,10 +2210,20 @@ interactive mock.
   {name, children}, `command` {name, command, args, historySource},
   `separator`. Every node has an optional `id`, generated at load when
   missing (the file is not rewritten). Later types are new `NodeKind`
-  variants: `app` {desktopId}, `apps` (main categories), `directory`
-  {path}, `power`, `file`, `url`, `recent`, `snippets`; generated ones get an
-  `inline: true` option (children shown in place). Unknown types are skipped.
-  Without `items`, the old `commands` array is read as `command` items.
+  variants: `directory` {path}, `file`, `url`, `recent`, `snippets`.
+  Unknown types are skipped. Without `items`, the old `commands` array is
+  read as `command` items; with neither, the default tree is `apps`,
+  `separator`, `power` (inline).
+- Generated nodes (phase 2): `apps` lists installed apps (`should_show`)
+  in one sub-level per freedesktop main category (an app's first one, else
+  "Other"; GNOME's classic menu names, symbolic theme icons); the XDG menu
+  files are not parsed. `app` {desktopId} is one installed app, left out
+  when missing. `power`: Lock (`org.gnome.ScreenSaver`), Suspend (logind),
+  Log Out / Restart / Power Off (`org.gnome.SessionManager`, which shows
+  GNOME's confirmation). `inline: true` on `apps` and `power` shows their
+  children in place of the node.
+- An app row (from `apps` or `app`) has its recent files as children when
+  `recently-used.xbel` records it under its desktop id, program or name.
 - A `command` with `historySource` has its recent files as children; the
   side jump list is gone.
 - Navigation is a content-agnostic stack of levels (`state/tree.rs`), so
@@ -2231,8 +2241,9 @@ interactive mock.
   file types from the icon theme, commands the icon of the installed app
   running the same program (same arguments when several do), overridable
   with `icon`.
-- Typing searches commands of the whole tree and installed apps as one flat
-  list; tree items win over apps of the same name.
+- Typing searches commands and `app` nodes of the whole tree and installed
+  apps as one flat list; an app already in the tree is listed once (by
+  desktop id), and tree items win over apps of the same name.
 - Levels are popovers without `autohide`: no grab, so the main window keeps
   keyboard focus (keys go through the window's handler to `Nav`), clicks on
   the main list are not swallowed, and focus loss still hides the unpinned
@@ -2243,7 +2254,8 @@ interactive mock.
   arrive and no popover closes; the main window loses `is-active` during the
   drag. Drops from other apps: not confirmed yet; phase 4 adds it to the e2e
   checks (`tools/e2e`, headless GNOME Shell with RemoteDesktop input), which
-  verify the hover, key and click behavior above.
+  verify the hover, key and click behavior above. Power actions there only
+  log their call (`UTI_DRY_POWER`).
 
 ### Consequences
 

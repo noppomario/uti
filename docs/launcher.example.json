@@ -41,11 +41,9 @@
         }
       ]
     },
+    { "type": "app", "desktopId": "org.gnome.Settings.desktop" },
+    { "type": "apps" },
     { "type": "separator" },
-    {
-      "type": "command",
-      "name": "Settings",
-      "command": "gnome-control-center"
-    }
+    { "type": "power", "inline": true }
   ]
 }

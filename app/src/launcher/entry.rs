@@ -1,21 +1,47 @@
-//! Rows of the launcher levels: tree nodes, recent files and apps (no GTK)
+//! Rows of the launcher levels: tree nodes, generated rows and recent files
+//! (no GTK)
 
-use super::recent_files::RecentFile;
+use std::collections::HashSet;
+
+use super::apps::{self, AppMeta, Category};
+use super::power::PowerAction;
+use super::recent_files::{self, RecentFile};
 use super::{CommandItem, LauncherNode, NodeKind};
 use crate::state::tree::Row;
+
+/// Where rows come from: the tree, installed apps and the app names that
+/// have recent files.
+#[derive(Clone, Copy)]
+pub struct Sources<'a> {
+    pub nodes: &'a [LauncherNode],
+    pub apps: &'a [AppMeta],
+    /// Application names in `recently-used.xbel`.
+    pub recent_apps: &'a HashSet<String>,
+}
+
+/// What opens a recent file.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Opener {
+    /// The command at this path.
+    Command(Vec<usize>),
+    /// The installed app at this index.
+    App(usize),
+}
 
 /// A row of a launcher level.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Entry {
     /// A tree node, by its path of child indices from the root.
     Node(Vec<usize>),
-    /// A recent file of the command at `command`.
-    Recent {
-        command: Vec<usize>,
-        file: RecentFile,
-    },
+    /// A category of installed apps.
+    Category(Category),
     /// An installed app, by its index in the app list.
     App(usize),
+    Power(PowerAction),
+    Recent {
+        opener: Opener,
+        file: RecentFile,
+    },
 }
 
 /// The node at `path`.
@@ -39,122 +65,217 @@ pub fn command_at<'a>(nodes: &'a [LauncherNode], path: &[usize]) -> Option<&'a C
     }
 }
 
-/// What a node's row can do.
-pub fn node_row(node: &LauncherNode) -> Row {
-    match &node.kind {
-        NodeKind::Folder { .. } => Row::FOLDER,
-        NodeKind::Command(c) if c.history_source.is_some() => Row::BRANCH_LEAF,
-        NodeKind::Command(_) => Row::LEAF,
-        NodeKind::Separator | NodeKind::Unknown => Row::SEPARATOR,
+impl Sources<'_> {
+    /// Index of the installed app with this desktop id.
+    pub fn app_index(&self, desktop_id: &str) -> Option<usize> {
+        self.apps.iter().position(|a| a.id == desktop_id)
     }
-}
 
-impl Entry {
-    pub fn row(&self, nodes: &[LauncherNode]) -> Row {
-        match self {
-            Entry::Node(path) => node_at(nodes, path).map_or(Row::SEPARATOR, node_row),
-            Entry::Recent { .. } | Entry::App(_) => Row::LEAF,
+    /// The installed app an `app` node at `path` names.
+    pub fn app_at(&self, path: &[usize]) -> Option<usize> {
+        match &node_at(self.nodes, path)?.kind {
+            NodeKind::App { desktop_id } => self.app_index(desktop_id),
+            _ => None,
         }
     }
-}
 
-/// Rows of the root level.
-pub fn root_entries(nodes: &[LauncherNode]) -> Vec<Entry> {
-    (0..nodes.len()).map(|i| Entry::Node(vec![i])).collect()
-}
-
-/// Children of a folder entry; `None` for anything else.
-pub fn folder_children(nodes: &[LauncherNode], entry: &Entry) -> Option<Vec<Entry>> {
-    let Entry::Node(path) = entry else {
-        return None;
-    };
-    let NodeKind::Folder { children, .. } = &node_at(nodes, path)?.kind else {
-        return None;
-    };
-    Some(
-        (0..children.len())
-            .map(|i| Entry::Node(path.iter().copied().chain([i]).collect()))
-            .collect(),
-    )
-}
-
-/// Children of an entry: a folder's nodes or a command's recent files
-/// (read from disk).
-pub fn children(nodes: &[LauncherNode], entry: &Entry) -> Vec<Entry> {
-    if let Some(entries) = folder_children(nodes, entry) {
-        return entries;
+    fn has_recent(&self, app: usize) -> bool {
+        self.apps
+            .get(app)
+            .is_some_and(|a| apps::xbel_names(a).iter().any(|n| self.recent_apps.contains(n)))
     }
-    let Entry::Node(path) = entry else {
-        return Vec::new();
-    };
-    let Some(source) = command_at(nodes, path).and_then(|c| c.history_source.as_ref()) else {
-        return Vec::new();
-    };
-    source
-        .recent_files()
-        .into_iter()
-        .map(|file| Entry::Recent {
-            command: path.clone(),
-            file,
+
+    fn app_row(&self, app: usize) -> Row {
+        if self.has_recent(app) {
+            Row::BRANCH_LEAF
+        } else {
+            Row::LEAF
+        }
+    }
+
+    /// Rows for the nodes at `paths`: `inline` generated nodes are replaced
+    /// by their children, `app` nodes of missing apps are left out.
+    fn level(&self, paths: impl Iterator<Item = Vec<usize>>) -> Vec<Entry> {
+        let mut out = Vec::new();
+        for path in paths {
+            match node_at(self.nodes, &path).map(|n| &n.kind) {
+                Some(NodeKind::Apps { inline: true, .. }) => out.extend(self.categories()),
+                Some(NodeKind::Power { inline: true, .. }) => out.extend(power_entries()),
+                Some(NodeKind::App { .. }) if self.app_at(&path).is_none() => {},
+                Some(_) => out.push(Entry::Node(path)),
+                None => {},
+            }
+        }
+        out
+    }
+
+    fn categories(&self) -> Vec<Entry> {
+        apps::group(self.apps).into_iter().map(|(c, _)| Entry::Category(c)).collect()
+    }
+
+    /// Rows of the root level.
+    pub fn root_entries(&self) -> Vec<Entry> {
+        self.level((0..self.nodes.len()).map(|i| vec![i]))
+    }
+
+    /// Children of a menu row (folder, `apps`, `power`, category); `None`
+    /// for anything else.
+    pub fn menu_children(&self, entry: &Entry) -> Option<Vec<Entry>> {
+        match entry {
+            Entry::Category(c) => {
+                Some(apps::in_category(self.apps, *c).into_iter().map(Entry::App).collect())
+            },
+            Entry::Node(path) => {
+                match &node_at(self.nodes, path)?.kind {
+                    NodeKind::Folder { children, .. } => Some(self.level(
+                        (0..children.len()).map(|i| path.iter().copied().chain([i]).collect()),
+                    )),
+                    NodeKind::Apps { .. } => Some(self.categories()),
+                    NodeKind::Power { .. } => Some(power_entries()),
+                    _ => None,
+                }
+            },
+            _ => None,
+        }
+    }
+
+    /// Children of an entry: a menu's rows, or the recent files of a
+    /// command or app (read from disk).
+    pub fn children(&self, entry: &Entry) -> Vec<Entry> {
+        if let Some(entries) = self.menu_children(entry) {
+            return entries;
+        }
+        let (opener, files) = match entry {
+            Entry::Node(path) => {
+                if let Some(app) = self.app_at(path) {
+                    (Opener::App(app), self.app_recent(app))
+                } else {
+                    let Some(source) =
+                        command_at(self.nodes, path).and_then(|c| c.history_source.as_ref())
+                    else {
+                        return Vec::new();
+                    };
+                    (Opener::Command(path.clone()), source.recent_files())
+                }
+            },
+            Entry::App(app) => (Opener::App(*app), self.app_recent(*app)),
+            _ => return Vec::new(),
+        };
+        files
+            .into_iter()
+            .map(|file| Entry::Recent {
+                opener: opener.clone(),
+                file,
+            })
+            .collect()
+    }
+
+    fn app_recent(&self, app: usize) -> Vec<RecentFile> {
+        if !self.has_recent(app) {
+            return Vec::new();
+        }
+        recent_files::get_recent_files_for_apps(&apps::xbel_names(&self.apps[app]))
+    }
+
+    /// What a row can do.
+    pub fn row(&self, entry: &Entry) -> Row {
+        match entry {
+            Entry::Node(path) => match node_at(self.nodes, path).map(|n| &n.kind) {
+                Some(NodeKind::Folder { .. } | NodeKind::Apps { .. } | NodeKind::Power { .. }) => {
+                    Row::FOLDER
+                },
+                Some(NodeKind::Command(c)) if c.history_source.is_some() => Row::BRANCH_LEAF,
+                Some(NodeKind::Command(_)) => Row::LEAF,
+                Some(NodeKind::App { .. }) => {
+                    self.app_at(path).map_or(Row::SEPARATOR, |a| self.app_row(a))
+                },
+                Some(NodeKind::Separator | NodeKind::Unknown) | None => Row::SEPARATOR,
+            },
+            Entry::Category(_) => Row::FOLDER,
+            Entry::App(app) => self.app_row(*app),
+            Entry::Power(_) | Entry::Recent { .. } => Row::LEAF,
+        }
+    }
+
+    /// Display name of a node: folders, commands and apps by their name,
+    /// `apps` and `power` by theirs or the default.
+    pub fn node_name(&self, path: &[usize]) -> Option<&str> {
+        Some(match &node_at(self.nodes, path)?.kind {
+            NodeKind::Folder { name, .. } => name,
+            NodeKind::Command(c) => &c.name,
+            NodeKind::Apps { name, .. } => name.as_deref().unwrap_or("Applications"),
+            NodeKind::Power { name, .. } => name.as_deref().unwrap_or("Power"),
+            NodeKind::App { .. } => &self.apps[self.app_at(path)?].name,
+            NodeKind::Separator | NodeKind::Unknown => return None,
         })
-        .collect()
+    }
+
+    /// Names from the root down to the node at `path`: `Dev › Code`.
+    pub fn breadcrumb(&self, path: &[usize]) -> String {
+        (1..=path.len())
+            .filter_map(|n| self.node_name(&path[..n]))
+            .collect::<Vec<_>>()
+            .join(" › ")
+    }
+
+    /// What typing searches: commands and `app` nodes of the whole tree
+    /// (depth first), then installed apps not already in the tree.
+    pub fn searchable(&self) -> Vec<Searchable<'_>> {
+        fn walk<'a>(
+            src: &Sources<'a>,
+            nodes: &'a [LauncherNode],
+            path: &mut Vec<usize>,
+            out: &mut Vec<Searchable<'a>>,
+            in_tree: &mut HashSet<usize>,
+        ) {
+            for (i, node) in nodes.iter().enumerate() {
+                path.push(i);
+                match &node.kind {
+                    NodeKind::Folder { children, .. } => walk(src, children, path, out, in_tree),
+                    NodeKind::Command(c) => out.push(Searchable {
+                        entry: Entry::Node(path.clone()),
+                        name: &c.name,
+                        description: &c.command,
+                    }),
+                    NodeKind::App { .. } => {
+                        if let Some(a) = src.app_at(path) {
+                            in_tree.insert(a);
+                            out.push(Searchable {
+                                entry: Entry::Node(path.clone()),
+                                name: &src.apps[a].name,
+                                description: &src.apps[a].description,
+                            });
+                        }
+                    },
+                    _ => {},
+                }
+                path.pop();
+            }
+        }
+        let mut out = Vec::new();
+        let mut in_tree = HashSet::new();
+        walk(self, self.nodes, &mut Vec::new(), &mut out, &mut in_tree);
+        out.extend(self.apps.iter().enumerate().filter(|(i, _)| !in_tree.contains(i)).map(
+            |(i, a)| Searchable {
+                entry: Entry::App(i),
+                name: &a.name,
+                description: &a.description,
+            },
+        ));
+        out
+    }
 }
 
-/// Names from the root down to the node at `path`: `Dev › Code`.
-pub fn breadcrumb(nodes: &[LauncherNode], path: &[usize]) -> String {
-    (1..=path.len())
-        .filter_map(|n| match &node_at(nodes, &path[..n])?.kind {
-            NodeKind::Folder { name, .. } => Some(name.as_str()),
-            NodeKind::Command(c) => Some(c.name.as_str()),
-            NodeKind::Separator | NodeKind::Unknown => None,
-        })
-        .collect::<Vec<_>>()
-        .join(" › ")
+fn power_entries() -> Vec<Entry> {
+    PowerAction::ALL.into_iter().map(Entry::Power).collect()
 }
 
-/// A command found anywhere in the tree, for search.
+/// A search candidate: its row and the text matched.
 #[derive(Debug, PartialEq)]
 pub struct Searchable<'a> {
-    pub path: Vec<usize>,
-    pub command: &'a CommandItem,
-    /// Folder names down to the command: `Dev › Code`.
-    pub breadcrumb: String,
-}
-
-/// Every command in the tree, depth first.
-pub fn searchable(nodes: &[LauncherNode]) -> Vec<Searchable<'_>> {
-    fn walk<'a>(
-        nodes: &'a [LauncherNode],
-        path: &mut Vec<usize>,
-        folders: &mut Vec<&'a str>,
-        out: &mut Vec<Searchable<'a>>,
-    ) {
-        for (i, node) in nodes.iter().enumerate() {
-            path.push(i);
-            match &node.kind {
-                NodeKind::Folder { name, children } => {
-                    folders.push(name);
-                    walk(children, path, folders, out);
-                    folders.pop();
-                },
-                NodeKind::Command(command) => out.push(Searchable {
-                    path: path.clone(),
-                    command,
-                    breadcrumb: folders
-                        .iter()
-                        .copied()
-                        .chain([command.name.as_str()])
-                        .collect::<Vec<_>>()
-                        .join(" › "),
-                }),
-                NodeKind::Separator | NodeKind::Unknown => {},
-            }
-            path.pop();
-        }
-    }
-    let mut out = Vec::new();
-    walk(nodes, &mut Vec::new(), &mut Vec::new(), &mut out);
-    out
+    pub entry: Entry,
+    pub name: &'a str,
+    pub description: &'a str,
 }
 
 #[cfg(test)]
@@ -162,8 +283,12 @@ mod tests {
     use super::*;
     use crate::launcher::LauncherConfig;
 
-    fn nodes() -> Vec<LauncherNode> {
-        serde_json::from_str::<LauncherConfig>(
+    fn nodes(json: &str) -> Vec<LauncherNode> {
+        serde_json::from_str::<LauncherConfig>(json).unwrap().into_tree()
+    }
+
+    fn tree() -> Vec<LauncherNode> {
+        nodes(
             r#"{"items": [
                 {"type": "command", "name": "Files", "command": "nautilus",
                  "historySource": {"type": "vscode", "path": "/nonexistent"}},
@@ -171,19 +296,43 @@ mod tests {
                     {"type": "command", "name": "Code", "command": "code"},
                     {"type": "separator"},
                     {"type": "folder", "name": "Tools", "children": [
-                        {"type": "command", "name": "Calc", "command": "calc"}
+                        {"type": "command", "name": "Calc", "command": "calc"},
+                        {"type": "app", "desktopId": "editor.desktop"}
                     ]}
                 ]},
                 {"type": "separator"}
             ]}"#,
         )
-        .unwrap()
-        .into_tree()
+    }
+
+    fn apps() -> Vec<AppMeta> {
+        let app = |id: &str, name: &str, category: &str| AppMeta {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: format!("{name} app"),
+            exec: Some(id.trim_end_matches(".desktop").to_string()),
+            categories: vec![category.to_string()],
+        };
+        vec![
+            app("firefox.desktop", "Firefox", "Network"),
+            app("editor.desktop", "Editor", "Development"),
+            app("chess.desktop", "Chess", "Game"),
+        ]
+    }
+
+    fn with<R>(nodes: &[LauncherNode], f: impl FnOnce(Sources<'_>) -> R) -> R {
+        let apps = apps();
+        let recent: HashSet<String> = ["editor".to_string()].into();
+        f(Sources {
+            nodes,
+            apps: &apps,
+            recent_apps: &recent,
+        })
     }
 
     #[test]
     fn paths_walk_folders() {
-        let n = nodes();
+        let n = tree();
         assert_eq!(command_at(&n, &[1, 2, 0]).map(|c| c.name.as_str()), Some("Calc"));
         assert!(node_at(&n, &[1, 9]).is_none());
         assert!(node_at(&n, &[0, 0]).is_none(), "commands have no children");
@@ -192,42 +341,109 @@ mod tests {
 
     #[test]
     fn rows_follow_node_types() {
-        let n = nodes();
-        let rows: Vec<Row> = root_entries(&n).iter().map(|e| e.row(&n)).collect();
-        assert_eq!(rows, [Row::BRANCH_LEAF, Row::FOLDER, Row::SEPARATOR]);
-        assert_eq!(Entry::App(0).row(&n), Row::LEAF);
+        let n = tree();
+        with(&n, |s| {
+            let rows: Vec<Row> = s.root_entries().iter().map(|e| s.row(e)).collect();
+            assert_eq!(rows, [Row::BRANCH_LEAF, Row::FOLDER, Row::SEPARATOR]);
+            assert_eq!(s.row(&Entry::App(0)), Row::LEAF);
+            assert_eq!(s.row(&Entry::App(1)), Row::BRANCH_LEAF, "Editor has recent files");
+            assert_eq!(s.row(&Entry::Node(vec![1, 2, 1])), Row::BRANCH_LEAF);
+            assert_eq!(s.row(&Entry::Category(Category::Game)), Row::FOLDER);
+            assert_eq!(s.row(&Entry::Power(PowerAction::Lock)), Row::LEAF);
+        });
     }
 
     #[test]
     fn folder_children_are_paths_below_it() {
-        let n = nodes();
-        let dev = Entry::Node(vec![1]);
-        assert_eq!(
-            children(&n, &dev),
-            [Entry::Node(vec![1, 0]), Entry::Node(vec![1, 1]), Entry::Node(vec![1, 2])]
+        let n = tree();
+        with(&n, |s| {
+            assert_eq!(
+                s.children(&Entry::Node(vec![1])),
+                [Entry::Node(vec![1, 0]), Entry::Node(vec![1, 1]), Entry::Node(vec![1, 2])]
+            );
+            assert_eq!(s.menu_children(&Entry::Node(vec![0])), None);
+            assert!(s.children(&Entry::Node(vec![0])).is_empty(), "unreadable history");
+            assert!(s.children(&Entry::App(0)).is_empty(), "no recent files");
+        });
+    }
+
+    #[test]
+    fn generated_menus_list_categories_apps_and_power() {
+        let n = nodes(r#"{"items": [{"type": "apps"}, {"type": "power"}]}"#);
+        with(&n, |s| {
+            let root = s.root_entries();
+            assert_eq!(root, [Entry::Node(vec![0]), Entry::Node(vec![1])]);
+            assert_eq!(s.row(&root[0]), Row::FOLDER);
+            assert_eq!(
+                s.children(&root[0]),
+                [
+                    Entry::Category(Category::Game),
+                    Entry::Category(Category::Network),
+                    Entry::Category(Category::Development)
+                ]
+            );
+            assert_eq!(s.children(&Entry::Category(Category::Network)), [Entry::App(0)]);
+            assert_eq!(s.children(&root[1]).len(), 5);
+            assert_eq!(s.node_name(&[0]), Some("Applications"));
+            assert_eq!(s.node_name(&[1]), Some("Power"));
+        });
+    }
+
+    #[test]
+    fn inline_nodes_put_their_children_in_place() {
+        let n = nodes(
+            r#"{"items": [{"type": "separator"}, {"type": "apps", "inline": true},
+                          {"type": "folder", "name": "F", "children": [{"type": "power", "inline": true}]}]}"#,
         );
-        assert_eq!(folder_children(&n, &Entry::Node(vec![0])), None);
-        assert!(children(&n, &Entry::Node(vec![0])).is_empty(), "unreadable history");
-        assert!(children(&n, &Entry::App(0)).is_empty());
+        with(&n, |s| {
+            let root = s.root_entries();
+            assert_eq!(root.len(), 1 + 3 + 1);
+            assert_eq!(root[1], Entry::Category(Category::Game));
+            let folder = s.children(&root[4]);
+            assert_eq!(folder[0], Entry::Power(PowerAction::Lock));
+            assert_eq!(folder[4], Entry::Power(PowerAction::PowerOff));
+        });
+    }
+
+    #[test]
+    fn app_nodes_of_missing_apps_are_left_out() {
+        let n = nodes(
+            r#"{"items": [{"type": "app", "desktopId": "gone.desktop"},
+                          {"type": "app", "desktopId": "chess.desktop"}]}"#,
+        );
+        with(&n, |s| {
+            assert_eq!(s.root_entries(), [Entry::Node(vec![1])]);
+            assert_eq!(s.node_name(&[1]), Some("Chess"));
+            assert_eq!(s.row(&Entry::Node(vec![1])), Row::LEAF);
+        });
     }
 
     #[test]
     fn breadcrumbs_name_every_folder() {
-        assert_eq!(breadcrumb(&nodes(), &[1, 2, 0]), "Dev › Tools › Calc");
+        let n = tree();
+        with(&n, |s| {
+            assert_eq!(s.breadcrumb(&[1, 2, 0]), "Dev › Tools › Calc");
+            assert_eq!(s.breadcrumb(&[1, 2, 1]), "Dev › Tools › Editor");
+        });
     }
 
     #[test]
-    fn search_finds_commands_at_any_depth_with_their_folders() {
-        let n = nodes();
-        let found: Vec<(Vec<usize>, String)> =
-            searchable(&n).into_iter().map(|s| (s.path, s.breadcrumb)).collect();
-        assert_eq!(
-            found,
-            [
-                (vec![0], "Files".to_string()),
-                (vec![1, 0], "Dev › Code".to_string()),
-                (vec![1, 2, 0], "Dev › Tools › Calc".to_string()),
-            ]
-        );
+    fn search_lists_the_tree_then_apps_not_in_it() {
+        let n = tree();
+        with(&n, |s| {
+            let found: Vec<(Entry, &str)> =
+                s.searchable().into_iter().map(|c| (c.entry, c.name)).collect();
+            assert_eq!(
+                found,
+                [
+                    (Entry::Node(vec![0]), "Files"),
+                    (Entry::Node(vec![1, 0]), "Code"),
+                    (Entry::Node(vec![1, 2, 0]), "Calc"),
+                    (Entry::Node(vec![1, 2, 1]), "Editor"),
+                    (Entry::App(0), "Firefox"),
+                    (Entry::App(2), "Chess"),
+                ]
+            );
+        });
     }
 }

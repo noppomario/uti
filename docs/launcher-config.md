@@ -31,6 +31,9 @@ This document explains how to configure `~/.config/uti/launcher.json`.
 | `folder`    | `name`, `children` (items)                              | Opens its children                      |
 | `command`   | `name`, `command`, `args` (default `[]`), `historySource`, `icon` | Launches; recent files open as children |
 | `separator` | -                                                       | A line                                  |
+| `apps`      | `name` (default "Applications"), `inline`               | Installed apps, one level per category  |
+| `app`       | `desktopId` (e.g. `org.gnome.Nautilus.desktop`)         | Launches the app; recent files as children |
+| `power`     | `name` (default "Power"), `inline`                      | Lock, Suspend, Log Out, Restart, Power Off |
 
 A command shows the icon of the installed app that runs the same program (and, when several
 do, the same arguments); set `icon` to an icon name or an absolute file path to override it.
@@ -38,7 +41,11 @@ do, the same arguments); set `icon` to an icon name or an absolute file path to 
 Every item may have an `id`; uti generates one when it is missing. Items of an unknown `type`
 are skipped.
 
+`inline: true` shows the children of `apps` (categories) or `power` (actions) in place of the item.
+
 A file with the older `"commands": [...]` array (commands only) is still read as `command` items.
+Without `items` and `commands` (or without the file), the tree is `apps`, a separator and
+`power` with `inline: true`.
 
 ## History Source Types
 

@@ -5,7 +5,7 @@
 //! never re-enter the model. Keyboard focus is decided by [`Nav`]; after
 //! every message the GTK focus is moved to match it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use adw::prelude::*;
@@ -14,7 +14,10 @@ use gtk::{gdk, gio, glib};
 use crate::clipboard::ClipboardStore;
 use crate::config::AppConfig;
 use crate::dbus;
-use crate::launcher::entry::{self, Entry};
+use crate::launcher::apps::AppMeta;
+use crate::launcher::entry::{self, Entry, Opener, Sources};
+use crate::launcher::power::{CallArgs, PowerAction};
+use crate::launcher::recent_files;
 use crate::launcher::{load_launcher_tree, LauncherNode, NodeKind};
 use crate::settings;
 use crate::snippets::{load_snippets, save_snippets, SnippetsStore};
@@ -163,6 +166,11 @@ struct App {
     apps: Vec<gio::AppInfo>,
     /// Command line of each app (field codes removed), for command icons.
     app_argv: Vec<Vec<String>>,
+    /// What the launcher tree needs of each app in `apps`.
+    app_meta: Vec<AppMeta>,
+    /// Application names with recent files, read when Launcher rows are
+    /// built.
+    recent_apps: HashSet<String>,
     /// Rows of the Launcher tab's list.
     launcher_rows: Vec<Entry>,
     /// Open Launcher levels, mirroring `nav.tree()` depths 1..
@@ -187,6 +195,24 @@ fn app_argv(apps: &[gio::AppInfo]) -> Vec<Vec<String>> {
                 .map(|s| s.to_string_lossy().into_owned())
                 .filter(|s| !s.starts_with('%'))
                 .collect()
+        })
+        .collect()
+}
+
+/// Launcher metadata of each app; `argv` from [`app_argv`].
+fn app_meta(apps: &[gio::AppInfo], argv: &[Vec<String>]) -> Vec<AppMeta> {
+    apps.iter()
+        .zip(argv)
+        .map(|(a, argv)| AppMeta {
+            id: a.id().map(|i| i.to_string()).unwrap_or_default(),
+            name: a.name().to_string(),
+            description: a.description().map(|d| d.to_string()).unwrap_or_default(),
+            exec: argv.first().cloned(),
+            categories: a
+                .downcast_ref::<gio_unix::DesktopAppInfo>()
+                .and_then(|d| d.categories())
+                .map(|c| c.split(';').filter(|c| !c.is_empty()).map(String::from).collect())
+                .unwrap_or_default(),
         })
         .collect()
 }
@@ -239,6 +265,7 @@ pub fn start(app: &adw::Application, minimized: bool) {
         dbus::watch_services(conn, move || send(&t, Msg::ServicesAppeared))
     });
     let apps = load_apps();
+    let argv = app_argv(&apps);
     let mut model = App {
         tx: tx.clone(),
         ui,
@@ -252,8 +279,10 @@ pub fn start(app: &adw::Application, minimized: bool) {
         snippets: load_snippets(),
         rows_fitted: false,
         launcher: load_launcher_tree(),
-        app_argv: app_argv(&apps),
+        app_meta: app_meta(&apps, &argv),
+        app_argv: argv,
         apps,
+        recent_apps: HashSet::new(),
         launcher_rows: Vec::new(),
         cascade: Vec::new(),
         config,
@@ -457,6 +486,7 @@ impl App {
             Msg::AppsChanged => {
                 self.apps = load_apps();
                 self.app_argv = app_argv(&self.apps);
+                self.app_meta = app_meta(&self.apps, &self.app_argv);
                 self.refresh(Tab::Launcher);
                 None
             },
@@ -585,8 +615,9 @@ impl App {
             return;
         };
         self.truncate_cascade(depth);
-        let entries = entry::children(&self.launcher, &entry);
-        let empty = if entry::folder_children(&self.launcher, &entry).is_some() {
+        self.read_recent_apps();
+        let entries = self.sources().children(&entry);
+        let empty = if self.sources().menu_children(&entry).is_some() {
             "Empty"
         } else {
             "No recent files"
@@ -609,7 +640,7 @@ impl App {
                 b.height() as i32,
             )));
         }
-        let rows = entries.iter().map(|e| e.row(&self.launcher)).collect();
+        let rows = entries.iter().map(|e| self.sources().row(e)).collect();
         self.nav.tree_mut().push(depth, index, rows, enter);
         popover.popup();
         self.cascade.push(CascadeLevel {
@@ -974,29 +1005,105 @@ impl App {
     fn activate_entry(&mut self, depth: usize, index: usize) -> Option<WindowCommand> {
         let entry = self.level_entries(depth)?.get(index)?.clone();
         match entry {
-            Entry::Node(path) => {
-                let item = entry::command_at(&self.launcher, &path)?;
-                spawn(&item.command, &item.args, None);
+            Entry::Node(path) => match self.sources().app_at(&path) {
+                Some(a) => self.launch_app(a, None),
+                None => {
+                    let item = entry::command_at(&self.launcher, &path)?;
+                    spawn(&item.command, &item.args, None);
+                },
             },
-            Entry::Recent { command, file } => {
+            Entry::Recent {
+                opener: Opener::Command(command),
+                file,
+            } => {
                 let item = entry::command_at(&self.launcher, &command)?;
                 spawn(&item.command, &item.args, Some(&file.path));
             },
-            Entry::App(a) => {
-                let app = self.apps.get(a)?;
-                let context = gtk::prelude::WidgetExt::display(&self.ui.root).app_launch_context();
-                if dev_sandbox() {
-                    for var in SANDBOX_VARS {
-                        context.unsetenv(var);
-                    }
-                }
-                if let Err(e) = app.launch(&[], Some(&context)) {
-                    eprintln!("Failed to launch {}: {e}", app.name());
-                }
-            },
+            Entry::Recent {
+                opener: Opener::App(a),
+                file,
+            } => self.launch_app(a, Some(&file.path)),
+            Entry::App(a) => self.launch_app(a, None),
+            Entry::Power(action) => self.power(action),
+            Entry::Category(_) => return None,
         }
         self.close_cascade();
         self.window.hide()
+    }
+
+    /// Launches installed app `index`, with `file` when given.
+    fn launch_app(&self, index: usize, file: Option<&str>) {
+        let Some(app) = self.apps.get(index) else {
+            return;
+        };
+        let context = gtk::prelude::WidgetExt::display(&self.ui.root).app_launch_context();
+        if dev_sandbox() {
+            for var in SANDBOX_VARS {
+                context.unsetenv(var);
+            }
+        }
+        let files: Vec<gio::File> = file.into_iter().map(gio::File::for_path).collect();
+        if debug_keys() {
+            eprintln!("DEBUG launch {:?} {file:?}", app.id());
+        }
+        if let Err(e) = app.launch(&files, Some(&context)) {
+            eprintln!("Failed to launch {}: {e}", app.name());
+        }
+    }
+
+    /// Calls the D-Bus method behind `action`; only logs it with
+    /// `UTI_DRY_POWER` (e2e checks).
+    fn power(&self, action: PowerAction) {
+        let call = action.call();
+        eprintln!("power: {} via {}", call.method, call.dest);
+        if std::env::var_os("UTI_DRY_POWER").is_some() {
+            return;
+        }
+        let args = match call.args {
+            CallArgs::None => None,
+            CallArgs::Bool(b) => Some((b,).to_variant()),
+            CallArgs::U32(u) => Some((u,).to_variant()),
+        };
+        let bus = if call.system {
+            gio::BusType::System
+        } else {
+            gio::BusType::Session
+        };
+        glib::spawn_future_local(async move {
+            let result = match gio::bus_get_future(bus).await {
+                Ok(conn) => {
+                    conn.call_future(
+                        Some(call.dest),
+                        call.path,
+                        call.interface,
+                        call.method,
+                        args.as_ref(),
+                        None,
+                        gio::DBusCallFlags::ALLOW_INTERACTIVE_AUTHORIZATION,
+                        -1,
+                    )
+                    .await
+                },
+                Err(e) => Err(e),
+            };
+            if let Err(e) = result {
+                eprintln!("power: {} failed: {e}", call.method);
+            }
+        });
+    }
+
+    /// Rows come from the tree, installed apps and their recent files.
+    fn sources(&self) -> Sources<'_> {
+        Sources {
+            nodes: &self.launcher,
+            apps: &self.app_meta,
+            recent_apps: &self.recent_apps,
+        }
+    }
+
+    /// Reads which apps have recent files (once per level built).
+    fn read_recent_apps(&mut self) {
+        self.recent_apps = recent_files::get_available_apps().into_iter().collect();
     }
 
     /// Shows the settings window at `target`, creating it on first use.
@@ -1253,38 +1360,25 @@ impl App {
     fn refresh_launcher(&mut self) {
         let query = self.tabs.get(&Tab::Launcher).map(|d| d.query.clone()).unwrap_or_default();
         let searching = !query.trim().is_empty();
+        self.read_recent_apps();
         self.launcher_rows = if searching {
-            let commands = entry::searchable(&self.launcher);
-            let apps: Vec<(String, String)> = self
-                .apps
-                .iter()
-                .map(|a| {
-                    let desc = a.description().map(|d| d.to_string()).unwrap_or_default();
-                    (a.name().to_string(), desc)
-                })
-                .collect();
-            let texts: Vec<SearchText<'_>> = commands
+            let sources = self.sources();
+            let candidates = sources.searchable();
+            let texts: Vec<SearchText<'_>> = candidates
                 .iter()
                 .map(|c| SearchText {
-                    name: &c.command.name,
-                    description: &c.command.command,
+                    name: c.name,
+                    description: c.description,
                 })
-                .chain(apps.iter().map(|(name, description)| SearchText { name, description }))
                 .collect();
-            rank(&texts, &query)
-                .into_iter()
-                .map(|i| match commands.get(i) {
-                    Some(c) => Entry::Node(c.path.clone()),
-                    None => Entry::App(i - commands.len()),
-                })
-                .collect()
+            rank(&texts, &query).into_iter().map(|i| candidates[i].entry.clone()).collect()
         } else {
-            entry::root_entries(&self.launcher)
+            self.sources().root_entries()
         };
         if let Some(data) = self.tabs.get_mut(&Tab::Launcher) {
             data.visible = (0..self.launcher_rows.len()).collect();
         }
-        let rows = self.launcher_rows.iter().map(|e| e.row(&self.launcher)).collect();
+        let rows = self.launcher_rows.iter().map(|e| self.sources().row(e)).collect();
         self.nav.set_launcher_rows(rows);
         if let Some(list) = self.ui.lists.get(&Tab::Launcher) {
             self.fill_level(list, &self.launcher_rows, searching);
@@ -1299,7 +1393,7 @@ impl App {
     /// folders as its tooltip.
     fn fill_level(&self, list: &gtk::ListBox, entries: &[Entry], searching: bool) {
         list.remove_all();
-        let rows: Vec<Row> = entries.iter().map(|e| e.row(&self.launcher)).collect();
+        let rows: Vec<Row> = entries.iter().map(|e| self.sources().row(e)).collect();
         for (index, (entry, row)) in entries.iter().zip(&rows).enumerate() {
             if !row.selectable {
                 list.append(&ui::separator_row());
@@ -1325,36 +1419,43 @@ impl App {
     }
 
     /// Icon of a Launcher row: folders and file types by theme name, apps
-    /// their own; a command its `icon`, else the icon of the installed app
-    /// it starts, else a generic one.
+    /// their own, categories and power actions their symbolic icons; a
+    /// command its `icon`, else the icon of the installed app it starts,
+    /// else a generic one.
     fn entry_icon(&self, entry: &Entry) -> gio::Icon {
-        let themed = |name: &str| gio::ThemedIcon::new(name).upcast::<gio::Icon>();
+        let themed = |names: &[&str]| gio::ThemedIcon::from_names(names).upcast::<gio::Icon>();
+        let generic = || themed(&["application-x-executable"]);
+        let app_icon =
+            |a: usize| self.apps.get(a).and_then(|app| app.icon()).unwrap_or_else(generic);
         match entry {
             Entry::Node(path) => match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
-                Some(NodeKind::Folder { .. }) => themed("folder"),
+                Some(NodeKind::Folder { .. }) => themed(&["folder"]),
+                Some(NodeKind::Apps { .. }) => themed(&["view-app-grid-symbolic"]),
+                Some(NodeKind::Power { .. }) => themed(&["system-shutdown-symbolic"]),
+                Some(NodeKind::App { .. }) => {
+                    self.sources().app_at(path).map_or_else(generic, app_icon)
+                },
                 Some(NodeKind::Command(c)) => {
                     if let Some(icon) = &c.icon {
                         return if icon.starts_with('/') {
                             gio::FileIcon::new(&gio::File::for_path(icon)).upcast()
                         } else {
-                            themed(icon)
+                            themed(&[icon])
                         };
                     }
                     match_command(&c.command, &c.args, &self.app_argv)
                         .and_then(|i| self.apps.get(i)?.icon())
-                        .unwrap_or_else(|| themed("application-x-executable"))
+                        .unwrap_or_else(generic)
                 },
-                _ => themed("application-x-executable"),
+                _ => generic(),
             },
+            Entry::Category(c) => themed(c.icons()),
+            Entry::Power(p) => themed(p.icons()),
             Entry::Recent { file, .. } => {
                 let (content_type, _) = gio::content_type_guess(Some(&file.path), None);
                 gio::content_type_get_icon(&content_type)
             },
-            Entry::App(a) => self
-                .apps
-                .get(*a)
-                .and_then(|app| app.icon())
-                .unwrap_or_else(|| themed("application-x-executable")),
+            Entry::App(a) => app_icon(*a),
         }
     }
 
@@ -1388,7 +1489,14 @@ impl App {
                     ]));
                     i += 1;
                 }
+                let texts: Vec<String> = self
+                    .level_entries(d)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|e| self.entry_text(e, false).0)
+                    .collect();
                 serde_json::json!({
+                    "texts": texts,
                     "selected": tree.selected(d),
                     "owner": tree.owner(d),
                     "rows": rows,
@@ -1406,24 +1514,29 @@ impl App {
 
     /// Label and tooltip of a Launcher row.
     fn entry_text(&self, entry: &Entry, searching: bool) -> (String, String) {
+        let src = self.sources();
+        let app_text = |a: usize| {
+            self.app_meta
+                .get(a)
+                .map_or_else(Default::default, |app| (app.name.clone(), app.description.clone()))
+        };
         match entry {
-            Entry::Node(path) => match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
-                Some(NodeKind::Folder { name, .. }) => (name.clone(), name.clone()),
-                Some(NodeKind::Command(c)) => {
-                    let tip = if searching {
-                        entry::breadcrumb(&self.launcher, path)
-                    } else {
-                        c.command.clone()
-                    };
-                    (c.name.clone(), tip)
-                },
-                _ => Default::default(),
+            Entry::Node(path) => {
+                let name = src.node_name(path).unwrap_or_default().to_string();
+                let tip = match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
+                    _ if searching => src.breadcrumb(path),
+                    Some(NodeKind::Command(c)) => c.command.clone(),
+                    Some(NodeKind::App { .. }) => {
+                        src.app_at(path).map(|a| app_text(a).1).unwrap_or_default()
+                    },
+                    _ => name.clone(),
+                };
+                (name, tip)
             },
+            Entry::Category(c) => (c.label().to_string(), c.label().to_string()),
+            Entry::Power(p) => (p.label().to_string(), p.label().to_string()),
             Entry::Recent { file, .. } => (file.name.clone(), file.path.clone()),
-            Entry::App(a) => self.apps.get(*a).map_or_else(Default::default, |app| {
-                let tip = app.description().map(|d| d.to_string()).unwrap_or_default();
-                (app.name().to_string(), tip)
-            }),
+            Entry::App(a) => app_text(*a),
         }
     }
 }
