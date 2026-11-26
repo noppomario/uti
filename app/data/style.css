@@ -130,6 +130,10 @@ window.density-minimal.scrollbar-hidden .uti-row-box {
   background-color: transparent;
 }
 
+.uti-row-split {
+  margin: 5px 0;
+}
+
 /* A level looks like the main list continued, not like a bubble. */
 popover.uti-cascade > contents {
   min-width: 160px;

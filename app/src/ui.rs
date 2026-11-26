@@ -177,13 +177,20 @@ pub fn build_row(
     content.append(&title);
 
     if let Some(branch) = spec.branch {
+        if matches!(branch, Branch::RecentFiles) {
+            // Split look (as Windows 7 jump lists): the name launches, the
+            // part after the line lists recent files.
+            content.append(
+                &gtk::Separator::builder()
+                    .orientation(gtk::Orientation::Vertical)
+                    .css_classes(["uti-row-split"])
+                    .build(),
+            );
+        }
         // A marker, not a button: hovering or clicking the row opens it.
         content.append(
             &gtk::Image::builder()
-                .icon_name(match branch {
-                    Branch::Folder => "go-next-symbolic",
-                    Branch::RecentFiles => "document-open-recent-symbolic",
-                })
+                .icon_name("go-next-symbolic")
                 .valign(gtk::Align::Center)
                 .css_classes(["dim-label", "uti-row-button"])
                 .build(),
