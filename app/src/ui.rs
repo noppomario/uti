@@ -100,6 +100,14 @@ pub fn map_key(key: gdk::Key, state: gdk::ModifierType) -> Option<Key> {
     })
 }
 
+/// What opens beside a row.
+#[derive(Debug, Clone, Copy)]
+pub enum Branch {
+    Folder,
+    /// A command's recent files.
+    RecentFiles,
+}
+
 /// One row of a list.
 pub struct RowSpec<'a> {
     /// Visible index, passed to `on_more`.
@@ -110,8 +118,8 @@ pub struct RowSpec<'a> {
     pub icon: Option<gio::Icon>,
     pub text: &'a str,
     pub tooltip: &'a str,
-    /// The row has children that open beside it (shows a chevron).
-    pub branch: bool,
+    /// Marker for children that open beside the row.
+    pub branch: Option<Branch>,
     /// The row has a context menu, also opened by its "more" button.
     pub more: bool,
 }
@@ -168,11 +176,14 @@ pub fn build_row(
     }
     content.append(&title);
 
-    if spec.branch {
+    if let Some(branch) = spec.branch {
         // A marker, not a button: hovering or clicking the row opens it.
         content.append(
             &gtk::Image::builder()
-                .icon_name("go-next-symbolic")
+                .icon_name(match branch {
+                    Branch::Folder => "go-next-symbolic",
+                    Branch::RecentFiles => "document-open-recent-symbolic",
+                })
                 .valign(gtk::Align::Center)
                 .css_classes(["dim-label", "uti-row-button"])
                 .build(),

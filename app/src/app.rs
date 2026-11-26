@@ -1223,7 +1223,7 @@ impl App {
                 icon: None,
                 text,
                 tooltip,
-                branch: false,
+                branch: None,
                 more: true,
             };
             let tx = self.tx.clone();
@@ -1300,7 +1300,12 @@ impl App {
                 icon: Some(self.entry_icon(entry)),
                 text: &text,
                 tooltip: &tooltip,
-                branch: row.branch,
+                // Folders open their items; launchable rows their recent files.
+                branch: row.branch.then_some(if row.activates {
+                    ui::Branch::RecentFiles
+                } else {
+                    ui::Branch::Folder
+                }),
                 more: false,
             };
             list.append(&ui::build_row(&spec, |_, _| {}));
