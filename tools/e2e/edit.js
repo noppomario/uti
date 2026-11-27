@@ -76,7 +76,7 @@ snapshot('edit-menu');
 check(pick('New'), 'New opens its submenu');
 labels = state().menuItems.map(i => i.label);
 check(labels.includes('Folder…') && labels.includes('Separator'), `New lists the kinds: ${labels.join(', ')}`);
-check(!state().menuItems.find(i => i.label === 'Special Item…')?.sensitive, 'Special Item… waits for the palette');
+check(state().menuItems.find(i => i.label === 'Special Item…')?.sensitive, 'Special Item… is offered');
 snapshot('edit-new');
 pick('Separator');
 check(items()[4].type === 'separator' && items()[5].name === 'Settings', 'a separator is saved before Settings');
