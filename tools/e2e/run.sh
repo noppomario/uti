@@ -42,9 +42,10 @@ status=0
 for scenario in "${scenarios[@]}"; do
   name="$(basename "$scenario" .js)"
   echo "== $name"
-  # A fresh app and launcher.json per scenario: no tab, pin, search or edit
-  # carries over.
+  # A fresh app, launcher.json and snippets.json per scenario: no tab, pin,
+  # search or edit carries over.
   sed "s|@DATA@|$work/data|g" "$here/fixtures/launcher.json" >"$work/config/uti/launcher.json"
+  cp "$here/fixtures/snippets.json" "$work/config/uti/"
   WAYLAND_DISPLAY=$display GDK_BACKEND=wayland GTK_A11Y=none UTI_DEV_SANDBOX=1 UTI_DEBUG_KEYS=1 \
     UTI_DRY_POWER=1 UTI_DEBUG_SNAPSHOT="$work/last.png" XDG_CONFIG_HOME="$work/config" \
     XDG_DATA_HOME="$work/data" "$root/target/debug/uti" --minimized >"$work/$name.log" 2>&1 &

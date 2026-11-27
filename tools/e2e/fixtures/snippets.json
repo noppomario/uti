@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "id": "s1", "value": "Alpha" },
+    { "id": "s2", "value": "Beta" },
+    { "id": "s3", "value": "Gamma" },
+    { "id": "s4", "value": "Delta" }
+  ]
+}
