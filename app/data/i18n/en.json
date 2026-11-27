@@ -81,6 +81,45 @@
     "openConfig": {
       "label": "Edit launcher.json",
       "description": "Open launcher configuration file in default editor"
+    },
+    "editor": {
+      "hint": "Right-click an item in the launcher to edit it, or press F2",
+      "invalid": "launcher.json has errors, so items cannot be edited",
+      "editFolder": "Edit Folder",
+      "editCommand": "Edit Command",
+      "editApp": "Edit App",
+      "editApps": "Edit Applications Menu",
+      "editPower": "Edit Power Item",
+      "newFolder": "New Folder",
+      "newCommand": "New Command",
+      "name": "Name",
+      "nameOptional": "Name (optional)",
+      "command": "Command",
+      "args": "Arguments",
+      "icon": "Icon name or path (optional)",
+      "defaults": "Empty fields use the app's name and icon",
+      "app": "App",
+      "category": "Category",
+      "allCategories": "All categories",
+      "action": "Action",
+      "allActions": "All actions",
+      "history": "Recent Files",
+      "historyOptions": {
+        "none": "None",
+        "appName": "System history",
+        "xbelFile": "XBEL file",
+        "vscode": "VS Code"
+      },
+      "historyValue": {
+        "appName": "Application name",
+        "xbelFile": "XBEL file path",
+        "vscode": "state.vscdb path"
+      },
+      "save": "Save",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "deleteFolder": "Delete “{name}”?",
+      "deleteFolderBody": "The {count} items in it are deleted too."
     }
   },
   "advanced": {

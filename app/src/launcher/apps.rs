@@ -34,6 +34,21 @@ pub enum Category {
 }
 
 impl Category {
+    pub const ALL: [Category; 12] = [
+        Self::Utility,
+        Self::Education,
+        Self::Game,
+        Self::Graphics,
+        Self::Network,
+        Self::Office,
+        Self::Development,
+        Self::Science,
+        Self::Settings,
+        Self::AudioVideo,
+        Self::System,
+        Self::Other,
+    ];
+
     /// The category a desktop file's `Categories` value names, if a main one.
     fn parse(name: &str) -> Option<Self> {
         Some(match name {

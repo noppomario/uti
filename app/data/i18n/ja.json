@@ -81,6 +81,45 @@
     "openConfig": {
       "label": "launcher.json を編集",
       "description": "ランチャー設定ファイルをエディタで開く"
+    },
+    "editor": {
+      "hint": "ランチャーの項目を右クリック（または F2）で編集できます",
+      "invalid": "launcher.json にエラーがあるため、項目を編集できません",
+      "editFolder": "フォルダを編集",
+      "editCommand": "コマンドを編集",
+      "editApp": "アプリを編集",
+      "editApps": "アプリケーションメニューを編集",
+      "editPower": "電源項目を編集",
+      "newFolder": "新しいフォルダ",
+      "newCommand": "新しいコマンド",
+      "name": "名前",
+      "nameOptional": "名前（省略可）",
+      "command": "コマンド",
+      "args": "引数",
+      "icon": "アイコン名またはパス（省略可）",
+      "defaults": "空欄はアプリの名前とアイコンを使います",
+      "app": "アプリ",
+      "category": "カテゴリ",
+      "allCategories": "すべてのカテゴリ",
+      "action": "操作",
+      "allActions": "すべての操作",
+      "history": "最近のファイル",
+      "historyOptions": {
+        "none": "なし",
+        "appName": "システムの履歴",
+        "xbelFile": "XBEL ファイル",
+        "vscode": "VS Code"
+      },
+      "historyValue": {
+        "appName": "アプリケーション名",
+        "xbelFile": "XBEL ファイルのパス",
+        "vscode": "state.vscdb のパス"
+      },
+      "save": "保存",
+      "delete": "削除",
+      "cancel": "キャンセル",
+      "deleteFolder": "「{name}」を削除しますか？",
+      "deleteFolderBody": "中の {count} 項目も削除されます。"
     }
   },
   "advanced": {

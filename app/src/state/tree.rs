@@ -62,6 +62,12 @@ pub enum TreeAction {
     },
     /// Activate row `index` at `depth`.
     Activate { depth: usize, index: usize },
+    /// Open the context menu of row `index` at `depth` (0 in an empty level).
+    Menu { depth: usize, index: usize },
+    /// Edit (F2) row `index` at `depth`.
+    Edit { depth: usize, index: usize },
+    /// Delete row `index` at `depth`.
+    Delete { depth: usize, index: usize },
     /// A key the root level does not use (tab switching, search focus).
     Unhandled,
 }
@@ -156,6 +162,18 @@ impl Tree {
         }
     }
 
+    /// Selects row `index` of open level `depth` and makes it the active
+    /// level (a right-click or an edit there); deeper levels stay open.
+    pub fn select(&mut self, depth: usize, index: usize) {
+        let Some(level) = self.levels.get_mut(depth) else {
+            return;
+        };
+        if level.rows.get(index).is_some_and(|r| r.selectable) {
+            level.selected = Some(index);
+        }
+        self.active = depth;
+    }
+
     /// Opens `rows` as the children of row `index` at `depth`, replacing
     /// deeper levels; `enter` makes it the active level with its first row
     /// selected.
@@ -170,6 +188,11 @@ impl Tree {
             self.active = depth + 1;
         }
         self.levels.push(level);
+    }
+
+    /// Drops the pending hover action (a menu opened over the levels).
+    pub fn cancel_pending(&mut self) {
+        self.pending = None;
     }
 
     /// Closes every child level.
@@ -278,9 +301,13 @@ impl Tree {
                 self.close_from(k + 1);
                 self.choose(k, i)
             },
-            Key::AddSnippet | Key::Menu | Key::Delete | Key::Rename => {
-                at_root.then_some(TreeAction::Unhandled)
-            },
+            Key::Menu => Some(TreeAction::Menu {
+                depth: k,
+                index: selected.unwrap_or(0),
+            }),
+            Key::Rename => selected.map(|index| TreeAction::Edit { depth: k, index }),
+            Key::Delete => selected.map(|index| TreeAction::Delete { depth: k, index }),
+            Key::AddSnippet => at_root.then_some(TreeAction::Unhandled),
         }
     }
 
@@ -370,6 +397,33 @@ impl Tree {
 mod tests {
     use super::*;
     use TreeAction::*;
+
+    #[test]
+    fn select_keeps_deeper_levels() {
+        let mut t = Tree::new();
+        t.set_root(vec![Row::FOLDER, Row::LEAF]);
+        t.push(0, 0, vec![Row::LEAF, Row::LEAF], true);
+        t.select(0, 1);
+        assert_eq!((t.active(), t.selected(0), t.depth()), (0, Some(1), 1));
+        t.select(1, 1);
+        assert_eq!((t.active(), t.selected(1)), (1, Some(1)));
+        t.select(1, 7);
+        assert_eq!(t.selected(1), Some(1), "past the end keeps the selection");
+    }
+
+    #[test]
+    fn item_keys_act_on_the_active_level() {
+        let mut t = Tree::new();
+        t.set_root(vec![Row::FOLDER, Row::LEAF]);
+        assert_eq!(t.on_key(Key::Rename), Some(Edit { depth: 0, index: 0 }));
+        t.push(0, 0, vec![Row::LEAF, Row::LEAF], true);
+        t.on_key(Key::Down);
+        assert_eq!(t.on_key(Key::Delete), Some(Delete { depth: 1, index: 1 }));
+        assert_eq!(t.on_key(Key::Menu), Some(Menu { depth: 1, index: 1 }));
+        t.push(0, 0, Vec::new(), true);
+        assert_eq!(t.on_key(Key::Menu), Some(Menu { depth: 1, index: 0 }), "an empty level");
+        assert_eq!(t.on_key(Key::Delete), None);
+    }
 
     const S: Row = Row::SEPARATOR;
     const L: Row = Row::LEAF;

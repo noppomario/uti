@@ -4,7 +4,7 @@ use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 
 use crate::state::list::{Key, Tab};
-use crate::state::menu::MenuItem;
+use crate::state::menu::{MenuEntry, MenuItem};
 
 /// View stack page names.
 pub fn page_name(tab: Tab) -> &'static str {
@@ -38,12 +38,12 @@ pub fn key_hints(tab: Tab) -> &'static str {
     match tab {
         Tab::Clipboard => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>S</b> Add to Snippets",
         Tab::Snippets => "<b>↵</b> Copy   <b>1–9</b> Pick   <b>F2</b> Edit   <b>Del</b> Delete",
-        Tab::Launcher => "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Open",
+        Tab::Launcher => "<b>↵</b> Launch   <b>→</b> Open   <b>F2</b> Edit   <b>Del</b> Delete",
     }
 }
 
 /// Footer key hints while a Launcher level is open.
-pub const CASCADE_HINTS: &str = "<b>↵</b> Launch   <b>1–9</b> Pick   <b>→</b> Open   <b>←</b> Back";
+pub const CASCADE_HINTS: &str = "<b>↵</b> Launch   <b>→</b> Open   <b>←</b> Back   <b>F2</b> Edit";
 
 /// Empty-state page shown as the list placeholder.
 pub fn empty_page(tab: Tab) -> adw::StatusPage {
@@ -296,41 +296,109 @@ pub fn separator_row() -> gtk::ListBoxRow {
         .build()
 }
 
-/// Action group name of the row context menu actions.
-pub const ROW_ACTIONS: &str = "row";
-
-/// Label, action name (in [`ROW_ACTIONS`]), shown shortcut and whether the
-/// action takes the row index.
-fn menu_entry(item: MenuItem) -> (&'static str, &'static str, Option<&'static str>, bool) {
-    match item {
-        MenuItem::AddToSnippets => ("Add to Snippets", "add-snippet", Some("s"), true),
-        MenuItem::DeleteFromHistory => ("Delete from History", "delete", Some("Delete"), true),
-        MenuItem::Edit => ("Edit…", "edit", Some("F2"), true),
-        MenuItem::AddNew => ("New Snippet…", "new", None, false),
-        MenuItem::MoveUp => ("Move Up", "move-up", None, true),
-        MenuItem::MoveDown => ("Move Down", "move-down", None, true),
-        MenuItem::Delete => ("Delete", "delete", Some("Delete"), true),
+/// Shows or hides the "more" buttons of `list`'s rows.
+pub fn show_more_buttons(list: &gtk::ListBox, visible: bool) {
+    let mut i = 0;
+    while let Some(row) = list.row_at_index(i) {
+        let mut child = row.child().and_then(|c| c.first_child());
+        while let Some(widget) = child {
+            if widget.has_css_class("uti-more") {
+                widget.set_visible(visible);
+            }
+            child = widget.next_sibling();
+        }
+        i += 1;
     }
 }
 
-/// Context menu model for row `index`; entries are grouped in sections.
-pub fn menu_model(sections: &[Vec<MenuItem>], index: usize) -> gio::Menu {
+/// Number of shown "more" buttons in `list` (debug state).
+pub fn visible_more_buttons(list: &gtk::ListBox) -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while let Some(row) = list.row_at_index(i) {
+        let mut child = row.child().and_then(|c| c.first_child());
+        while let Some(widget) = child {
+            n += usize::from(widget.has_css_class("uti-more") && widget.is_visible());
+            child = widget.next_sibling();
+        }
+        i += 1;
+    }
+    n
+}
+
+/// Response id of the delete button of [`delete_folder_dialog`].
+pub const DELETE_RESPONSE: &str = "delete";
+
+/// Asks before deleting a folder with its items: `title`, `body` and the
+/// cancel and delete button labels.
+pub fn delete_folder_dialog(
+    title: &str,
+    body: &str,
+    cancel: &str,
+    delete: &str,
+) -> adw::AlertDialog {
+    let dialog = adw::AlertDialog::new(Some(title), Some(body));
+    dialog.add_responses(&[("cancel", cancel), (DELETE_RESPONSE, delete)]);
+    dialog.set_response_appearance(DELETE_RESPONSE, adw::ResponseAppearance::Destructive);
+    dialog.set_default_response(Some(DELETE_RESPONSE));
+    dialog.set_close_response("cancel");
+    dialog
+}
+
+/// Action group name of the row context menu actions.
+pub const ROW_ACTIONS: &str = "row";
+
+/// Label, action name (in [`ROW_ACTIONS`]) and shown shortcut.
+pub fn menu_entry(item: MenuItem) -> (&'static str, &'static str, Option<&'static str>) {
+    use MenuItem::*;
+    match item {
+        AddToSnippets => ("Add to Snippets", "add-snippet", Some("s")),
+        DeleteFromHistory => ("Delete from History", "delete", Some("Delete")),
+        Edit => ("Edit…", "edit", Some("F2")),
+        AddNew => ("New Snippet…", "new", None),
+        MoveUp => ("Move Up", "move-up", None),
+        MoveDown => ("Move Down", "move-down", None),
+        Delete => ("Delete", "delete", Some("Delete")),
+        NewFolder => ("Folder…", "new-folder", None),
+        NewSeparator => ("Separator", "new-separator", None),
+        NewCommand => ("Command…", "new-command", None),
+        NewSpecial => ("Special Item…", "new-special", None),
+        AddToLauncher => ("Add to Launcher", "add-to-launcher", None),
+        OpenFolder => ("Open Folder", "open-folder", None),
+        CopyPath => ("Copy Path", "copy-path", None),
+        RemoveFromHistory => ("Remove from History", "remove-recent", None),
+        FixConfig => ("launcher.json Has Errors…", "fix-config", None),
+    }
+}
+
+fn menu_item(item: MenuItem, target: &glib::Variant) -> gio::MenuItem {
+    let (label, action, accel) = menu_entry(item);
+    let entry = gio::MenuItem::new(Some(label), None);
+    entry.set_action_and_target_value(Some(&format!("{ROW_ACTIONS}.{action}")), Some(target));
+    if let Some(accel) = accel {
+        entry.set_attribute_value("accel", Some(&accel.to_variant()));
+    }
+    entry
+}
+
+/// Context menu model for row `index` of Launcher level `depth` (0 for
+/// the other tabs); entries are grouped in sections.
+pub fn menu_model(sections: &[Vec<MenuEntry>], depth: usize, index: usize) -> gio::Menu {
+    let target = (depth as i32, index as i32).to_variant();
     let menu = gio::Menu::new();
     for section in sections {
         let part = gio::Menu::new();
-        for item in section {
-            let (label, action, accel, indexed) = menu_entry(*item);
-            let entry = gio::MenuItem::new(Some(label), None);
-            let name = format!("{ROW_ACTIONS}.{action}");
-            if indexed {
-                entry.set_action_and_target_value(Some(&name), Some(&(index as i32).to_variant()));
-            } else {
-                entry.set_action_and_target_value(Some(&name), None);
+        for entry in section {
+            match entry {
+                MenuEntry::Item(item) => part.append_item(&menu_item(*item, &target)),
+                MenuEntry::New(items) => {
+                    let sub = gio::Menu::new();
+                    for item in items {
+                        sub.append_item(&menu_item(*item, &target));
+                    }
+                    part.append_submenu(Some("New"), &sub);
+                },
             }
-            if let Some(accel) = accel {
-                entry.set_attribute_value("accel", Some(&accel.to_variant()));
-            }
-            part.append_item(&entry);
         }
         menu.append_section(None, &part);
     }

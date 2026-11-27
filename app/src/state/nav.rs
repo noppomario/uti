@@ -49,6 +49,19 @@ pub enum Effect {
         depth: usize,
         index: usize,
     },
+    /// Open the context menu of a Launcher row.
+    TreeMenu {
+        depth: usize,
+        index: usize,
+    },
+    TreeEdit {
+        depth: usize,
+        index: usize,
+    },
+    TreeDelete {
+        depth: usize,
+        index: usize,
+    },
     /// The Launcher levels or their selections changed.
     TreeChanged,
 }
@@ -87,6 +100,9 @@ impl From<TreeAction> for Effect {
                 enter,
             },
             TreeAction::Activate { depth, index } => Effect::TreeActivate { depth, index },
+            TreeAction::Menu { depth, index } => Effect::TreeMenu { depth, index },
+            TreeAction::Edit { depth, index } => Effect::TreeEdit { depth, index },
+            TreeAction::Delete { depth, index } => Effect::TreeDelete { depth, index },
             TreeAction::Unhandled => Effect::TreeChanged,
         }
     }
@@ -145,9 +161,16 @@ impl Nav {
         }
     }
 
-    /// The menu asked for by [`Effect::OpenMenu`] is shown.
+    /// The menu asked for by [`Effect::OpenMenu`] is shown. Pointer moves
+    /// over the Launcher levels no longer change them (ADR-036).
     pub fn menu_opened(&mut self) {
         self.focus = Focus::Menu;
+        self.tree.cancel_pending();
+    }
+
+    /// The Launcher tree for pointer input; `None` while a menu is open.
+    pub fn pointer_tree(&mut self) -> Option<&mut Tree> {
+        (self.focus != Focus::Menu).then_some(&mut self.tree)
     }
 
     /// The context menu closed; focus returns to the list.
@@ -334,9 +357,15 @@ mod tests {
         assert_eq!(n.on_key(Key::Menu), Some(OpenMenu(0)));
 
         n.select_tab(Tab::Launcher);
-        for key in [Key::AddSnippet, Key::Delete, Key::Rename, Key::Menu] {
-            assert_eq!(n.on_key(key), None);
-        }
+        n.set_launcher_rows(vec![Row::LEAF, Row::LEAF]);
+        assert_eq!(n.on_key(Key::AddSnippet), None);
+        assert_eq!(n.on_key(Key::Delete), Some(TreeDelete { depth: 0, index: 0 }));
+        assert_eq!(n.on_key(Key::Rename), Some(TreeEdit { depth: 0, index: 0 }));
+        assert_eq!(n.on_key(Key::Menu), Some(TreeMenu { depth: 0, index: 0 }));
+        n.menu_opened();
+        assert!(n.pointer_tree().is_none(), "the menu freezes the levels");
+        n.menu_closed();
+        assert!(n.pointer_tree().is_some());
     }
 
     #[test]

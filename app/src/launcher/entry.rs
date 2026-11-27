@@ -4,9 +4,11 @@
 use std::collections::HashSet;
 
 use super::apps::{self, AppMeta, Category};
+use super::edit::{self, Place};
 use super::power::PowerAction;
 use super::recent_files::{self, RecentFile};
-use super::{CommandItem, LauncherNode, NodeKind};
+use super::{CommandItem, HistorySource, LauncherNode, NodeKind};
+use crate::state::menu::LauncherRow;
 use crate::state::tree::Row;
 
 /// Where rows come from: the tree, installed apps and the app names that
@@ -57,6 +59,15 @@ pub fn node_at<'a>(nodes: &'a [LauncherNode], path: &[usize]) -> Option<&'a Laun
     Some(node)
 }
 
+/// `node` has a row: not [`NodeKind::Raw`], and for an `app` node, its app
+/// is in `apps`.
+pub fn node_shown(apps: &[AppMeta], node: &LauncherNode) -> bool {
+    match &node.kind {
+        NodeKind::App { desktop_id, .. } => apps.iter().any(|a| a.id == *desktop_id),
+        kind => kind.is_known(),
+    }
+}
+
 /// The command at `path`.
 pub fn command_at<'a>(nodes: &'a [LauncherNode], path: &[usize]) -> Option<&'a CommandItem> {
     match &node_at(nodes, path)?.kind {
@@ -74,7 +85,7 @@ impl Sources<'_> {
     /// The installed app an `app` node at `path` names.
     pub fn app_at(&self, path: &[usize]) -> Option<usize> {
         match &node_at(self.nodes, path)?.kind {
-            NodeKind::App { desktop_id } => self.app_index(desktop_id),
+            NodeKind::App { desktop_id, .. } => self.app_index(desktop_id),
             _ => None,
         }
     }
@@ -101,16 +112,16 @@ impl Sources<'_> {
         }
     }
 
+    /// The node at `path` has a row: not [`NodeKind::Raw`], and for an
+    /// `app` node, its app is installed.
+    pub fn shown(&self, path: &[usize]) -> bool {
+        node_at(self.nodes, path).is_some_and(|n| node_shown(self.apps, n))
+    }
+
     /// Rows for the nodes at `paths`; `app` nodes of missing apps are left
     /// out.
     fn level(&self, paths: impl Iterator<Item = Vec<usize>>) -> Vec<Entry> {
-        paths
-            .filter(|path| match node_at(self.nodes, path).map(|n| &n.kind) {
-                Some(NodeKind::App { .. }) => self.app_at(path).is_some(),
-                node => node.is_some(),
-            })
-            .map(Entry::Node)
-            .collect()
+        paths.filter(|path| self.shown(path)).map(Entry::Node).collect()
     }
 
     fn categories(&self) -> Vec<Entry> {
@@ -199,7 +210,7 @@ impl Sources<'_> {
                 Some(NodeKind::App { .. }) => {
                     self.app_at(path).map_or(Row::SEPARATOR, |a| self.app_row(a))
                 },
-                Some(NodeKind::Separator | NodeKind::Unknown) | None => Row::SEPARATOR,
+                Some(NodeKind::Separator | NodeKind::Raw(_)) | None => Row::SEPARATOR,
             },
             Entry::Category(_) => Row::FOLDER,
             Entry::App(app) => self.app_row(*app),
@@ -219,8 +230,11 @@ impl Sources<'_> {
             NodeKind::Power { name, action } => {
                 name.as_deref().unwrap_or_else(|| action.map_or("Power", PowerAction::label))
             },
+            NodeKind::App {
+                name: Some(name), ..
+            } if self.app_at(path).is_some() => name,
             NodeKind::App { .. } => &self.apps[self.app_at(path)?].name,
-            NodeKind::Separator | NodeKind::Unknown => return None,
+            NodeKind::Separator | NodeKind::Raw(_) => return None,
         })
     }
 
@@ -251,12 +265,12 @@ impl Sources<'_> {
                         name: &c.name,
                         description: &c.command,
                     }),
-                    NodeKind::App { .. } => {
+                    NodeKind::App { name, .. } => {
                         if let Some(a) = src.app_at(path) {
                             in_tree.insert(a);
                             out.push(Searchable {
                                 entry: Entry::Node(path.clone()),
-                                name: &src.apps[a].name,
+                                name: name.as_deref().unwrap_or(&src.apps[a].name),
                                 description: &src.apps[a].description,
                             });
                         }
@@ -277,6 +291,105 @@ impl Sources<'_> {
             },
         ));
         out
+    }
+}
+
+impl Sources<'_> {
+    /// What row `index` of `level` is, for its menu (an index past the end
+    /// is the empty space below the rows).
+    pub fn menu_row(&self, level: &[Entry], index: usize, searching: bool) -> LauncherRow {
+        match level.get(index) {
+            None => LauncherRow::Empty,
+            Some(Entry::Node(path)) => LauncherRow::Node {
+                separator: matches!(
+                    node_at(self.nodes, path).map(|n| &n.kind),
+                    Some(NodeKind::Separator)
+                ),
+                index,
+                len: level.len(),
+                searching,
+            },
+            Some(Entry::Recent { opener, .. }) => LauncherRow::Recent {
+                removable: self.system_history(opener),
+            },
+            Some(_) => LauncherRow::Generated,
+        }
+    }
+
+    /// Recent files of `opener` come from the system `recently-used.xbel`.
+    fn system_history(&self, opener: &Opener) -> bool {
+        match opener {
+            Opener::App(_) => true,
+            Opener::Command(path) => matches!(
+                command_at(self.nodes, path).and_then(|c| c.history_source.as_ref()),
+                Some(HistorySource::RecentlyUsed { path: None, .. })
+            ),
+        }
+    }
+
+    /// Where a node created from row `at` of a level goes: before that
+    /// row's node, or at the end of the level for `None` (empty space, an
+    /// empty folder). `owners` are the rows the open levels belong to,
+    /// from the root down to this level; `None` when the level is not a
+    /// folder of the tree.
+    pub fn new_place(&self, owners: &[&Entry], at: Option<&Entry>) -> Option<Place> {
+        if let Some(Entry::Node(path)) = at {
+            return edit::place_of(self.nodes, &node_at(self.nodes, path)?.id);
+        }
+        let Some(owner) = owners.last() else {
+            return Some(Place {
+                parent: None,
+                index: self.nodes.len(),
+            });
+        };
+        let Entry::Node(path) = owner else {
+            return None;
+        };
+        let node = node_at(self.nodes, path)?;
+        let NodeKind::Folder { children, .. } = &node.kind else {
+            return None;
+        };
+        Some(Place {
+            parent: Some(node.id.clone()),
+            index: children.len(),
+        })
+    }
+
+    /// Where "Add to Launcher" puts a generated row of the level `owners`
+    /// lead to: before the nearest tree node it was generated by, or at the
+    /// end of the root (search results).
+    pub fn add_place(&self, owners: &[&Entry]) -> Place {
+        owners
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                Entry::Node(path) => edit::place_of(self.nodes, &node_at(self.nodes, path)?.id),
+                _ => None,
+            })
+            .unwrap_or(Place {
+                parent: None,
+                index: self.nodes.len(),
+            })
+    }
+
+    /// The node "Add to Launcher" creates for a generated row.
+    pub fn node_for(&self, entry: &Entry) -> Option<NodeKind> {
+        Some(match entry {
+            Entry::Category(c) => NodeKind::Apps {
+                name: None,
+                category: Some(*c),
+            },
+            Entry::App(a) => NodeKind::App {
+                desktop_id: self.apps.get(*a)?.id.clone(),
+                name: None,
+                icon: None,
+            },
+            Entry::Power(p) => NodeKind::Power {
+                name: None,
+                action: Some(*p),
+            },
+            Entry::Node(_) | Entry::Recent { .. } => return None,
+        })
     }
 }
 
@@ -342,6 +455,99 @@ mod tests {
             apps: &apps,
             recent_apps: &recent,
         })
+    }
+
+    #[test]
+    fn menu_rows_by_entry() {
+        let n = tree();
+        with(&n, |s| {
+            let root = s.root_entries();
+            assert_eq!(
+                s.menu_row(&root, 2, false),
+                LauncherRow::Node {
+                    separator: true,
+                    index: 2,
+                    len: 3,
+                    searching: false
+                }
+            );
+            assert_eq!(s.menu_row(&root, 3, false), LauncherRow::Empty);
+            assert_eq!(s.menu_row(&[Entry::App(0)], 0, true), LauncherRow::Generated);
+            let recent = |opener| Entry::Recent {
+                opener,
+                file: RecentFile {
+                    name: "a".into(),
+                    path: "/a".into(),
+                    timestamp: String::new(),
+                },
+            };
+            assert_eq!(
+                s.menu_row(&[recent(Opener::App(1))], 0, false),
+                LauncherRow::Recent { removable: true }
+            );
+            assert_eq!(
+                s.menu_row(&[recent(Opener::Command(vec![0]))], 0, false),
+                LauncherRow::Recent { removable: false },
+                "VS Code history is not the system history"
+            );
+        });
+    }
+
+    #[test]
+    fn new_nodes_go_before_the_row_or_to_the_end_of_the_level() {
+        let n = tree();
+        let id = |path: &[usize]| node_at(&n, path).unwrap().id.clone();
+        with(&n, |s| {
+            let dev = Entry::Node(vec![1]);
+            let place = |parent: Option<String>, index| Some(Place { parent, index });
+            assert_eq!(s.new_place(&[], Some(&Entry::Node(vec![2]))), place(None, 2));
+            assert_eq!(s.new_place(&[], None), place(None, 3));
+            assert_eq!(
+                s.new_place(&[&dev], Some(&Entry::Node(vec![1, 1]))),
+                place(Some(id(&[1])), 1)
+            );
+            assert_eq!(s.new_place(&[&dev], None), place(Some(id(&[1])), 3));
+            let category = Entry::Category(Category::Game);
+            assert_eq!(s.new_place(&[&Entry::Node(vec![0]), &category], None), None);
+        });
+    }
+
+    #[test]
+    fn added_rows_go_before_the_node_that_generated_them() {
+        let n = tree();
+        with(&n, |s| {
+            let category = Entry::Category(Category::Game);
+            let tools = Entry::Node(vec![1, 2]);
+            let place = s.add_place(&[&Entry::Node(vec![1]), &tools, &category]);
+            assert_eq!(place.parent, Some(node_at(&n, &[1]).unwrap().id.clone()));
+            assert_eq!(place.index, 2);
+            assert_eq!(
+                s.add_place(&[]),
+                Place {
+                    parent: None,
+                    index: 3
+                }
+            );
+        });
+    }
+
+    #[test]
+    fn generated_rows_become_nodes() {
+        let n = tree();
+        with(&n, |s| {
+            assert!(matches!(
+                s.node_for(&Entry::App(1)),
+                Some(NodeKind::App { desktop_id, name: None, icon: None }) if desktop_id == "editor.desktop"
+            ));
+            assert_eq!(
+                s.node_for(&Entry::Power(PowerAction::Lock)),
+                Some(NodeKind::Power {
+                    name: None,
+                    action: Some(PowerAction::Lock)
+                })
+            );
+            assert!(s.node_for(&Entry::Node(vec![0])).is_none());
+        });
     }
 
     #[test]

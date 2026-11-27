@@ -13,10 +13,15 @@ use gtk::gio;
 use crate::autostart;
 use crate::config::AppConfig;
 use crate::i18n::{tr, LANGUAGES};
-use crate::launcher::get_launcher_config_path;
+use crate::launcher::apps::{AppMeta, Category};
+use crate::launcher::form::{self, History};
+use crate::launcher::power::PowerAction;
+use crate::launcher::{edit, get_launcher_config_path, CommandItem, LauncherFile, NodeKind};
 use crate::snippets::{SnippetItem, SnippetsStore};
 use crate::state::scrollbar::Scrollbar;
-use crate::state::settings::{SettingsPage, SettingsTarget, SnippetTarget};
+use crate::state::settings::{
+    LauncherTarget, NewNode, SettingsPage, SettingsTarget, SnippetTarget,
+};
 
 /// `theme.size` values, in the order the settings window lists them.
 pub const SIZES: [&str; 3] = ["minimal", "normal", "wide"];
@@ -24,8 +29,8 @@ pub const SIZES: [&str; 3] = ["minimal", "normal", "wide"];
 pub const HISTORY_LIMIT: (f64, f64, f64) = (10.0, 500.0, 10.0);
 
 const GITHUB_URL: &str = "https://github.com/noppomario/uti";
-/// Tag of the snippet list page in the Snippets page's navigation view.
-const SNIPPET_LIST_TAG: &str = "list";
+/// Tag of the list page in the Snippets and Launcher navigation views.
+const LIST_TAG: &str = "list";
 
 /// A settings change the main window applies.
 #[derive(Debug)]
@@ -47,6 +52,12 @@ pub enum Event {
     SnippetDelete(String),
     /// Move a snippet by this many positions.
     SnippetMove(String, isize),
+    /// Save a launcher item from the item editor.
+    LauncherSave {
+        target: LauncherTarget,
+        kind: NodeKind,
+    },
+    LauncherDelete(String),
 }
 
 type OnEvent = Rc<dyn Fn(Event)>;
@@ -74,6 +85,9 @@ pub struct SettingsUi {
     stack: gtk::Stack,
     snippets_nav: adw::NavigationView,
     snippets_list: gtk::ListBox,
+    launcher_nav: adw::NavigationView,
+    /// Says why launcher.json cannot be edited.
+    launcher_invalid: adw::ActionRow,
 }
 
 impl SettingsUi {
@@ -85,11 +99,21 @@ impl SettingsUi {
             .unwrap_or_default()
     }
 
-    /// Shows `target`'s page, and its snippet in the editor.
-    pub fn open(&self, target: &SettingsTarget, store: &SnippetsStore) {
+    /// Shows `target`'s page, and its snippet or launcher item in the
+    /// editor.
+    pub fn open(
+        &self,
+        target: &SettingsTarget,
+        store: &SnippetsStore,
+        launcher: &LauncherFile,
+        apps: &[AppMeta],
+    ) {
         let index = SettingsPage::ALL.iter().position(|p| *p == target.page).unwrap_or(0);
         if let Some(row) = self.sidebar.row_at_index(index as i32) {
             self.sidebar.select_row(Some(&row));
+        }
+        if let Some(t) = &target.launcher {
+            self.open_launcher_editor(t, launcher, apps);
         }
         let item = match &target.snippet {
             None => return,
@@ -100,6 +124,68 @@ impl SettingsUi {
             },
         };
         push_editor(&self.snippets_nav, &self.lang, &self.on_event, item);
+    }
+
+    /// Title of the open launcher item editor, if the window shows one.
+    pub fn editor_title(&self) -> Option<String> {
+        let page = self.launcher_nav.visible_page()?;
+        (self.window.is_visible()
+            && self.page() == SettingsPage::Launcher
+            && page.tag().as_deref() != Some(LIST_TAG))
+        .then(|| page.title().to_string())
+    }
+
+    /// Shows whether launcher.json can be edited.
+    pub fn set_launcher(&self, launcher: &LauncherFile) {
+        self.launcher_invalid.set_visible(!launcher.editable());
+        self.launcher_invalid
+            .set_subtitle(launcher.error.as_deref().unwrap_or_default());
+    }
+
+    fn open_launcher_editor(
+        &self,
+        target: &LauncherTarget,
+        launcher: &LauncherFile,
+        apps: &[AppMeta],
+    ) {
+        if !launcher.editable() {
+            self.launcher_nav.pop_to_tag(LIST_TAG);
+            return;
+        }
+        let (kind, children) = match target {
+            LauncherTarget::Edit(id) => match edit::find(&launcher.nodes, id) {
+                Some(node) => (node.kind.clone(), edit::descendants(&launcher.nodes, id)),
+                None => return,
+            },
+            LauncherTarget::New(NewNode::Folder, _) => (
+                NodeKind::Folder {
+                    name: String::new(),
+                    children: Vec::new(),
+                },
+                0,
+            ),
+            LauncherTarget::New(NewNode::Command, _) => (
+                NodeKind::Command(CommandItem {
+                    name: String::new(),
+                    command: String::new(),
+                    args: Vec::new(),
+                    history_source: None,
+                    icon: None,
+                }),
+                0,
+            ),
+        };
+        let app = match &kind {
+            NodeKind::App { desktop_id, .. } => apps.iter().find(|a| a.id == *desktop_id),
+            _ => None,
+        };
+        let editor = LauncherEditor {
+            nav: &self.launcher_nav,
+            window: &self.window,
+            lang: &self.lang,
+            on_event: &self.on_event,
+        };
+        editor.push(target, kind, children, app);
     }
 
     /// Re-renders the snippet list.
@@ -246,7 +332,7 @@ fn push_editor(
     editor.connect_shown(move |_| {
         view.grab_focus();
     });
-    nav.pop_to_tag(SNIPPET_LIST_TAG);
+    nav.pop_to_tag(LIST_TAG);
     nav.push(&editor);
 }
 
@@ -267,6 +353,7 @@ pub fn populate(
     window: &adw::ApplicationWindow,
     config: &AppConfig,
     snippets: &SnippetsStore,
+    launcher: &LauncherFile,
     page: SettingsPage,
     on_event: OnEvent,
 ) -> SettingsUi {
@@ -411,20 +498,46 @@ pub fn populate(
     snippets_nav.add(
         &adw::NavigationPage::builder()
             .title(t("sections.snippets"))
-            .tag(SNIPPET_LIST_TAG)
+            .tag(LIST_TAG)
             .child(&page_view(&list_prefs))
             .build(),
     );
     stack.add_named(&snippets_nav, Some(SettingsPage::Snippets.id()));
 
-    let launcher = adw::PreferencesGroup::new();
-    launcher.add(&link_row(
+    // Launcher: how to edit -> item editor
+    let launcher_group = adw::PreferencesGroup::new();
+    let launcher_invalid = adw::ActionRow::builder()
+        .title(t("launcher.editor.invalid"))
+        .css_classes(["error"])
+        .visible(false)
+        .build();
+    launcher_invalid.add_prefix(&gtk::Image::from_icon_name("dialog-warning-symbolic"));
+    launcher_group.add(&launcher_invalid);
+    launcher_group.add(
+        &adw::ActionRow::builder()
+            .title(t("launcher.editor.hint"))
+            .css_classes(["dim-label"])
+            .build(),
+    );
+    let launcher_advanced = group(&t("sections.advanced"));
+    launcher_advanced.add(&link_row(
         &t("launcher.openConfig.label"),
         Some(&t("launcher.openConfig.description")),
         "document-edit-symbolic",
-        open_json(window, get_launcher_config_path(), "{\n  \"commands\": []\n}\n"),
+        open_json(window, get_launcher_config_path(), "{\n  \"items\": []\n}\n"),
     ));
-    add_page(SettingsPage::Launcher, &[launcher]);
+    let launcher_prefs = adw::PreferencesPage::new();
+    launcher_prefs.add(&launcher_group);
+    launcher_prefs.add(&launcher_advanced);
+    let launcher_nav = adw::NavigationView::new();
+    launcher_nav.add(
+        &adw::NavigationPage::builder()
+            .title(t("sections.launcher"))
+            .tag(LIST_TAG)
+            .child(&page_view(&launcher_prefs))
+            .build(),
+    );
+    stack.add_named(&launcher_nav, Some(SettingsPage::Launcher.id()));
 
     // Advanced
     let advanced = group(&t("sections.advanced"));
@@ -523,16 +636,299 @@ pub fn populate(
         stack,
         snippets_nav,
         snippets_list,
+        launcher_nav,
+        launcher_invalid,
     };
     ui.set_snippets(snippets);
+    ui.set_launcher(launcher);
     ui.open(
         &SettingsTarget {
             page,
-            snippet: None,
+            ..Default::default()
         },
         snippets,
+        launcher,
+        &[],
     );
     ui
+}
+
+/// Builds and pushes the launcher item editor (one page per item kind).
+struct LauncherEditor<'a> {
+    nav: &'a adw::NavigationView,
+    window: &'a adw::ApplicationWindow,
+    lang: &'a str,
+    on_event: &'a OnEvent,
+}
+
+/// Reads the editor's fields into a node kind; `None` while invalid.
+type ReadForm = Rc<dyn Fn() -> Option<NodeKind>>;
+
+impl LauncherEditor<'_> {
+    fn t(&self, key: &str) -> String {
+        tr(self.lang, &format!("launcher.editor.{key}"))
+    }
+
+    fn entry(&self, key: &str, text: &str) -> adw::EntryRow {
+        adw::EntryRow::builder().title(self.t(key)).text(text).build()
+    }
+
+    fn combo(&self, key: &str, labels: &[String], selected: u32) -> adw::ComboRow {
+        combo(&self.t(key), labels, selected)
+    }
+
+    /// Opens the editor of `kind` for `target`; `children` is the number
+    /// of items in a folder, `app` the app of an `app` node.
+    fn push(
+        &self,
+        target: &LauncherTarget,
+        kind: NodeKind,
+        children: usize,
+        app: Option<&AppMeta>,
+    ) {
+        let group = adw::PreferencesGroup::new();
+        let mut entries: Vec<adw::EntryRow> = Vec::new();
+        let mut combos: Vec<adw::ComboRow> = Vec::new();
+        let (title, read): (&str, ReadForm) = match kind {
+            NodeKind::Folder { name, .. } => {
+                let name = self.entry("name", &name);
+                entries.push(name.clone());
+                let read: ReadForm = Rc::new(move || {
+                    Some(NodeKind::Folder {
+                        name: form::optional(&name.text())?,
+                        children: Vec::new(),
+                    })
+                });
+                let title = if matches!(target, LauncherTarget::New(..)) {
+                    "newFolder"
+                } else {
+                    "editFolder"
+                };
+                (title, read)
+            },
+            NodeKind::Command(c) => {
+                let name = self.entry("name", &c.name);
+                let command = self.entry("command", &c.command);
+                let args = self.entry("args", &form::format_args(&c.args));
+                let icon = self.entry("icon", c.icon.as_deref().unwrap_or_default());
+                let (choice, value) = History::of(c.history_source.as_ref());
+                let labels: Vec<String> = ["none", "appName", "xbelFile", "vscode"]
+                    .iter()
+                    .map(|k| self.t(&format!("historyOptions.{k}")))
+                    .collect();
+                let history = self.combo(
+                    "history",
+                    &labels,
+                    History::ALL.iter().position(|h| *h == choice).unwrap_or(0) as u32,
+                );
+                let history_value = self.entry("historyValue.appName", &value);
+                let value_keys = ["", "appName", "xbelFile", "vscode"];
+                let (l, hv) = (self.lang.to_owned(), history_value.clone());
+                let show_value = move |selected: u32| {
+                    let key = value_keys.get(selected as usize).copied().unwrap_or_default();
+                    hv.set_visible(!key.is_empty());
+                    if !key.is_empty() {
+                        hv.set_title(&tr(&l, &format!("launcher.editor.historyValue.{key}")));
+                    }
+                };
+                show_value(history.selected());
+                history.connect_selected_notify(move |row| show_value(row.selected()));
+                entries.extend([
+                    name.clone(),
+                    command.clone(),
+                    args.clone(),
+                    icon.clone(),
+                    history_value.clone(),
+                ]);
+                combos.push(history.clone());
+                let original = c.history_source.clone();
+                let read: ReadForm = Rc::new(move || {
+                    let choice = *History::ALL.get(history.selected() as usize)?;
+                    let text = history_value.text();
+                    // Unchanged: keep the source as written (it may set
+                    // fields the editor does not show).
+                    let history_source =
+                        if History::of(original.as_ref()) == (choice, text.to_string()) {
+                            original.clone()
+                        } else {
+                            choice.source(&text).ok()?
+                        };
+                    Some(NodeKind::Command(CommandItem {
+                        name: form::optional(&name.text())?,
+                        command: form::optional(&command.text())?,
+                        args: form::parse_args(&args.text())?,
+                        history_source,
+                        icon: form::optional(&icon.text()),
+                    }))
+                });
+                ("editCommand", read)
+            },
+            NodeKind::App {
+                desktop_id,
+                name,
+                icon,
+            } => {
+                let app_row = adw::ActionRow::builder()
+                    .title(self.t("app"))
+                    .subtitle(
+                        app.map_or(desktop_id.clone(), |a| format!("{} ({desktop_id})", a.name)),
+                    )
+                    .build();
+                group.add(&app_row);
+                group.set_description(Some(&self.t("defaults")));
+                let name = self.entry("nameOptional", name.as_deref().unwrap_or_default());
+                let icon = self.entry("icon", icon.as_deref().unwrap_or_default());
+                entries.extend([name.clone(), icon.clone()]);
+                let read: ReadForm = Rc::new(move || {
+                    Some(NodeKind::App {
+                        desktop_id: desktop_id.clone(),
+                        name: form::optional(&name.text()),
+                        icon: form::optional(&icon.text()),
+                    })
+                });
+                ("editApp", read)
+            },
+            NodeKind::Apps { name, category } => {
+                let name = self.entry("nameOptional", name.as_deref().unwrap_or_default());
+                let labels: Vec<String> = std::iter::once(self.t("allCategories"))
+                    .chain(Category::ALL.iter().map(|c| c.label().to_owned()))
+                    .collect();
+                let selected = category.and_then(|c| Category::ALL.iter().position(|x| *x == c));
+                let category =
+                    self.combo("category", &labels, selected.map_or(0, |i| i as u32 + 1));
+                entries.push(name.clone());
+                combos.push(category.clone());
+                let read: ReadForm = Rc::new(move || {
+                    Some(NodeKind::Apps {
+                        name: form::optional(&name.text()),
+                        category: (category.selected() as usize)
+                            .checked_sub(1)
+                            .and_then(|i| Category::ALL.get(i).copied()),
+                    })
+                });
+                ("editApps", read)
+            },
+            NodeKind::Power { name, action } => {
+                let name = self.entry("nameOptional", name.as_deref().unwrap_or_default());
+                let labels: Vec<String> = std::iter::once(self.t("allActions"))
+                    .chain(PowerAction::ALL.iter().map(|a| a.label().to_owned()))
+                    .collect();
+                let selected = action.and_then(|a| PowerAction::ALL.iter().position(|x| *x == a));
+                let action = self.combo("action", &labels, selected.map_or(0, |i| i as u32 + 1));
+                entries.push(name.clone());
+                combos.push(action.clone());
+                let read: ReadForm = Rc::new(move || {
+                    Some(NodeKind::Power {
+                        name: form::optional(&name.text()),
+                        action: (action.selected() as usize)
+                            .checked_sub(1)
+                            .and_then(|i| PowerAction::ALL.get(i).copied()),
+                    })
+                });
+                ("editPower", read)
+            },
+            NodeKind::Separator | NodeKind::Raw(_) => return,
+        };
+        let title = if matches!(target, LauncherTarget::New(NewNode::Command, _)) {
+            "newCommand"
+        } else {
+            title
+        };
+        for e in &entries {
+            group.add(e);
+        }
+        for c in &combos {
+            group.add(c);
+        }
+        let page = adw::PreferencesPage::new();
+        page.add(&group);
+
+        let save = gtk::Button::builder()
+            .label(self.t("save"))
+            .css_classes(["suggested-action"])
+            .sensitive(read().is_some())
+            .build();
+        let check = {
+            let (save, read) = (save.clone(), read.clone());
+            move || save.set_sensitive(read().is_some())
+        };
+        let do_save = {
+            let (e, n, read, target) =
+                (self.on_event.clone(), self.nav.clone(), read.clone(), target.clone());
+            move || {
+                if let Some(kind) = read() {
+                    e(Event::LauncherSave {
+                        target: target.clone(),
+                        kind,
+                    });
+                    n.pop();
+                }
+            }
+        };
+        for entry in &entries {
+            let check = check.clone();
+            entry.connect_changed(move |_| check());
+            let do_save = do_save.clone();
+            entry.connect_entry_activated(move |_| do_save());
+        }
+        for c in &combos {
+            let check = check.clone();
+            c.connect_selected_notify(move |_| check());
+        }
+        save.connect_clicked(move |_| do_save());
+
+        if let LauncherTarget::Edit(id) = target {
+            let delete = gtk::Button::builder()
+                .label(self.t("delete"))
+                .halign(gtk::Align::Start)
+                .css_classes(["destructive-action"])
+                .build();
+            let (e, n, w, id) =
+                (self.on_event.clone(), self.nav.clone(), self.window.clone(), id.clone());
+            let dialog = (children > 0).then(|| {
+                let name = entries.first().map(|e| e.text().to_string()).unwrap_or_default();
+                crate::ui::delete_folder_dialog(
+                    &self.t("deleteFolder").replace("{name}", &name),
+                    &self.t("deleteFolderBody").replace("{count}", &children.to_string()),
+                    &self.t("cancel"),
+                    &self.t("delete"),
+                )
+            });
+            delete.connect_clicked(move |_| {
+                let (e, n, id) = (e.clone(), n.clone(), id.clone());
+                let run = move || {
+                    e(Event::LauncherDelete(id.clone()));
+                    n.pop();
+                };
+                match &dialog {
+                    Some(dialog) => {
+                        dialog
+                            .connect_response(Some(crate::ui::DELETE_RESPONSE), move |_, _| run());
+                        dialog.present(Some(&w));
+                    },
+                    None => run(),
+                }
+            });
+            let delete_group = adw::PreferencesGroup::new();
+            delete_group.add(&delete);
+            page.add(&delete_group);
+        }
+
+        let header = adw::HeaderBar::new();
+        header.pack_end(&save);
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&header);
+        toolbar.set_content(Some(&page));
+        let editor = adw::NavigationPage::builder().title(self.t(title)).child(&toolbar).build();
+        let first = entries.first().cloned();
+        editor.connect_shown(move |_| {
+            if let Some(f) = &first {
+                f.grab_focus();
+            }
+        });
+        self.nav.pop_to_tag(LIST_TAG);
+        self.nav.push(&editor);
+    }
 }
 
 fn group(title: &str) -> adw::PreferencesGroup {

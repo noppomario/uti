@@ -2209,9 +2209,9 @@ interactive mock.
 - `launcher.json` `items` is a tree of nodes typed by `type`: `folder`
   {name, children}, `command` {name, command, args, historySource},
   `separator`. Every node has an optional `id`, generated at load when
-  missing (the file is not rewritten). Later types are new `NodeKind`
-  variants: `directory` {path}, `file`, `url`, `recent`, `snippets`.
-  Unknown types are skipped. Without `items`, the old `commands` array is
+  missing. Later types are new `NodeKind` variants: `directory` {path},
+  `file`, `url`, `recent`, `snippets`. Saving ids and unknown types: see
+  ADR-038. Without `items`, the old `commands` array is
   read as `command` items; with neither, the default tree is `apps`,
   `separator` and one `power` node per action.
 - Generated nodes (phase 2): `apps` lists installed apps (`should_show`)
@@ -2266,3 +2266,57 @@ levels behave like classic cascading menus; no focus juggling for levels.
 
 **Negative**: editing by drag-and-drop must ignore focus loss while a drag
 is in progress; levels can only be checked by hand (hover timing).
+
+## ADR-038
+
+### Editing the launcher from the popup
+
+**Date**: 2026-11-27
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Launcher items were edited only by hand in `launcher.json`. Orchis edits its
+launcher on the launcher itself (right-click, later drag-and-drop), and uti
+edits snippets from row menus with the editor in Settings. Until now uti
+never wrote `launcher.json`: ids were generated per load, unknown types
+dropped, and a file that failed to parse showed the default tree.
+
+### Decision
+
+- Row menus on every Launcher level (right-click, Menu key, the row's ⋮
+  button), in the snippet menu's section order: Edit (F2), New ▸ (Folder…,
+  Separator, Command…, Special Item… disabled until the palette) / Move Up,
+  Move Down / Delete (Del). Search results: Edit and Delete. Rows generated
+  by `apps` and `power`: Add to Launcher, inserted before the node that
+  generated them. Recent files: Open Folder, Copy Path, and Remove from
+  History for the system history. The space below the rows: New ▸.
+- New items go before the row (as Orchis), or at the end of an empty level.
+  Delete is immediate; a folder with items asks first. No undo.
+- Edit and New Folder…/Command… open a per-item editor in Settings >
+  Launcher (no whole-tree manager); `app` nodes may override `name` and
+  `icon`.
+- The ⋮ buttons show only while pinned (organize mode, all tabs); menus and
+  keys work either way.
+- The main window owns the tree and saves it; Settings sends events. Saving
+  is atomic, writes every id, keeps items it cannot read (unknown types,
+  invalid fields) and other top-level keys as written, and moves `commands`
+  to `items`. Edits find nodes by id; when the file changed on disk, it is
+  read again first. While it fails to parse, menus only offer to open the
+  Launcher settings.
+- The menu stays a child of the main window, opening from the window's edge
+  at the level row's height: a grabbing popup on a non-grabbing one (a
+  level) is dismissed at once, and a popover cannot point outside its
+  parent. While
+  a menu or the delete dialog is open, pointer moves do not change the
+  levels and focus loss does not close them (ADR-036).
+
+### Consequences
+
+**Positive**: items are edited where they are seen; hand-written content
+that this version does not understand survives edits.
+
+**Negative**: the file is rewritten in uti's formatting; GNOME does not
+raise an existing Settings window from the popup, so it is opened anew when
+inactive.
