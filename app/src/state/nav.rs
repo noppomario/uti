@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use super::list::{Action, Key, ListState, Tab, TabTraits};
+use super::palette::{Palette, PaletteEffect};
 use super::tree::{Row, Tree, TreeAction};
 
 /// Where keyboard focus is.
@@ -20,6 +21,8 @@ pub enum Focus {
     Pin,
     /// A row's context menu is open; it handles its own keys.
     Menu,
+    /// The special item palette, which never takes GTK focus either.
+    Palette,
 }
 
 /// What the UI must do after a key press, besides moving focus.
@@ -64,6 +67,8 @@ pub enum Effect {
     },
     /// The Launcher levels or their selections changed.
     TreeChanged,
+    /// A palette key's effect ([`Nav::palette`]).
+    Palette(PaletteEffect),
 }
 
 /// Focus and selection state of the main window.
@@ -74,6 +79,8 @@ pub struct Nav {
     lists: HashMap<Tab, ListState>,
     /// Launcher levels; the root is the Launcher tab's list.
     tree: Tree,
+    /// The special item palette, while open (Launcher tab only).
+    palette: Option<Palette>,
 }
 
 impl Default for Nav {
@@ -83,6 +90,7 @@ impl Default for Nav {
             focus: Focus::List,
             lists: Tab::ALL.iter().map(|t| (*t, ListState::default())).collect(),
             tree: Tree::new(),
+            palette: None,
         }
     }
 }
@@ -180,6 +188,35 @@ impl Nav {
         }
     }
 
+    pub fn palette(&self) -> Option<&Palette> {
+        self.palette.as_ref()
+    }
+
+    pub fn palette_mut(&mut self) -> Option<&mut Palette> {
+        self.palette.as_mut()
+    }
+
+    /// Opens the palette with `lens` rows per category on `category`; it
+    /// takes the keys.
+    pub fn open_palette(&mut self, lens: Vec<usize>, category: usize) {
+        self.palette = Some(Palette::new(lens, category));
+        self.focus = Focus::Palette;
+    }
+
+    /// The palette was clicked: it takes the keys again.
+    pub fn focus_palette(&mut self) {
+        if self.palette.is_some() && self.focus != Focus::Menu {
+            self.focus = Focus::Palette;
+        }
+    }
+
+    pub fn close_palette(&mut self) {
+        self.palette = None;
+        if self.focus == Focus::Palette {
+            self.focus = Focus::List;
+        }
+    }
+
     fn traits(tab: Tab) -> TabTraits {
         TabTraits {
             can_add_snippet: tab == Tab::Clipboard,
@@ -196,6 +233,7 @@ impl Nav {
             return None;
         }
         self.tree.close_all();
+        self.palette = None;
         self.tab = tab;
         Some(Effect::ShowTab(tab))
     }
@@ -203,9 +241,20 @@ impl Nav {
     /// GTK focus moved by mouse (e.g. a click into the search entry).
     /// Ignored while a menu is open: the window reports no moves then, so
     /// any that arrive are from before it opened.
+    /// While the palette has the keys, GTK focus stays on the list (the
+    /// palette never takes it), so moves to the list are not followed:
+    /// clicks on its rows are ([`Nav::list_clicked`]).
     pub fn focus_moved(&mut self, focus: Focus) {
-        if self.focus != Focus::Menu {
-            self.focus = focus;
+        match (self.focus, focus) {
+            (Focus::Menu, _) | (Focus::Palette, Focus::List) => {},
+            _ => self.focus = focus,
+        }
+    }
+
+    /// A row of the Launcher levels was clicked: the keys go to them.
+    pub fn list_clicked(&mut self) {
+        if self.focus == Focus::Palette {
+            self.focus = Focus::List;
         }
     }
 
@@ -219,6 +268,7 @@ impl Nav {
         let tab = self.tab;
         let action = match self.focus {
             Focus::Menu => return None,
+            Focus::Palette => return self.palette.as_mut()?.on_key(key).map(Effect::Palette),
             Focus::Pin => {
                 return match key {
                     Key::Left | Key::Down | Key::Escape => {
@@ -472,6 +522,44 @@ mod tests {
         assert_eq!(n.focus(), Focus::Search);
         n.focus_moved(Focus::Pin);
         assert_eq!(n.on_key(Key::Left), None);
+        assert_eq!(n.focus(), Focus::List);
+    }
+    #[test]
+    fn the_open_palette_takes_the_keys() {
+        let mut n = launcher(&[Row::LEAF, Row::LEAF]);
+        n.open_palette(vec![2, 3], 0);
+        assert_eq!(n.focus(), Focus::Palette);
+        assert_eq!(n.on_key(Key::Down), Some(Palette(PaletteEffect::Select(1))));
+        assert_eq!(n.on_key(Key::Right), Some(Palette(PaletteEffect::ShowCategory(1))));
+        assert_eq!(n.on_key(Key::Enter), Some(Palette(PaletteEffect::Add(0))));
+        assert_eq!(n.tree().selected(0), Some(0), "the list keeps its selection");
+        assert_eq!(n.on_key(Key::Escape), Some(Palette(PaletteEffect::Close)));
+        n.close_palette();
+        assert_eq!((n.focus(), n.palette().is_none()), (Focus::List, true));
+    }
+
+    #[test]
+    fn clicks_move_keys_between_the_list_and_the_palette() {
+        let mut n = launcher(&[Row::LEAF, Row::LEAF]);
+        n.open_palette(vec![2], 0);
+        n.focus_moved(Focus::List);
+        assert_eq!(n.focus(), Focus::Palette, "GTK focus on the list is not a click");
+        n.list_clicked();
+        assert_eq!(n.on_key(Key::Down), Some(TreeChanged));
+        n.focus_palette();
+        assert_eq!(n.on_key(Key::Down), Some(Palette(PaletteEffect::Select(1))));
+        n.menu_opened();
+        n.focus_palette();
+        assert_eq!(n.focus(), Focus::Menu);
+    }
+
+    #[test]
+    fn leaving_the_launcher_closes_the_palette() {
+        let mut n = launcher(&[Row::LEAF]);
+        n.open_palette(vec![2], 0);
+        n.select_tab(Tab::Clipboard);
+        assert!(n.palette().is_none());
+        n.focus_palette();
         assert_eq!(n.focus(), Focus::List);
     }
 }

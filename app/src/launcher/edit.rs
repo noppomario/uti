@@ -178,6 +178,49 @@ pub fn move_to(nodes: &mut Vec<LauncherNode>, id: &str, place: &Place) -> Result
     Ok(())
 }
 
+/// A place that follows edits elsewhere in the tree: before a node, or at
+/// the end of a folder (the root for `None`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Anchor {
+    Before(String),
+    End(Option<String>),
+}
+
+/// The anchor of `place`: the node now there, else the end of its folder.
+pub fn anchor_of(nodes: &[LauncherNode], place: &Place) -> Anchor {
+    let level = match &place.parent {
+        None => Some(nodes),
+        Some(id) => match find(nodes, id).map(|n| &n.kind) {
+            Some(NodeKind::Folder { children, .. }) => Some(children.as_slice()),
+            _ => None,
+        },
+    };
+    match level.and_then(|l| l.get(place.index)) {
+        Some(node) => Anchor::Before(node.id.clone()),
+        None => Anchor::End(place.parent.clone()),
+    }
+}
+
+/// Where `anchor` is now; the end of the root when its node is gone (or is
+/// not a folder).
+pub fn resolve(nodes: &[LauncherNode], anchor: &Anchor) -> Place {
+    let root_end = || Place {
+        parent: None,
+        index: nodes.len(),
+    };
+    match anchor {
+        Anchor::Before(id) => place_of(nodes, id).unwrap_or_else(root_end),
+        Anchor::End(None) => root_end(),
+        Anchor::End(Some(id)) => match find(nodes, id).map(|n| &n.kind) {
+            Some(NodeKind::Folder { children, .. }) => Place {
+                parent: Some(id.clone()),
+                index: children.len(),
+            },
+            _ => root_end(),
+        },
+    }
+}
+
 /// Number of nodes below the node with `id` (0 for a non-folder).
 pub fn descendants(nodes: &[LauncherNode], id: &str) -> usize {
     fn count(nodes: &[LauncherNode]) -> usize {
@@ -323,5 +366,35 @@ mod tests {
         assert_eq!(descendants(&t, "f"), 3);
         assert_eq!(descendants(&t, "g"), 1);
         assert_eq!(descendants(&t, "a"), 0);
+    }
+    #[test]
+    fn anchor_of_a_place_names_the_node_after_it_or_the_folder_end() {
+        let nodes = tree();
+        assert_eq!(anchor_of(&nodes, &place(None, 1)), Anchor::Before("f".into()));
+        assert_eq!(anchor_of(&nodes, &place(Some("f"), 2)), Anchor::End(Some("f".into())));
+        assert_eq!(anchor_of(&nodes, &place(None, 9)), Anchor::End(None));
+    }
+
+    #[test]
+    fn anchors_resolve_where_their_nodes_are_now() {
+        let mut nodes = tree();
+        let before_d = Anchor::Before("d".into());
+        let end_g = Anchor::End(Some("g".into()));
+        assert_eq!(resolve(&nodes, &before_d), place(None, 2));
+        assert_eq!(resolve(&nodes, &end_g), place(Some("g"), 1));
+        remove(&mut nodes, "a");
+        let at = resolve(&nodes, &end_g);
+        assert!(insert(&mut nodes, &at, sep("x")));
+        assert_eq!(resolve(&nodes, &before_d), place(None, 1));
+        assert_eq!(resolve(&nodes, &end_g), place(Some("g"), 2));
+    }
+
+    #[test]
+    fn anchors_of_removed_nodes_resolve_to_the_root_end() {
+        let mut nodes = tree();
+        remove(&mut nodes, "f");
+        assert_eq!(resolve(&nodes, &Anchor::Before("b".into())), place(None, 2));
+        assert_eq!(resolve(&nodes, &Anchor::End(Some("g".into()))), place(None, 2));
+        assert_eq!(resolve(&nodes, &Anchor::End(Some("a".into()))), place(None, 2));
     }
 }

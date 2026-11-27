@@ -262,6 +262,99 @@ pub fn cascade_popover(parent: &gtk::ListBox) -> (gtk::Popover, gtk::ListBox) {
     (popover, list)
 }
 
+/// Footer key hints while the special item palette has the keys.
+pub const PALETTE_HINTS: &str = "<b>↵</b> Add   <b>←→</b> Category   <b>Esc</b> Close";
+
+/// Widgets of the special item palette.
+pub struct PaletteUi {
+    pub popover: gtk::Popover,
+    /// One per category, in order.
+    pub tabs: Vec<gtk::ToggleButton>,
+    pub title: gtk::Label,
+    pub list: gtk::ListBox,
+    pub close: gtk::Button,
+}
+
+/// The special item palette (ADR-040): category tabs (`(icon, label)`),
+/// the items and a hint, in a popover left of `parent` that does not grab
+/// (like the Launcher levels). The caller fills `list` and sets
+/// `pointing_to`.
+pub fn palette_popover(parent: &impl IsA<gtk::Widget>, categories: &[(&str, &str)]) -> PaletteUi {
+    let header = gtk::Box::builder().spacing(2).css_classes(["uti-palette-tabs"]).build();
+    let mut tabs: Vec<gtk::ToggleButton> = Vec::new();
+    for (icon, label) in categories {
+        let tab = gtk::ToggleButton::builder()
+            .icon_name(*icon)
+            .tooltip_text(*label)
+            .focusable(false)
+            .css_classes(["flat"])
+            .build();
+        if let Some(first) = tabs.first() {
+            tab.set_group(Some(first));
+        }
+        header.append(&tab);
+        tabs.push(tab);
+    }
+    let title = gtk::Label::builder()
+        .hexpand(true)
+        .xalign(1.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .css_classes(["dim-label", "caption"])
+        .build();
+    header.append(&title);
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::Single)
+        .focusable(false)
+        .css_classes(["navigation-sidebar", "uti-tree"])
+        .build();
+    let scrolled = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(360)
+        .vexpand(true)
+        .child(&list)
+        .build();
+    let close = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("Close (Esc)")
+        .focusable(false)
+        .valign(gtk::Align::Center)
+        .css_classes(["flat", "circular", "uti-row-button"])
+        .build();
+    let footer = gtk::Box::builder().spacing(6).css_classes(["uti-palette-footer"]).build();
+    footer.append(
+        &gtk::Label::builder()
+            .label("Drag onto the launcher")
+            .hexpand(true)
+            .xalign(0.0)
+            .css_classes(["dim-label", "caption"])
+            .build(),
+    );
+    footer.append(&close);
+    let content = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    content.append(&header);
+    content.append(&scrolled);
+    content.append(&footer);
+    let popover = gtk::Popover::builder()
+        .has_arrow(false)
+        .position(gtk::PositionType::Left)
+        .valign(gtk::Align::Start)
+        // No grab: the main window keeps keyboard focus and its clicks.
+        .autohide(false)
+        .css_classes(["uti-cascade", "uti-palette"])
+        .child(&content)
+        .build();
+    popover.set_offset(-CASCADE_OVERLAP, 0);
+    popover.set_parent(parent);
+    PaletteUi {
+        popover,
+        tabs,
+        title,
+        list,
+        close,
+    }
+}
+
 /// Pixels a Launcher level overlaps the level it opens from.
 const CASCADE_OVERLAP: i32 = -2;
 /// Padding above a level's first row (`popover.uti-cascade > contents`), so

@@ -6,6 +6,7 @@ pub mod apps;
 pub mod edit;
 pub mod entry;
 pub mod form;
+pub mod palette;
 pub mod power;
 pub mod recent_files;
 mod store;

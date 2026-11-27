@@ -58,6 +58,8 @@ pub enum Event {
         kind: NodeKind,
     },
     LauncherDelete(String),
+    /// Show the popup with the special item palette open.
+    OpenPalette,
 }
 
 type OnEvent = Rc<dyn Fn(Event)>;
@@ -519,6 +521,13 @@ pub fn populate(
             .css_classes(["dim-label"])
             .build(),
     );
+    let e = on_event.clone();
+    launcher_group.add(&link_row(
+        &t("launcher.palette.label"),
+        Some(&t("launcher.palette.description")),
+        "list-add-symbolic",
+        move || e(Event::OpenPalette),
+    ));
     let launcher_advanced = group(&t("sections.advanced"));
     launcher_advanced.add(&link_row(
         &t("launcher.openConfig.label"),

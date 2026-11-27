@@ -2366,3 +2366,47 @@ loses `is-active` during a drag, and ordinary pointer motion events stop.
 
 **Negative**: an unpinned popup cannot be organized by dragging; drag feel
 (start threshold, delays) is only checked on real hardware.
+
+## ADR-040
+
+### Special item palette
+
+**Date**: 2026-11-27
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Orchis adds special items (power actions, OS functions) by dragging them from
+a small palette window onto its pinned launcher. uti could already copy rows
+of generated menus (ADR-039), but folders, separators and GNOME Settings
+panels had no source, and a `gtk::DropDown` inside a non-grabbing popover
+closes at once (ADR-038).
+
+### Decision
+
+- New ▸ Special Item… (and Settings > Launcher > Add Special Items) opens a
+  palette: a non-grabbing popover left of the popup, styled like the levels,
+  with icon tabs per category, the items, a drag hint and a close button.
+  It is not a separate window, so the extension needs no changes.
+- Categories: Basic (folder, separator), Applications (the menu and one per
+  category with apps; single apps come from the Applications menu), Power
+  and Session (the menu and each action), GNOME Settings (one `command` per
+  hidden `gnome-*-panel.desktop` running `gnome-control-center`).
+- Rows are dragged as copies with the ADR-039 drop rules. Enter or a
+  double-click adds the selected item before the row the palette was opened
+  on (the root's end from Settings); the spot follows later edits by node
+  id (`edit::Anchor`).
+- Opening pins the popup; closing unpins it if it was unpinned before.
+  Unpinning, hiding the popup or leaving the Launcher tab closes it.
+- Keys: the palette never takes GTK focus; while it has the keys (`Nav`
+  focus), Left/Right switch categories, Up/Down select, Esc closes. A click
+  on a Launcher row gives the keys back to the levels.
+
+### Consequences
+
+**Positive**: every item kind can be added without editing JSON, by mouse or
+keyboard.
+
+**Negative**: near the screen's left edge GTK flips the palette to the right,
+over the levels; the panel list follows the installed GNOME Settings.

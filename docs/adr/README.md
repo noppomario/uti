@@ -45,3 +45,4 @@ ADR-001 to ADR-029 mostly describe the Tauri-era app; ADR-030 and later describe
 | [037](records.md#adr-037) | Launcher tree and cascading levels | 2026-11-26 | Accepted |
 | [038](records.md#adr-038) | Editing the launcher from the popup | 2026-11-27 | Accepted |
 | [039](records.md#adr-039) | Organizing by drag-and-drop in the popup | 2026-11-27 | Accepted |
+| [040](records.md#adr-040) | Special item palette | 2026-11-27 | Accepted |

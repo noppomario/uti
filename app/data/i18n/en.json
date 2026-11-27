@@ -78,6 +78,10 @@
     }
   },
   "launcher": {
+    "palette": {
+      "label": "Add Special Items",
+      "description": "Open the palette beside the launcher and drag items onto it"
+    },
     "openConfig": {
       "label": "Edit launcher.json",
       "description": "Open launcher configuration file in default editor"

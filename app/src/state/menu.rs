@@ -15,7 +15,7 @@ pub enum MenuItem {
     NewFolder,
     NewSeparator,
     NewCommand,
-    /// The special item palette (P5); shown disabled until then.
+    /// Opens the special item palette (ADR-040).
     NewSpecial,
     AddToLauncher,
     OpenFolder,
