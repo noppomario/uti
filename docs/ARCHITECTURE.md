@@ -88,6 +88,8 @@ Main application with Clipboard, Snippets and Launcher tabs, plus a settings win
   in `state/tree.rs`, levels are non-grabbing popovers (ADR-037)
 - Commands with `historySource` open their recent files (recently-used.xbel, VSCode SQLite)
 - Search covers the whole tree and installed apps (`gio::AppInfo`)
+- Drag-and-drop organizing while pinned: drop positions in `state/drop.rs`, places in
+  `launcher/entry.rs`, applied once the drag ends (ADR-039)
 
 ### uti for GNOME
 

@@ -44,3 +44,4 @@ ADR-001 to ADR-029 mostly describe the Tauri-era app; ADR-030 and later describe
 | [036](records.md#adr-036) | Context menus in the popup: focus loss is ignored while a menu is open | 2026-11-23 | Accepted |
 | [037](records.md#adr-037) | Launcher tree and cascading levels | 2026-11-26 | Accepted |
 | [038](records.md#adr-038) | Editing the launcher from the popup | 2026-11-27 | Accepted |
+| [039](records.md#adr-039) | Organizing by drag-and-drop in the popup | 2026-11-27 | Accepted |

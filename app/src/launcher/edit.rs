@@ -11,10 +11,6 @@ pub struct Place {
 }
 
 /// Why a move was refused.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "drag and drop (launcher phase 4)")
-)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum MoveError {
     NotFound,
@@ -145,16 +141,12 @@ pub fn move_by(
     true
 }
 
-/// Moves the node with `id` to `place` (as it is before the move).
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "drag and drop (launcher phase 4)")
-)]
-pub fn move_to(nodes: &mut Vec<LauncherNode>, id: &str, place: &Place) -> Result<(), MoveError> {
-    let from = place_of(nodes, id).ok_or(MoveError::NotFound)?;
+/// Whether the node with `id` may move to `place`: `place` is in a folder
+/// of the tree and not inside the node itself.
+pub fn check_move(nodes: &[LauncherNode], id: &str, place: &Place) -> Result<(), MoveError> {
+    let moved = path_of(nodes, id).ok_or(MoveError::NotFound)?;
     if let Some(parent) = &place.parent {
         let target = path_of(nodes, parent).ok_or(MoveError::NotFound)?;
-        let moved = path_of(nodes, id).ok_or(MoveError::NotFound)?;
         if target.starts_with(&moved) {
             return Err(MoveError::IntoItself);
         }
@@ -162,6 +154,21 @@ pub fn move_to(nodes: &mut Vec<LauncherNode>, id: &str, place: &Place) -> Result
             return Err(MoveError::NotFound);
         }
     }
+    Ok(())
+}
+
+/// Moving the node with `id` to `place` would leave it where it is
+/// (before itself or before its next sibling).
+pub fn is_noop(nodes: &[LauncherNode], id: &str, place: &Place) -> bool {
+    place_of(nodes, id).is_some_and(|from| {
+        from.parent == place.parent && (place.index == from.index || place.index == from.index + 1)
+    })
+}
+
+/// Moves the node with `id` to `place` (as it is before the move).
+pub fn move_to(nodes: &mut Vec<LauncherNode>, id: &str, place: &Place) -> Result<(), MoveError> {
+    check_move(nodes, id, place)?;
+    let from = place_of(nodes, id).ok_or(MoveError::NotFound)?;
     let node = remove(nodes, id).ok_or(MoveError::NotFound)?;
     let mut place = place.clone();
     if place.parent == from.parent && place.index > from.index {
@@ -296,6 +303,18 @@ mod tests {
         assert_eq!(ids(&t), "f[b g[c]] d a");
         assert_eq!(move_to(&mut t, "c", &place(None, 0)), Ok(()));
         assert_eq!(ids(&t), "c f[b g[]] d a");
+    }
+
+    #[test]
+    fn checks_moves_without_changing_the_tree() {
+        let t = tree();
+        assert_eq!(check_move(&t, "g", &place(Some("g"), 0)), Err(MoveError::IntoItself));
+        assert_eq!(check_move(&t, "zz", &place(None, 0)), Err(MoveError::NotFound));
+        assert_eq!(check_move(&t, "c", &place(Some("f"), 0)), Ok(()));
+        assert!(is_noop(&t, "b", &place(Some("f"), 0)), "before itself");
+        assert!(is_noop(&t, "b", &place(Some("f"), 1)), "before its next sibling");
+        assert!(!is_noop(&t, "b", &place(Some("f"), 2)));
+        assert!(!is_noop(&t, "b", &place(None, 0)));
     }
 
     #[test]

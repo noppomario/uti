@@ -98,6 +98,8 @@ impl Level {
 struct Pending {
     depth: usize,
     index: usize,
+    /// Opens the row's children (else only closes the other open child).
+    opens: bool,
     token: u64,
 }
 
@@ -315,6 +317,18 @@ impl Tree {
     /// token when the UI must call [`Tree::hover_elapsed`] after
     /// [`HOVER_DELAY`].
     pub fn hover(&mut self, depth: usize, index: usize) -> Option<u64> {
+        let branch = self.row(depth, index)?.branch;
+        self.point(depth, index, branch)
+    }
+
+    /// As [`Tree::hover`] while dragging (spring-loading): the children
+    /// open only when `opens` (a folder the dragged row may enter).
+    pub fn drag_hover(&mut self, depth: usize, index: usize, opens: bool) -> Option<u64> {
+        let branch = self.row(depth, index)?.branch && opens;
+        self.point(depth, index, branch)
+    }
+
+    fn point(&mut self, depth: usize, index: usize, opens: bool) -> Option<u64> {
         let row = self.row(depth, index)?;
         if !row.selectable {
             return None;
@@ -329,10 +343,13 @@ impl Tree {
             self.pending = None;
             return None;
         }
-        if self.pending.is_some_and(|p| p.depth == depth && p.index == index) {
+        if self
+            .pending
+            .is_some_and(|p| p.depth == depth && p.index == index && p.opens == opens)
+        {
             return None;
         }
-        if !row.branch && self.levels.len() <= depth + 1 {
+        if !opens && self.levels.len() <= depth + 1 {
             self.pending = None;
             return None;
         }
@@ -340,6 +357,7 @@ impl Tree {
         self.pending = Some(Pending {
             depth,
             index,
+            opens,
             token: self.next_token,
         });
         Some(self.next_token)
@@ -350,8 +368,7 @@ impl Tree {
     pub fn hover_elapsed(&mut self, token: u64) -> Option<TreeAction> {
         let p = self.pending.filter(|p| p.token == token)?;
         self.pending = None;
-        let row = self.row(p.depth, p.index)?;
-        if row.branch {
+        if p.opens {
             Some(TreeAction::Open {
                 depth: p.depth,
                 index: p.index,
@@ -664,6 +681,26 @@ mod tests {
         assert_eq!(t.click(0, 0), None, "already open");
         assert_eq!(t.click(1, 0), Some(Activate { depth: 1, index: 0 }));
         assert_eq!(t.click(0, 1), Some(Activate { depth: 0, index: 1 }));
+    }
+
+    #[test]
+    fn dragging_opens_only_the_rows_allowed_to() {
+        let mut t = tree(&[F, F, L]);
+        let tok = t.drag_hover(0, 0, true).unwrap();
+        assert_eq!(
+            t.hover_elapsed(tok),
+            Some(Open {
+                depth: 0,
+                index: 0,
+                enter: false
+            })
+        );
+        t.push(0, 0, vec![L], false);
+        // The dragged folder itself: closes the other child, opens nothing.
+        let tok = t.drag_hover(0, 1, false).unwrap();
+        assert_eq!(t.hover_elapsed(tok), None);
+        assert_eq!(t.depth(), 0);
+        assert_eq!(t.drag_hover(0, 1, false), None, "nothing to close");
     }
 
     #[test]

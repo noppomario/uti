@@ -5,7 +5,9 @@
 //! never re-enter the model. Keyboard focus is decided by [`Nav`]; after
 //! every message the GTK focus is moved to match it.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::Instant;
 
 use adw::prelude::*;
@@ -15,13 +17,14 @@ use crate::clipboard::ClipboardStore;
 use crate::config::AppConfig;
 use crate::dbus;
 use crate::launcher::apps::{AppMeta, Category};
-use crate::launcher::edit;
+use crate::launcher::edit::{self, Place};
 use crate::launcher::entry::{self, Entry, Opener, Sources};
 use crate::launcher::power::{CallArgs, PowerAction};
 use crate::launcher::recent_files;
 use crate::launcher::{get_launcher_config_path, LauncherFile, LauncherNode, NodeKind};
 use crate::settings;
 use crate::snippets::{load_snippets, save_snippets, SnippetsStore};
+use crate::state::drop::{self, Hit, Spot};
 use crate::state::launcher::{match_command, rank, SearchText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::menu::{launcher_menu, row_menu, MenuEntry, MenuItem, Sections};
@@ -96,6 +99,15 @@ pub enum Msg {
     TreeLeave(usize),
     /// The hover delay of this token passed.
     TreeHoverElapsed(u64),
+    /// A row drag started from visible row `index` of a list.
+    DragBegin(DropList, usize),
+    /// A row drag moved over a list (`None`: below its rows).
+    DragMotion(DropList, Option<Hit>),
+    DragLeave(DropList),
+    /// A row was dropped on a list; applied once the drag has ended.
+    Drop(DropList, Option<Hit>),
+    /// The row drag ended (dropped or cancelled).
+    DragEnd,
     /// New clipboard text (extension signal or read on focus).
     ClipboardText(String),
     /// Installed applications changed.
@@ -114,6 +126,49 @@ pub enum Msg {
 enum OpenStep {
     Node(String),
     Index(usize),
+}
+
+/// A list rows are dragged within.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DropList {
+    /// Launcher level `depth` (0: the tab's list).
+    Launcher(usize),
+    Snippets,
+}
+
+/// What a row drag carries.
+enum Payload {
+    Launcher(entry::Drag),
+    /// A snippet, by id.
+    Snippet(String),
+}
+
+/// A row drag in progress.
+struct DragState {
+    payload: Payload,
+    /// List and visible row it started from.
+    from: (DropList, usize),
+    /// Where it was dropped, applied at the drag's end.
+    dropped: Option<DropPlace>,
+    /// Last row hovered, for spring-loading: (depth, index, opens).
+    hovered: Option<(usize, usize, bool)>,
+}
+
+/// Where a drop puts the dragged item.
+#[derive(Debug, Clone)]
+enum DropPlace {
+    Launcher(Place),
+    /// Before this snippet (`None`: at the end).
+    Snippet(Option<String>),
+}
+
+/// What shows the drop position in a list.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Indicator {
+    /// The insertion line at this height (list coordinates).
+    Line(f64),
+    /// The folder row (or empty-level row) dropped into.
+    Into(usize),
 }
 
 /// An open Launcher level below the tab's list.
@@ -151,6 +206,9 @@ struct Ui {
     footer: gtk::Label,
     /// Row context menu, parented to `stack`.
     menu: gtk::PopoverMenu,
+    /// Whether the drop position under the pointer takes the dragged row
+    /// (read by drop targets, which must answer at once).
+    drop_ok: Rc<Cell<bool>>,
 }
 
 /// Main window model.
@@ -184,6 +242,10 @@ struct App {
     cascade: Vec<CascadeLevel>,
     config: AppConfig,
     settings: Option<settings::SettingsUi>,
+    drag: Option<DragState>,
+    /// Levels closed during a drag, unparented once it ends (the dragged
+    /// row may be in one).
+    parked: Vec<gtk::Popover>,
 }
 
 /// Installed apps that should appear in launchers.
@@ -294,6 +356,8 @@ pub fn start(app: &adw::Application, minimized: bool) {
         cascade: Vec::new(),
         config,
         settings: None,
+        drag: None,
+        parked: Vec::new(),
     };
     let t = tx.clone();
     gio::AppInfoMonitor::get().connect_changed(move |_| send(&t, Msg::AppsChanged));
@@ -331,7 +395,9 @@ impl App {
             Msg::FocusChanged(false) => {
                 // Pinned: a click on another window closes the open levels
                 // (not a menu or dialog opened over them: ADR-036).
-                if self.ui.pin.is_active() && self.nav.focus() != Focus::Menu {
+                // Not while dragging either (the drag takes focus).
+                if self.ui.pin.is_active() && self.nav.focus() != Focus::Menu && self.drag.is_none()
+                {
                     self.close_cascade();
                 }
                 self.window.focus_lost()
@@ -534,6 +600,40 @@ impl App {
                 let action = self.nav.pointer_tree().and_then(|t| t.hover_elapsed(token));
                 self.tree_action(action)
             },
+            Msg::DragBegin(list, index) => {
+                self.drag_begin(list, index);
+                None
+            },
+            Msg::DragMotion(list, hit) => {
+                self.drag_motion(list, hit);
+                None
+            },
+            Msg::DragLeave(list) => {
+                if self.drop_shown().is_some_and(|(l, _)| l == list) {
+                    self.show_drop(None);
+                }
+                if let (DropList::Launcher(d), Some(tree)) = (list, self.nav.pointer_tree()) {
+                    tree.leave(d);
+                }
+                None
+            },
+            Msg::Drop(list, hit) => {
+                let at = self.drop_at(list, hit).map(|(place, _)| place);
+                if let Some(drag) = &mut self.drag {
+                    drag.dropped = at;
+                }
+                self.show_drop(None);
+                // In case the source row is gone and never reports the end.
+                let t = self.tx.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    send(&t, Msg::DragEnd)
+                });
+                None
+            },
+            Msg::DragEnd => {
+                self.drag_end();
+                None
+            },
         };
         if let Some(command) = command {
             if debug_keys() {
@@ -667,6 +767,7 @@ impl App {
         let d = depth + 1;
         list.connect_row_activated(move |_, r| send(&t, Msg::TreeClick(d, r.index() as usize)));
         track_pointer(&list, d, &self.tx);
+        drop_target(&list, DropList::Launcher(d), &self.tx, &self.ui.drop_ok);
         right_click_menu(&list, d, &self.tx);
         if let Some(b) = row.compute_bounds(&parent) {
             popover.set_pointing_to(Some(&gdk::Rectangle::new(
@@ -691,7 +792,11 @@ impl App {
         while self.cascade.len() > depth {
             if let Some(level) = self.cascade.pop() {
                 level.popover.popdown();
-                level.popover.unparent();
+                if self.drag.is_some() {
+                    self.parked.push(level.popover);
+                } else {
+                    level.popover.unparent();
+                }
             }
         }
     }
@@ -1183,6 +1288,179 @@ impl App {
         self.reopen(&open, select, at);
     }
 
+    /// A row drag started: remember what it carries.
+    fn drag_begin(&mut self, list: DropList, index: usize) {
+        let payload = match list {
+            DropList::Launcher(d) => self
+                .level_entries(d)
+                .and_then(|l| l.get(index))
+                .and_then(|e| self.sources().drag(e))
+                .map(Payload::Launcher),
+            DropList::Snippets => self
+                .source(Tab::Snippets, index)
+                .and_then(|i| self.snippets.items.get(i))
+                .map(|s| Payload::Snippet(s.id.clone())),
+        };
+        self.drag = payload.map(|payload| DragState {
+            payload,
+            from: (list, index),
+            dropped: None,
+            hovered: None,
+        });
+        self.nav.tree_mut().cancel_pending();
+    }
+
+    /// The drag moved over `list`: shows where it would land and
+    /// spring-loads folders.
+    fn drag_motion(&mut self, list: DropList, hit: Option<Hit>) {
+        let at = self.drop_at(list, hit).map(|(_, indicator)| indicator);
+        self.ui.drop_ok.set(at.is_some());
+        self.show_drop(at.map(|indicator| (list, indicator)));
+        let DropList::Launcher(d) = list else {
+            return;
+        };
+        let len = self.level_entries(d).map_or(0, <[Entry]>::len);
+        let Some(index) = hit.map(|h| h.index).filter(|&i| i < len) else {
+            return;
+        };
+        let opens = matches!(at, Some(Indicator::Into(i)) if i == index);
+        let Some(drag) = &mut self.drag else {
+            return;
+        };
+        if drag.hovered == Some((d, index, opens)) {
+            return;
+        }
+        drag.hovered = Some((d, index, opens));
+        let Some(tree) = self.nav.pointer_tree() else {
+            return;
+        };
+        if let Some(token) = tree.drag_hover(d, index, opens) {
+            let t = self.tx.clone();
+            glib::timeout_add_local_once(HOVER_DELAY, move || {
+                send(&t, Msg::TreeHoverElapsed(token))
+            });
+        }
+        self.sync_tree();
+    }
+
+    /// Where the dragged row would land over `hit` in `list`, and how that
+    /// is shown; `None` where it cannot go (or would not move).
+    fn drop_at(&self, list: DropList, hit: Option<Hit>) -> Option<(DropPlace, Indicator)> {
+        let drag = self.drag.as_ref()?;
+        match (list, &drag.payload) {
+            (DropList::Launcher(d), Payload::Launcher(payload)) => {
+                if self.searching() {
+                    return None;
+                }
+                let level = self.level_entries(d)?;
+                let src = self.sources();
+                let spot = drop::spot(level.len(), |i| src.is_folder(&level[i]), hit);
+                let place = src.drop_place(&self.owners(d), level, spot)?;
+                if let entry::Drag::Move(id) = payload {
+                    let nodes = &self.launcher.nodes;
+                    if edit::check_move(nodes, id, &place).is_err()
+                        || edit::is_noop(nodes, id, &place)
+                    {
+                        return None;
+                    }
+                }
+                let indicator = indicator(self.level_list(d)?, spot, level.len())?;
+                Some((DropPlace::Launcher(place), indicator))
+            },
+            (DropList::Snippets, Payload::Snippet(_)) => {
+                let visible = &self.tabs.get(&Tab::Snippets)?.visible;
+                let spot = drop::spot(visible.len(), |_| false, hit);
+                let from = drag.from.1;
+                let noop = match spot {
+                    Spot::Before(v) => v == from || v == from + 1,
+                    _ => from + 1 == visible.len(),
+                };
+                if noop {
+                    return None;
+                }
+                let before = match spot {
+                    Spot::Before(v) => Some(self.snippets.items.get(*visible.get(v)?)?.id.clone()),
+                    _ => None,
+                };
+                let indicator = indicator(self.ui.lists.get(&Tab::Snippets)?, spot, visible.len())?;
+                Some((DropPlace::Snippet(before), indicator))
+            },
+            _ => None,
+        }
+    }
+
+    /// Lists that take row drops: the Launcher levels and Snippets.
+    fn drop_lists(&self) -> Vec<(DropList, &gtk::ListBox)> {
+        let mut lists: Vec<(DropList, &gtk::ListBox)> = (0..=self.cascade.len())
+            .filter_map(|d| Some((DropList::Launcher(d), self.level_list(d)?)))
+            .collect();
+        lists.extend(self.ui.lists.get(&Tab::Snippets).map(|l| (DropList::Snippets, l)));
+        lists
+    }
+
+    /// Shows the drop position in one list (none for `None`).
+    fn show_drop(&self, at: Option<(DropList, Indicator)>) {
+        for (list, widget) in self.drop_lists() {
+            let shown = at.filter(|(l, _)| *l == list).map(|(_, i)| i);
+            let line = match shown {
+                Some(Indicator::Line(y)) => Some(y),
+                _ => None,
+            };
+            let into = match shown {
+                Some(Indicator::Into(i)) => Some(i),
+                _ => None,
+            };
+            ui::show_drop_line(widget, line);
+            ui::mark_drop_into(widget, into);
+        }
+    }
+
+    /// The list showing a drop position, with its line height or folder row.
+    fn drop_shown(&self) -> Option<(DropList, Indicator)> {
+        self.drop_lists().into_iter().find_map(|(list, widget)| {
+            ui::drop_line_y(widget)
+                .map(Indicator::Line)
+                .or_else(|| ui::drop_into(widget).map(Indicator::Into))
+                .map(|i| (list, i))
+        })
+    }
+
+    /// The drag ended: applies its drop, if any.
+    fn drag_end(&mut self) {
+        self.ui.drop_ok.set(false);
+        self.show_drop(None);
+        let Some(drag) = self.drag.take() else {
+            return;
+        };
+        self.unpark();
+        match (drag.payload, drag.dropped) {
+            (Payload::Launcher(entry::Drag::Move(id)), Some(DropPlace::Launcher(place))) => {
+                self.edit_launcher(Some(id.clone()), |nodes| {
+                    edit::move_to(nodes, &id, &place).is_ok()
+                });
+            },
+            (Payload::Launcher(entry::Drag::Copy(kind)), Some(DropPlace::Launcher(place))) => {
+                let node = LauncherNode::new(kind);
+                let id = node.id.clone();
+                self.edit_launcher(Some(id), |nodes| edit::insert(nodes, &place, node));
+            },
+            (Payload::Snippet(id), Some(DropPlace::Snippet(before)))
+                if self.snippets.move_before(&id, before.as_deref()) =>
+            {
+                self.snippets_changed();
+                self.select_snippet(&id);
+            },
+            _ => {},
+        }
+    }
+
+    /// Unparents the levels closed during a drag.
+    fn unpark(&mut self) {
+        for popover in self.parked.drain(..) {
+            popover.unparent();
+        }
+    }
+
     /// Shows the rows' "more" buttons while pinned (organize mode).
     fn sync_more(&self) {
         let pinned = self.ui.pin.is_active();
@@ -1314,10 +1592,14 @@ impl App {
         else {
             return;
         };
-        if !self.snippets.move_by(&id, delta) {
-            return;
+        if self.snippets.move_by(&id, delta) {
+            self.snippets_changed();
+            self.select_snippet(&id);
         }
-        self.snippets_changed();
+    }
+
+    /// Selects the visible Snippets row of snippet `id`.
+    fn select_snippet(&mut self, id: &str) {
         let moved = self.snippets.items.iter().position(|i| i.id == id);
         let visible = self
             .tabs
@@ -1740,9 +2022,11 @@ impl App {
                 more: true,
             };
             let tx = self.tx.clone();
-            listbox.append(&ui::build_row(&spec, move |i, point| {
-                send(&tx, Msg::OpenMenu(0, i, point))
-            }));
+            let row = ui::build_row(&spec, move |i, point| send(&tx, Msg::OpenMenu(0, i, point)));
+            if tab == Tab::Snippets {
+                drag_source(&row, DropList::Snippets, index, &self.tx, &self.ui.pin);
+            }
+            listbox.append(&row);
         }
         ui::show_more_buttons(listbox, self.ui.pin.is_active());
         if self.nav.tab() == tab && self.ui.root.is_visible() {
@@ -1757,6 +2041,7 @@ impl App {
         // Levels are popovers parented to the rows' lists, which
         // `remove_all` would try (and fail) to remove.
         self.truncate_cascade(0);
+        self.unpark();
         let query = self.tabs.get(&Tab::Launcher).map(|d| d.query.clone()).unwrap_or_default();
         let searching = !query.trim().is_empty();
         self.read_recent_apps();
@@ -1795,7 +2080,11 @@ impl App {
         let rows: Vec<Row> = entries.iter().map(|e| self.sources().row(e)).collect();
         for (index, (entry, row)) in entries.iter().zip(&rows).enumerate() {
             if !row.selectable {
-                list.append(&ui::separator_row());
+                let r = ui::separator_row();
+                if !searching && self.sources().drag(entry).is_some() {
+                    drag_source(&r, DropList::Launcher(depth), index, &self.tx, &self.ui.pin);
+                }
+                list.append(&r);
                 continue;
             }
             let (text, tooltip) = self.entry_text(entry, searching);
@@ -1814,9 +2103,11 @@ impl App {
                 more: true,
             };
             let tx = self.tx.clone();
-            list.append(&ui::build_row(&spec, move |i, point| {
-                send(&tx, Msg::OpenMenu(depth, i, point))
-            }));
+            let r = ui::build_row(&spec, move |i, point| send(&tx, Msg::OpenMenu(depth, i, point)));
+            if !searching && self.sources().drag(entry).is_some() {
+                drag_source(&r, DropList::Launcher(depth), index, &self.tx, &self.ui.pin);
+            }
+            list.append(&r);
         }
         ui::show_more_buttons(list, self.ui.pin.is_active());
     }
@@ -1956,7 +2247,40 @@ impl App {
             "menu": self.ui.menu.is_visible(),
             "menuItems": self.debug_menu_items(),
             "editor": self.settings.as_ref().and_then(|s| s.editor_title()),
+            "drag": self.drag.is_some(),
+            "drop": self.drop_shown().map(|(list, indicator)| {
+                let list = match list {
+                    DropList::Launcher(d) => serde_json::json!(d),
+                    DropList::Snippets => serde_json::json!("snippets"),
+                };
+                match indicator {
+                    Indicator::Line(y) => serde_json::json!({"list": list, "line": y}),
+                    Indicator::Into(i) => serde_json::json!({"list": list, "into": i}),
+                }
+            }),
+            "snippets": self.debug_snippets(),
         })
+    }
+
+    /// Snippets tab rows: texts and rectangles (window coordinates).
+    fn debug_snippets(&self) -> serde_json::Value {
+        let Some(list) = self.ui.lists.get(&Tab::Snippets) else {
+            return serde_json::Value::Null;
+        };
+        let visible = self.tabs.get(&Tab::Snippets).map(|d| d.visible.clone()).unwrap_or_default();
+        let texts: Vec<&str> = visible
+            .iter()
+            .filter_map(|&i| self.snippets.items.get(i))
+            .map(|s| s.value.as_str())
+            .collect();
+        let rows: Vec<serde_json::Value> = (0..)
+            .map_while(|i| list.row_at_index(i))
+            .map(|row| {
+                let b = row.compute_bounds(&self.ui.root).unwrap_or_else(gtk::graphene::Rect::zero);
+                serde_json::json!([b.x(), b.y(), b.width(), b.height()])
+            })
+            .collect();
+        serde_json::json!({"texts": texts, "rows": rows, "selected": self.nav.selected()})
     }
 
     /// Label and tooltip of a Launcher row.
@@ -2030,14 +2354,15 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
 
     // Every tab has the same structure (a list with an empty placeholder), so
     // there is always a focus target.
+    let drop_ok = Rc::new(Cell::new(false));
     for tab in Tab::ALL {
-        let listbox = build_list(tab, tx);
+        let listbox = build_list(tab, tx, &drop_ok);
         lists.insert(tab, listbox.clone());
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .hexpand(true)
-            .child(&listbox)
+            .child(&ui::with_drop_line(&listbox))
             .build();
         stack.add_named(&scrolled, Some(ui::page_name(tab)));
 
@@ -2217,6 +2542,7 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
         pin,
         footer,
         menu,
+        drop_ok,
     }
 }
 
@@ -2241,7 +2567,7 @@ fn row_actions(tx: &Sender) -> gio::SimpleActionGroup {
     group
 }
 
-fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
+fn build_list(tab: Tab, tx: &Sender, drop_ok: &Rc<Cell<bool>>) -> gtk::ListBox {
     let listbox = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::Single)
         .activate_on_single_click(true)
@@ -2255,11 +2581,54 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
         listbox
             .connect_row_activated(move |_, row| send(&t, Msg::TreeClick(0, row.index() as usize)));
         track_pointer(&listbox, 0, tx);
+        drop_target(&listbox, DropList::Launcher(0), tx, drop_ok);
     } else {
         listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
+        if tab == Tab::Snippets {
+            drop_target(&listbox, DropList::Snippets, tx, drop_ok);
+        }
     }
     right_click_menu(&listbox, 0, tx);
     listbox
+}
+
+/// How `spot` is shown in `list` of `len` rows: a line between rows, or
+/// the folder row (the empty-level row for an empty level).
+fn indicator(list: &gtk::ListBox, spot: Spot, len: usize) -> Option<Indicator> {
+    match (spot, spot.line(len)) {
+        (Spot::Into(i), _) => Some(Indicator::Into(i)),
+        (_, Some(line)) => ui::row_edge(list, line.row, line.below).map(Indicator::Line),
+        (_, None) => Some(Indicator::Into(0)),
+    }
+}
+
+/// Lets row `index` of `list` be dragged while pinned (organize mode).
+fn drag_source(
+    row: &gtk::ListBoxRow,
+    list: DropList,
+    index: usize,
+    tx: &Sender,
+    pin: &gtk::ToggleButton,
+) {
+    let (t, e, pin) = (tx.clone(), tx.clone(), pin.clone());
+    ui::drag_source(
+        row,
+        move || pin.is_active(),
+        move || send(&t, Msg::DragBegin(list, index)),
+        move || send(&e, Msg::DragEnd),
+    );
+}
+
+/// Takes row drags over `list`.
+fn drop_target(list_box: &gtk::ListBox, list: DropList, tx: &Sender, ok: &Rc<Cell<bool>>) {
+    let (m, l, d) = (tx.clone(), tx.clone(), tx.clone());
+    ui::drop_target(
+        list_box,
+        ok.clone(),
+        move |hit| send(&m, Msg::DragMotion(list, hit)),
+        move || send(&l, Msg::DragLeave(list)),
+        move |hit| send(&d, Msg::Drop(list, hit)),
+    );
 }
 
 /// Opens the context menu of the row under a right click on `list` (Launcher

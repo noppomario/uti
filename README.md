@@ -131,6 +131,9 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
      open Settings > Snippets, where snippets can also be added, edited, reordered and deleted
 9. In **Launcher tab**, hover a row with **›** or press **→** to open its folder or recent files
 10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
+    - While pinned, drag rows to reorder snippets and organize the Launcher: drop on the
+      middle of a folder to move into it, or rest on it to open it. Rows inside generated
+      menus (apps, power actions) are copied
     - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
 ### Panel Menu (GNOME)

@@ -113,6 +113,28 @@ export class Input {
         sleep(100);
     }
 
+    /** Presses (`down`) or releases the left button. */
+    button(down) {
+        this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_LEFT, down]));
+        sleep(50);
+    }
+
+    /**
+     * Drags from where the pointer is to (x, y): press, a few pixels to
+     * start the drag, a glide, `hold` ms there and `during()` (still
+     * dragging), then release.
+     */
+    drag(x, y, {hold = 200, during = null} = {}) {
+        this.button(true);
+        this.glide(this.x + 4, this.y + 6, 80, 4);
+        this.glide(x, y, 400, 20);
+        sleep(hold);
+        during?.();
+        this.button(false);
+        // The drop is applied once the drag has ended.
+        sleep(700);
+    }
+
     rightClick() {
         this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_RIGHT, true]));
         this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_RIGHT, false]));
