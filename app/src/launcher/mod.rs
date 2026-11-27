@@ -2,12 +2,16 @@
 //!
 //! Provides launcher configuration and recent files functionality.
 
+pub mod apps;
 pub mod entry;
+pub mod power;
 pub mod recent_files;
 mod store;
 
 pub use store::{get_launcher_config_path, load_launcher_tree};
 
+use apps::Category;
+use power::PowerAction;
 use serde::{Deserialize, Serialize};
 
 /// History source for retrieving recent files
@@ -78,9 +82,8 @@ pub struct LauncherNode {
     pub kind: NodeKind,
 }
 
-/// Node types, by their `type` field. Later types (`app`, `apps`,
-/// `directory`, `power`, `file`, `url`, `recent`, `snippets`) are added
-/// here; see ADR-037.
+/// Node types, by their `type` field. Later types (`directory`, `file`,
+/// `url`, `recent`, `snippets`) are added here; see ADR-037.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum NodeKind {
@@ -91,6 +94,25 @@ pub enum NodeKind {
     },
     Command(CommandItem),
     Separator,
+    /// Installed apps: a menu of every main category, or the apps of one.
+    Apps {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        category: Option<Category>,
+    },
+    /// One installed app.
+    App {
+        #[serde(rename = "desktopId")]
+        desktop_id: String,
+    },
+    /// One session or power action, or a menu of all of them.
+    Power {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        action: Option<PowerAction>,
+    },
     /// A type this version does not know; dropped at load.
     #[serde(other)]
     Unknown,
@@ -116,10 +138,12 @@ pub struct LauncherConfig {
 }
 
 impl LauncherConfig {
-    /// The tree to show: `items`, or else the old `commands`. Unknown node
-    /// types are dropped and missing ids generated.
+    /// The tree to show: `items`, or else the old `commands`, or else
+    /// [`default_tree`]. Unknown node types are dropped and missing ids
+    /// generated.
     pub fn into_tree(self) -> Vec<LauncherNode> {
         let mut nodes = match self.items {
+            None if self.commands.is_empty() => default_tree(),
             Some(items) => {
                 if !self.commands.is_empty() {
                     eprintln!("launcher.json: \"commands\" is ignored because \"items\" is set");
@@ -138,6 +162,27 @@ impl LauncherConfig {
         normalize(&mut nodes);
         nodes
     }
+}
+
+/// The tree without a configuration: installed apps, then every power
+/// action as its own node.
+pub fn default_tree() -> Vec<LauncherNode> {
+    let apps = NodeKind::Apps {
+        name: None,
+        category: None,
+    };
+    let power = PowerAction::ALL.map(|a| NodeKind::Power {
+        name: None,
+        action: Some(a),
+    });
+    [apps, NodeKind::Separator]
+        .into_iter()
+        .chain(power)
+        .map(|kind| LauncherNode {
+            id: String::new(),
+            kind,
+        })
+        .collect()
 }
 
 fn normalize(nodes: &mut Vec<LauncherNode>) {
@@ -216,8 +261,8 @@ mod tests {
     #[test]
     fn unknown_types_are_dropped_at_any_depth() {
         let nodes = tree(
-            r#"{"items": [{"type": "power"},
-                          {"type": "folder", "name": "A", "children": [{"type": "apps", "inline": true}]}]}"#,
+            r#"{"items": [{"type": "directory", "path": "~"},
+                          {"type": "folder", "name": "A", "children": [{"type": "snippets"}]}]}"#,
         );
         assert_eq!(nodes.len(), 1);
         assert!(matches!(&nodes[0].kind, NodeKind::Folder { children, .. } if children.is_empty()));
@@ -245,7 +290,65 @@ mod tests {
         );
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].kind, NodeKind::Separator);
-        assert!(tree("{}").is_empty());
+        assert!(tree(r#"{"items": []}"#).is_empty(), "an empty tree is kept");
+    }
+
+    #[test]
+    fn generated_nodes_read_their_options() {
+        let nodes = tree(
+            r#"{"items": [{"type": "apps", "name": "Programs"},
+                          {"type": "apps", "category": "AudioVideo"},
+                          {"type": "power", "action": "logOut"},
+                          {"type": "app", "desktopId": "org.gnome.Nautilus.desktop"}]}"#,
+        );
+        let kinds: Vec<&NodeKind> = nodes.iter().map(|n| &n.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                &NodeKind::Apps {
+                    name: Some("Programs".to_string()),
+                    category: None
+                },
+                &NodeKind::Apps {
+                    name: None,
+                    category: Some(Category::AudioVideo)
+                },
+                &NodeKind::Power {
+                    name: None,
+                    action: Some(PowerAction::LogOut)
+                },
+                &NodeKind::App {
+                    desktop_id: "org.gnome.Nautilus.desktop".to_string()
+                },
+            ]
+        );
+        let json = serde_json::to_value(&nodes[2]).unwrap();
+        assert_eq!(json["type"], "power");
+        assert_eq!(json["action"], "logOut");
+        assert!(json.get("name").is_none());
+        let json = serde_json::to_value(&nodes[0]).unwrap();
+        assert!(json.get("category").is_none());
+    }
+
+    #[test]
+    fn without_items_or_commands_the_default_tree_is_shown() {
+        let kinds: Vec<NodeKind> = tree("{}").into_iter().map(|n| n.kind).collect();
+        let power = PowerAction::ALL.map(|a| NodeKind::Power {
+            name: None,
+            action: Some(a),
+        });
+        assert_eq!(
+            kinds[..2],
+            [
+                NodeKind::Apps {
+                    name: None,
+                    category: None
+                },
+                NodeKind::Separator
+            ]
+        );
+        assert_eq!(kinds[2..], power);
+        assert_eq!(tree(r#"{"commands": []}"#).len(), 7);
     }
 
     #[test]

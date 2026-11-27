@@ -27,7 +27,7 @@
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - ⭐ **Snippets**: Keep frequently used text; add from clipboard history, manage in Settings
-- 🚀 **App Launcher**: Cascading folders of configured commands, with recent files for each app
+- 🚀 **App Launcher**: Cascading menu of installed apps by category, power actions and your own commands, with recent files for each app
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **Panel Menu**: Show/Hide, Settings and more from the GNOME panel (uti for GNOME)
@@ -200,7 +200,8 @@ To add snippets manually, edit this file with any unique `id` string.
 
 ### Launcher Configuration
 
-Launcher commands: `~/.config/uti/launcher.json`
+Launcher commands: `~/.config/uti/launcher.json`. Without it, the Launcher shows installed apps
+by category and power actions.
 
 ```json
 {

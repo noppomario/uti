@@ -125,83 +125,72 @@ pub fn get_recent_files_from_xbel(
         },
     };
 
-    let xbel: Xbel = match from_str(&content) {
+    match app_name {
+        Some(name) => files_from_xbel(&content, |apps| apps.contains(&name)),
+        None => files_from_xbel(&content, |_| true),
+    }
+}
+
+/// Recent files of the system XBEL recorded under any of `names`, newest
+/// first.
+pub fn get_recent_files_for_apps(names: &[String]) -> Vec<RecentFile> {
+    let Ok(content) = fs::read_to_string(get_xbel_path()) else {
+        return Vec::new();
+    };
+    files_from_xbel(&content, |apps| apps.iter().any(|a| names.iter().any(|n| n == a)))
+}
+
+/// Application names of a bookmark.
+fn bookmark_apps(b: &Bookmark) -> Vec<&str> {
+    b.info
+        .as_ref()
+        .and_then(|i| i.metadata.as_ref())
+        .and_then(|m| m.applications.as_ref())
+        .map(|apps| apps.apps.iter().map(|a| a.name.as_str()).collect())
+        .unwrap_or_default()
+}
+
+/// Files of an XBEL document whose application names pass `keep`, newest
+/// first, at most [`MAX_FILES_PER_COMMAND`].
+fn files_from_xbel(content: &str, keep: impl Fn(&[&str]) -> bool) -> Vec<RecentFile> {
+    let xbel: Xbel = match from_str(content) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("Failed to parse recently-used.xbel: {}", e);
             return Vec::new();
         },
     };
-
     let mut files: Vec<RecentFile> = xbel
         .bookmarks
-        .into_iter()
-        .filter(|b| {
-            // If app_name is provided, filter by it
-            // If app_name is None (custom path scenario), include all entries
-            match app_name {
-                Some(name) => b
-                    .info
-                    .as_ref()
-                    .and_then(|i| i.metadata.as_ref())
-                    .and_then(|m| m.applications.as_ref())
-                    .map(|apps| apps.apps.iter().any(|a| a.name == name))
-                    .unwrap_or(false),
-                None => true,
-            }
-        })
+        .iter()
+        .filter(|b| keep(&bookmark_apps(b)))
         .filter_map(|b| {
-            // Convert to RecentFile
             let path = decode_file_uri(&b.href)?;
-            let name = get_filename(&path);
-            let timestamp = b.visited.or(b.modified).unwrap_or_default();
-
             Some(RecentFile {
+                name: get_filename(&path),
                 path,
-                name,
-                timestamp,
+                timestamp: b.visited.clone().or(b.modified.clone()).unwrap_or_default(),
             })
         })
         .collect();
-
-    // Sort by timestamp (newest first)
     files.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
-    // Limit to MAX_FILES_PER_COMMAND
     files.truncate(MAX_FILES_PER_COMMAND);
-
     files
 }
 
-/// Get all available application names from recently-used.xbel
-///
-/// Useful for debugging and discovering what applications are tracked
-#[allow(dead_code)]
+/// Application names in the system `recently-used.xbel`.
 pub fn get_available_apps() -> Vec<String> {
-    let xbel_path = get_xbel_path();
-
-    let content = match fs::read_to_string(&xbel_path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
+    let Ok(content) = fs::read_to_string(get_xbel_path()) else {
+        return Vec::new();
     };
-
-    let xbel: Xbel = match from_str(&content) {
-        Ok(x) => x,
-        Err(_) => return Vec::new(),
+    let Ok(xbel) = from_str::<Xbel>(&content) else {
+        return Vec::new();
     };
-
     let mut apps: Vec<String> = xbel
         .bookmarks
         .iter()
-        .filter_map(|b| {
-            b.info
-                .as_ref()
-                .and_then(|i| i.metadata.as_ref())
-                .and_then(|m| m.applications.as_ref())
-        })
-        .flat_map(|apps| apps.apps.iter().map(|a| a.name.clone()))
+        .flat_map(|b| bookmark_apps(b).into_iter().map(String::from))
         .collect();
-
     apps.sort();
     apps.dedup();
     apps
@@ -401,6 +390,9 @@ mod tests {
         let xbel: Xbel = from_str(sample).expect("Failed to parse sample XBEL");
         assert_eq!(xbel.bookmarks.len(), 1);
         assert_eq!(xbel.bookmarks[0].href, "file:///home/user/test.txt");
+        let files = files_from_xbel(sample, |apps| apps.contains(&"org.gnome.TextEditor"));
+        assert_eq!(files[0].name, "test.txt");
+        assert!(files_from_xbel(sample, |apps| apps.contains(&"loupe")).is_empty());
     }
 
     #[test]

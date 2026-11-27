@@ -39,10 +39,7 @@ fn load_launcher_config() -> LauncherConfig {
             },
         },
         Err(_) => {
-            println!(
-                "Launcher config not found at {:?}. Create it to add launcher commands.",
-                path
-            );
+            println!("Launcher config not found at {:?}; showing the default tree.", path);
             empty_config()
         },
     }
@@ -64,7 +61,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_config_has_no_items() {
-        assert!(empty_config().into_tree().is_empty());
+    fn missing_config_shows_the_default_tree() {
+        assert_eq!(empty_config().into_tree().len(), crate::launcher::default_tree().len());
     }
 }

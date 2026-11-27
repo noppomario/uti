@@ -9,6 +9,8 @@ const RD = 'org.gnome.Mutter.RemoteDesktop';
 const APP = 'io.github.noppomario.uti';
 const APP_PATH = '/io/github/noppomario/uti';
 const BTN_LEFT = 0x110;
+/** Size of the virtual monitor (`run.sh`). */
+const MONITOR = [1400, 900];
 
 export const Keys = {
     Up: 0xff52,
@@ -60,10 +62,17 @@ export class Input {
             .deepUnpack();
         this.session = session;
         this._rd('Start');
-        // Relative motion only (no screencast stream): park at the origin.
-        this._rd('NotifyPointerMotionRelative', new GLib.Variant('(dd)', [-10000, -10000]));
-        this.x = 0;
-        this.y = 0;
+        // Relative motion only (no screencast stream): park in the
+        // bottom-right corner (top-left is GNOME's hot corner). Motion that
+        // would leave the monitor is dropped, so halve the step down to one
+        // pixel, one axis at a time.
+        for (let d = 1024; d >= 1; d /= 2) {
+            for (let i = 0; i < 2; i++) {
+                this._rd('NotifyPointerMotionRelative', new GLib.Variant('(dd)', [d, 0]));
+                this._rd('NotifyPointerMotionRelative', new GLib.Variant('(dd)', [0, d]));
+            }
+        }
+        [this.x, this.y] = [MONITOR[0] - 1, MONITOR[1] - 1];
     }
 
     _rd(method, params = null) {
@@ -145,6 +154,26 @@ export function rowCenter(s, origin, depth, index) {
 export function log() {
     const [, bytes] = GLib.file_get_contents(GLib.getenv('E2E_LOG'));
     return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Shows the popup with its top-left at `origin`, gives it keyboard focus and
+ * switches to the Launcher tab; returns the state.
+ */
+export function showLauncher(input, origin) {
+    action('hide');
+    waitFor(() => !state().visible);
+    input.moveTo(...origin);
+    action('show');
+    waitFor(() => state().visible);
+    sleep(600);
+    // A shown window may not get keyboard focus here: click its header.
+    input.moveTo(origin[0] + 190, origin[1] + 12);
+    input.click();
+    waitFor(() => state().active !== undefined && log().includes('active=true'));
+    // Clipboard is the first tab.
+    for (let i = 0; i < 3 && state().tab !== 'launcher'; i++) input.key(Keys.Right);
+    return state();
 }
 
 export function check(ok, what) {

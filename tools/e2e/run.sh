@@ -2,6 +2,7 @@
 # End-to-end checks of the GTK app in a headless GNOME Shell on a private
 # session bus: a scenario (gjs) moves the pointer and types through Mutter's
 # RemoteDesktop API and asserts on the app's `debug-state`.
+# Each scenario runs against a fresh app.
 # Usage: tools/e2e/run.sh [scenario.js] (default: every *.js here but lib.js)
 # Env: E2E_SIZE (theme.size, default normal), E2E_KEEP=1 keeps target/e2e.
 set -euo pipefail
@@ -16,7 +17,8 @@ if [[ -z "${E2E_INNER:-}" ]]; then
   cargo build -p uti
   rm -rf "$work"
   mkdir -p "$work/config/uti" "$work/data"
-  cp "$here/fixtures/recently-used.xbel" "$work/data/"
+  cp -r "$here/fixtures/recently-used.xbel" "$here/fixtures/files.xbel" "$here/fixtures/applications" \
+    "$work/data/"
   sed "s|@DATA@|$work/data|g" "$here/fixtures/launcher.json" >"$work/config/uti/launcher.json"
   printf '{"theme": {"size": "%s"}}\n' "${E2E_SIZE:-normal}" >"$work/config/uti/config.json"
   exec env E2E_INNER=1 dbus-run-session -- "$0" "$@"
@@ -33,18 +35,21 @@ for _ in $(seq 60); do
 done
 sleep 3
 
-WAYLAND_DISPLAY=$display GDK_BACKEND=wayland GTK_A11Y=none UTI_DEV_SANDBOX=1 UTI_DEBUG_KEYS=1 \
-  UTI_DEBUG_SNAPSHOT="$work/last.png" XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data" \
-  "$root/target/debug/uti" --minimized >"$work/uti.log" 2>&1 &
-app=$!
-
 scenarios=("$@")
 if [[ ${#scenarios[@]} -eq 0 ]]; then
   mapfile -t scenarios < <(find "$here" -maxdepth 1 -name '*.js' ! -name lib.js | sort)
 fi
 status=0
 for scenario in "${scenarios[@]}"; do
-  echo "== $(basename "$scenario")"
-  E2E_WORK="$work" E2E_LOG="$work/uti.log" gjs -m "$scenario" || status=1
+  name="$(basename "$scenario" .js)"
+  echo "== $name"
+  # A fresh app per scenario: no tab, pin or search state carries over.
+  WAYLAND_DISPLAY=$display GDK_BACKEND=wayland GTK_A11Y=none UTI_DEV_SANDBOX=1 UTI_DEBUG_KEYS=1 \
+    UTI_DRY_POWER=1 UTI_DEBUG_SNAPSHOT="$work/last.png" XDG_CONFIG_HOME="$work/config" \
+    XDG_DATA_HOME="$work/data" "$root/target/debug/uti" --minimized >"$work/$name.log" 2>&1 &
+  app=$!
+  E2E_WORK="$work" E2E_LOG="$work/$name.log" gjs -m "$scenario" || status=1
+  kill "$app"
+  wait "$app" || true
 done
 exit $status
