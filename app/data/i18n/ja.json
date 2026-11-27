@@ -78,6 +78,10 @@
     }
   },
   "launcher": {
+    "palette": {
+      "label": "特殊項目を追加",
+      "description": "ランチャーの横にパレットを開き、項目をドラッグして追加します"
+    },
     "openConfig": {
       "label": "launcher.json を編集",
       "description": "ランチャー設定ファイルをエディタで開く"

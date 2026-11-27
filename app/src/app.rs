@@ -17,8 +17,9 @@ use crate::clipboard::ClipboardStore;
 use crate::config::AppConfig;
 use crate::dbus;
 use crate::launcher::apps::{AppMeta, Category};
-use crate::launcher::edit::{self, Place};
+use crate::launcher::edit::{self, Anchor, Place};
 use crate::launcher::entry::{self, Entry, Opener, Sources};
+use crate::launcher::palette::{self as catalog, PaletteCategory, PaletteItem, SettingsPanel};
 use crate::launcher::power::{CallArgs, PowerAction};
 use crate::launcher::recent_files;
 use crate::launcher::{get_launcher_config_path, LauncherFile, LauncherNode, NodeKind};
@@ -29,6 +30,7 @@ use crate::state::launcher::{match_command, rank, SearchText};
 use crate::state::list::{self, Key, Tab};
 use crate::state::menu::{launcher_menu, row_menu, MenuEntry, MenuItem, Sections};
 use crate::state::nav::{Effect, Focus, Nav};
+use crate::state::palette::PaletteEffect;
 use crate::state::scrollbar::Scrollbar;
 use crate::state::settings::{LauncherTarget, NewNode, SettingsTarget, SnippetTarget};
 use crate::state::size::Size;
@@ -38,6 +40,8 @@ use crate::ui;
 
 /// Title the GNOME extension uses to find the main window.
 pub const MAIN_WINDOW_TITLE: &str = "uti";
+/// How long after a menu closed focus is back in the window (ADR-036).
+const MENU_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
 const RELEASES_URL: &str = "https://github.com/noppomario/uti/releases";
 
 /// Messages handled by the main window.
@@ -108,6 +112,13 @@ pub enum Msg {
     Drop(DropList, Option<Hit>),
     /// The row drag ended (dropped or cancelled).
     DragEnd,
+    /// A palette category tab was chosen.
+    PaletteTab(usize),
+    /// A palette row was pressed (selects it; the palette takes the keys).
+    PalettePress(usize),
+    /// A palette row was double-clicked: add its item.
+    PaletteAdd(usize),
+    PaletteClose,
     /// New clipboard text (extension signal or read on focus).
     ClipboardText(String),
     /// Installed applications changed.
@@ -134,6 +145,8 @@ pub enum DropList {
     /// Launcher level `depth` (0: the tab's list).
     Launcher(usize),
     Snippets,
+    /// The special item palette (a drag source only).
+    Palette,
 }
 
 /// What a row drag carries.
@@ -169,6 +182,19 @@ enum Indicator {
     Line(f64),
     /// The folder row (or empty-level row) dropped into.
     Into(usize),
+}
+
+/// The open special item palette (ADR-040).
+struct OpenPalette {
+    ui: ui::PaletteUi,
+    /// Items of each category ([`PaletteCategory::ALL`]).
+    items: Vec<Vec<PaletteItem>>,
+    /// Where Enter and double-click add items.
+    anchor: Anchor,
+    /// The popup was pinned for the palette: unpin when it closes.
+    restore_pin: bool,
+    /// Category whose rows the list shows.
+    shown: Option<usize>,
 }
 
 /// An open Launcher level below the tab's list.
@@ -243,6 +269,11 @@ struct App {
     config: AppConfig,
     settings: Option<settings::SettingsUi>,
     drag: Option<DragState>,
+    palette: Option<OpenPalette>,
+    /// Category the palette opens on (the last one shown).
+    palette_category: usize,
+    /// Open the palette once the popup is shown (from Settings).
+    palette_pending: bool,
     /// Levels closed during a drag, unparented once it ends (the dragged
     /// row may be in one).
     parked: Vec<gtk::Popover>,
@@ -282,6 +313,18 @@ fn app_meta(apps: &[gio::AppInfo], argv: &[Vec<String>]) -> Vec<AppMeta> {
                 .and_then(|d| d.categories())
                 .map(|c| c.split(';').filter(|c| !c.is_empty()).map(String::from).collect())
                 .unwrap_or_default(),
+        })
+        .collect()
+}
+
+/// GNOME Settings panels for the palette (hidden desktop files).
+fn load_panels() -> Vec<SettingsPanel> {
+    let all = gio::AppInfo::all();
+    all.iter()
+        .zip(app_argv(&all))
+        .filter_map(|(a, argv)| {
+            let icon = a.icon().and_then(|i| IconExt::to_string(&i));
+            SettingsPanel::from_desktop(&a.id()?, &a.name(), icon.as_deref(), &argv)
         })
         .collect()
 }
@@ -357,6 +400,9 @@ pub fn start(app: &adw::Application, minimized: bool) {
         config,
         settings: None,
         drag: None,
+        palette: None,
+        palette_category: 0,
+        palette_pending: false,
         parked: Vec::new(),
     };
     let t = tx.clone();
@@ -415,6 +461,13 @@ impl App {
                 None
             },
             Msg::SetPinned(pinned) => {
+                if !pinned {
+                    if let Some(p) = &mut self.palette {
+                        p.restore_pin = false;
+                    }
+                    self.nav.close_palette();
+                    self.sync_palette();
+                }
                 self.sync_more();
                 self.window.set_pinned(pinned)
             },
@@ -433,6 +486,11 @@ impl App {
                     glib::idle_add_local_once(move || fit_to_rows(&root, &lists, tab));
                 }
                 debug_snapshot(&self.ui.root, &[]);
+                if std::mem::take(&mut self.palette_pending) {
+                    let effect = self.nav.select_tab(Tab::Launcher);
+                    self.navigate(effect);
+                    self.open_palette(Anchor::End(None));
+                }
                 None
             },
             Msg::OpenSettings(target) => {
@@ -453,6 +511,7 @@ impl App {
                 if self.ui.menu.is_visible() {
                     popovers.push(self.ui.menu.clone().upcast());
                 }
+                popovers.extend(self.palette.as_ref().map(|p| p.ui.popover.clone()));
                 debug_snapshot(&self.ui.root, &popovers);
                 None
             },
@@ -536,13 +595,16 @@ impl App {
                 self.sync_focus();
                 // Focus comes back to the window only after the popup is gone.
                 let t = self.tx.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
-                    send(&t, Msg::MenuSettled)
-                });
+                glib::timeout_add_local_once(MENU_SETTLE, move || send(&t, Msg::MenuSettled));
                 None
             },
             Msg::MenuSettled if self.ui.menu.is_visible() => None,
-            Msg::MenuSettled => self.window.popover_closed(self.ui.root.is_active()),
+            Msg::MenuSettled => {
+                // Closing the menu can leave GTK focus on its hidden items,
+                // whose keys never reach the window's handler.
+                self.sync_focus();
+                self.window.popover_closed(self.ui.root.is_active())
+            },
             Msg::RowAction(item, depth, i) => {
                 self.row_action(item, depth, i);
                 None
@@ -554,9 +616,7 @@ impl App {
                 self.nav.menu_closed();
                 self.sync_focus();
                 let t = self.tx.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
-                    send(&t, Msg::MenuSettled)
-                });
+                glib::timeout_add_local_once(MENU_SETTLE, move || send(&t, Msg::MenuSettled));
                 None
             },
             Msg::ClipboardText(text) => {
@@ -574,6 +634,7 @@ impl App {
                 if depth == 0 {
                     self.nav.focus_moved(Focus::List);
                 }
+                self.nav.list_clicked();
                 let action = self.nav.tree_mut().click(depth, index);
                 self.tree_action(action)
             },
@@ -632,6 +693,40 @@ impl App {
             },
             Msg::DragEnd => {
                 self.drag_end();
+                None
+            },
+            Msg::PaletteTab(category) => {
+                if let Some(p) = self.nav.palette_mut() {
+                    if p.category() != category {
+                        p.set_category(category);
+                        self.palette_category = category;
+                    }
+                }
+                self.nav.focus_palette();
+                self.sync_palette();
+                self.sync_tree();
+                self.sync_focus();
+                None
+            },
+            Msg::PalettePress(index) => {
+                if let Some(p) = self.nav.palette_mut() {
+                    p.select(index);
+                }
+                self.nav.focus_palette();
+                self.sync_palette();
+                self.sync_tree();
+                self.sync_focus();
+                None
+            },
+            Msg::PaletteAdd(index) => {
+                self.palette_add(index);
+                None
+            },
+            Msg::PaletteClose => {
+                self.nav.close_palette();
+                self.sync_palette();
+                self.sync_tree();
+                self.sync_focus();
                 None
             },
         };
@@ -693,9 +788,19 @@ impl App {
                 None
             },
             Some(Effect::TreeActivate { depth, index }) => self.activate_entry(depth, index),
+            Some(Effect::Palette(effect)) => {
+                match effect {
+                    PaletteEffect::ShowCategory(c) => self.palette_category = c,
+                    PaletteEffect::Add(i) => self.palette_add(i),
+                    PaletteEffect::Close => self.nav.close_palette(),
+                    PaletteEffect::Select(_) => {},
+                }
+                None
+            },
             // Selections are applied by sync_tree / sync_focus.
             Some(Effect::SelectRow(_) | Effect::TreeChanged) | None => None,
         };
+        self.sync_palette();
         self.sync_tree();
         self.sync_focus();
         command
@@ -818,7 +923,7 @@ impl App {
             let Some(list) = self.level_list(d) else {
                 continue;
             };
-            if d == active {
+            if d == active && self.nav.focus() != Focus::Palette {
                 list.remove_css_class("uti-tree-inactive");
             } else {
                 list.add_css_class("uti-tree-inactive");
@@ -838,7 +943,9 @@ impl App {
             }
         }
         if self.nav.tab() == Tab::Launcher {
-            self.ui.footer.set_markup(if depth > 0 {
+            self.ui.footer.set_markup(if self.nav.focus() == Focus::Palette {
+                ui::PALETTE_HINTS
+            } else if depth > 0 {
                 ui::CASCADE_HINTS
             } else {
                 ui::key_hints(Tab::Launcher)
@@ -857,6 +964,22 @@ impl App {
         match self.nav.focus() {
             // The popover holds focus while it is open.
             Focus::Menu => {},
+            // The palette never takes GTK focus: it stays on the Launcher
+            // list, where the window's key handler sees the keys (not in a
+            // closed menu, whose keys never reach the window).
+            Focus::Palette => {
+                let Some(list) = self.ui.lists.get(&Tab::Launcher) else {
+                    return;
+                };
+                let in_list = gtk::prelude::GtkWindowExt::focus(&self.ui.root)
+                    .is_some_and(|w| w.is_ancestor(list));
+                if !in_list {
+                    match list.selected_row() {
+                        Some(row) => row.grab_focus(),
+                        None => list.grab_focus(),
+                    };
+                }
+            },
             Focus::Search => {
                 self.ui.search.grab_focus();
             },
@@ -944,6 +1067,8 @@ impl App {
             },
             WindowCommand::Hide => {
                 self.ui.menu.popdown();
+                self.nav.close_palette();
+                self.sync_palette();
                 self.close_cascade();
                 self.ui.root.set_visible(false);
             },
@@ -1190,6 +1315,12 @@ impl App {
                 };
                 self.recent_action(item, &file.path);
             },
+            MenuItem::NewSpecial => {
+                if let Some(place) = new_place() {
+                    let anchor = edit::anchor_of(&self.launcher.nodes, &place);
+                    self.open_palette(anchor);
+                }
+            },
             MenuItem::FixConfig => self.open_settings(SettingsTarget::launcher(None)),
             _ => {},
         }
@@ -1300,6 +1431,9 @@ impl App {
                 .source(Tab::Snippets, index)
                 .and_then(|i| self.snippets.items.get(i))
                 .map(|s| Payload::Snippet(s.id.clone())),
+            DropList::Palette => self
+                .palette_item(index)
+                .map(|item| Payload::Launcher(entry::Drag::Copy(item.kind.clone()))),
         };
         self.drag = payload.map(|payload| DragState {
             payload,
@@ -1451,6 +1585,179 @@ impl App {
                 self.select_snippet(&id);
             },
             _ => {},
+        }
+    }
+
+    /// Opens the special item palette (or moves its anchor) on the
+    /// Launcher tab, pinning the popup while it is open (ADR-040).
+    fn open_palette(&mut self, anchor: Anchor) {
+        if self.nav.tab() != Tab::Launcher || !self.launcher.editable() {
+            return;
+        }
+        if let Some(p) = &mut self.palette {
+            p.anchor = anchor;
+            self.nav.focus_palette();
+            self.sync_palette();
+            self.sync_tree();
+            self.sync_focus();
+            return;
+        }
+        let panels = load_panels();
+        let items: Vec<Vec<PaletteItem>> = PaletteCategory::ALL
+            .iter()
+            .map(|c| catalog::items(*c, &self.app_meta, &panels))
+            .collect();
+        let tabs: Vec<(&str, &str)> =
+            PaletteCategory::ALL.iter().map(|c| (c.icon(), c.label())).collect();
+        let pui = ui::palette_popover(&self.ui.toolbar, &tabs);
+        for (i, tab) in pui.tabs.iter().enumerate() {
+            let t = self.tx.clone();
+            tab.connect_toggled(move |b| {
+                if b.is_active() {
+                    send(&t, Msg::PaletteTab(i));
+                }
+            });
+        }
+        let t = self.tx.clone();
+        pui.close.connect_clicked(move |_| send(&t, Msg::PaletteClose));
+        let t = self.tx.clone();
+        pui.list
+            .connect_row_activated(move |_, r| send(&t, Msg::PaletteAdd(r.index() as usize)));
+        let press = gtk::GestureClick::new();
+        let (t, lb) = (self.tx.clone(), pui.list.clone());
+        press.connect_pressed(move |_, n, _, y| {
+            if let Some(row) = lb.row_at_y(y as i32) {
+                // The second press of a double click is row-activated's.
+                if n == 1 {
+                    send(&t, Msg::PalettePress(row.index() as usize));
+                }
+            }
+        });
+        pui.list.add_controller(press);
+        let height = self.ui.toolbar.height();
+        pui.popover.set_pointing_to(Some(&gdk::Rectangle::new(0, 0, 1, height.max(1))));
+        let restore_pin = !self.ui.pin.is_active();
+        self.nav
+            .open_palette(items.iter().map(Vec::len).collect(), self.palette_category);
+        self.palette = Some(OpenPalette {
+            ui: pui,
+            items,
+            anchor,
+            restore_pin,
+            shown: None,
+        });
+        if restore_pin {
+            // Through the toggle, as a click on the pin (SetPinned).
+            self.ui.pin.set_active(true);
+        }
+        self.sync_palette();
+        self.sync_tree();
+        self.sync_focus();
+        if let Some(p) = &self.palette {
+            p.ui.popover.popup();
+        }
+    }
+
+    /// The palette item of row `index` of the shown category.
+    fn palette_item(&self, index: usize) -> Option<&PaletteItem> {
+        let category = self.nav.palette()?.category();
+        self.palette.as_ref()?.items.get(category)?.get(index)
+    }
+
+    /// Adds the palette item of row `index` at the palette's anchor.
+    fn palette_add(&mut self, index: usize) {
+        let (Some(item), Some(p)) = (self.palette_item(index), &self.palette) else {
+            return;
+        };
+        let node = LauncherNode::new(item.kind.clone());
+        let id = node.id.clone();
+        let anchor = p.anchor.clone();
+        if let Some(p) = self.nav.palette_mut() {
+            p.select(index);
+        }
+        self.edit_launcher(Some(id), |nodes| {
+            let place = edit::resolve(nodes, &anchor);
+            edit::insert(nodes, &place, node)
+        });
+    }
+
+    /// Mirrors [`Nav::palette`]: closes the popover when it is gone
+    /// (restoring the pin), else shows its category and selection.
+    fn sync_palette(&mut self) {
+        let Some(state) = self.nav.palette().cloned() else {
+            if let Some(p) = self.palette.take() {
+                p.ui.popover.popdown();
+                if self.drag.is_some() {
+                    self.parked.push(p.ui.popover);
+                } else {
+                    p.ui.popover.unparent();
+                }
+                if p.restore_pin && self.ui.pin.is_active() {
+                    self.ui.pin.set_active(false);
+                }
+            }
+            return;
+        };
+        let focused = self.nav.focus() == Focus::Palette;
+        let Some(p) = &mut self.palette else {
+            return;
+        };
+        let category = state.category();
+        if p.shown != Some(category) {
+            p.shown = Some(category);
+            let list = p.ui.list.clone();
+            list.remove_all();
+            for (index, item) in p.items[category].iter().enumerate() {
+                let icon = gio::ThemedIcon::from_names(
+                    &item.icons.iter().map(String::as_str).collect::<Vec<_>>(),
+                );
+                let spec = ui::RowSpec {
+                    index,
+                    hint: None,
+                    icon: Some(icon.upcast()),
+                    text: &item.name,
+                    tooltip: &item.name,
+                    branch: None,
+                    more: false,
+                };
+                let row = ui::build_row(&spec, |_, _| {});
+                // Keys stay with the window's handler (see sync_focus).
+                row.set_focusable(false);
+                let (t, e) = (self.tx.clone(), self.tx.clone());
+                ui::drag_source(
+                    &row,
+                    || true,
+                    move || send(&t, Msg::DragBegin(DropList::Palette, index)),
+                    move || send(&e, Msg::DragEnd),
+                );
+                list.append(&row);
+            }
+            if p.items[category].is_empty() {
+                list.append(&ui::empty_row("Empty"));
+            }
+            // A shown popup keeps its size: grow it to the new rows.
+            if p.ui.popover.is_visible() {
+                let popover = p.ui.popover.clone();
+                glib::idle_add_local_once(move || {
+                    popover.queue_resize();
+                    popover.present();
+                });
+            }
+        }
+        for (i, tab) in p.ui.tabs.iter().enumerate() {
+            if tab.is_active() != (i == category) {
+                tab.set_active(i == category);
+            }
+        }
+        p.ui.title.set_label(PaletteCategory::ALL[category].label());
+        match state.selected().and_then(|i| p.ui.list.row_at_index(i as i32)) {
+            Some(row) => p.ui.list.select_row(Some(&row)),
+            None => p.ui.list.unselect_all(),
+        }
+        if focused {
+            p.ui.list.remove_css_class("uti-tree-inactive");
+        } else {
+            p.ui.list.add_css_class("uti-tree-inactive");
         }
     }
 
@@ -1809,6 +2116,21 @@ impl App {
     /// Applies and saves a settings change.
     fn apply_setting(&mut self, event: settings::Event) {
         match event {
+            settings::Event::OpenPalette => {
+                if self.ui.root.is_visible() && self.nav.tab() == Tab::Launcher {
+                    self.open_palette(Anchor::End(None));
+                    return;
+                }
+                if self.ui.root.is_visible() {
+                    let effect = self.nav.select_tab(Tab::Launcher);
+                    self.navigate(effect);
+                    self.open_palette(Anchor::End(None));
+                } else if let Some(command) = self.window.show(Instant::now()) {
+                    // Opened once the popup is shown (Msg::Present).
+                    self.palette_pending = true;
+                    self.apply(command);
+                }
+            },
             settings::Event::Language(lang) => {
                 if lang == self.config.language {
                     return;
@@ -2252,6 +2574,7 @@ impl App {
                 let list = match list {
                     DropList::Launcher(d) => serde_json::json!(d),
                     DropList::Snippets => serde_json::json!("snippets"),
+                    DropList::Palette => serde_json::json!("palette"),
                 };
                 match indicator {
                     Indicator::Line(y) => serde_json::json!({"list": list, "line": y}),
@@ -2259,6 +2582,41 @@ impl App {
                 }
             }),
             "snippets": self.debug_snippets(),
+            "palette": self.debug_palette(),
+            "focus": format!("{:?}", self.nav.focus()),
+        })
+    }
+
+    /// The palette: category, rows and their rectangles (window
+    /// coordinates), for e2e tests.
+    fn debug_palette(&self) -> serde_json::Value {
+        let (Some(state), Some(p)) = (self.nav.palette(), &self.palette) else {
+            return serde_json::Value::Null;
+        };
+        let origin = popover_origin(&self.ui.root, &p.ui.popover);
+        let rect = |w: &gtk::Widget| {
+            let b = w.compute_bounds(&p.ui.popover).unwrap_or_else(gtk::graphene::Rect::zero);
+            serde_json::json!([
+                f64::from(b.x()) + origin.0,
+                f64::from(b.y()) + origin.1,
+                b.width(),
+                b.height()
+            ])
+        };
+        let mut rows = Vec::new();
+        let mut i = 0;
+        while let Some(row) = p.ui.list.row_at_index(i) {
+            rows.push(rect(row.upcast_ref()));
+            i += 1;
+        }
+        serde_json::json!({
+            "visible": p.ui.popover.is_visible(),
+            "category": state.category(),
+            "selected": state.selected(),
+            "texts": p.items[state.category()].iter().map(|i| &i.name).collect::<Vec<_>>(),
+            "rows": rows,
+            "tabs": p.ui.tabs.iter().map(|t| rect(t.upcast_ref())).collect::<Vec<_>>(),
+            "close": rect(p.ui.close.upcast_ref()),
         })
     }
 
@@ -2554,8 +2912,6 @@ fn row_actions(tx: &Sender) -> gio::SimpleActionGroup {
     for item in MenuItem::ALL.into_iter().filter(|i| *i != MenuItem::DeleteFromHistory) {
         let (_, name, _) = ui::menu_entry(item);
         let action = gio::SimpleAction::new(name, Some(&<(i32, i32)>::static_variant_type()));
-        // The special item palette comes with P5.
-        action.set_enabled(item != MenuItem::NewSpecial);
         let t = tx.clone();
         action.connect_activate(move |_, v| {
             if let Some((depth, index)) = v.and_then(|v| v.get::<(i32, i32)>()) {
@@ -2821,6 +3177,8 @@ fn register_actions(app: &adw::Application, tx: &Sender) {
                 Some("menu") => Key::Menu,
                 Some("delete") => Key::Delete,
                 Some("f2") => Key::Rename,
+                // Settings > Launcher's palette button.
+                Some("palette") => return send(&t, Msg::Setting(settings::Event::OpenPalette)),
                 // Anything else: `UTI_DEBUG_SNAPSHOT` with open popovers.
                 _ => return send(&t, Msg::DebugSnapshot),
             };

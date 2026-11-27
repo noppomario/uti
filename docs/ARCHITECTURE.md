@@ -90,6 +90,8 @@ Main application with Clipboard, Snippets and Launcher tabs, plus a settings win
 - Search covers the whole tree and installed apps (`gio::AppInfo`)
 - Drag-and-drop organizing while pinned: drop positions in `state/drop.rs`, places in
   `launcher/entry.rs`, applied once the drag ends (ADR-039)
+- Special item palette: catalog in `launcher/palette.rs`, keys in `state/palette.rs`, a
+  non-grabbing popover left of the popup (ADR-040)
 
 ### uti for GNOME
 

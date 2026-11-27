@@ -172,6 +172,27 @@ popover.uti-cascade > contents {
 popover.uti-cascade .navigation-sidebar {
   padding: 0;
 }
+/* The special item palette (ADR-040): tabs above, a hint below. */
+popover.uti-palette > contents {
+  min-width: 240px;
+  padding: 0;
+}
+.uti-palette-tabs {
+  padding: 4px 8px 4px 4px;
+  border-bottom: 1px solid alpha(currentColor, 0.15);
+}
+.uti-palette-tabs > togglebutton {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px 4px;
+}
+.uti-palette .navigation-sidebar {
+  padding: 4px 0;
+}
+.uti-palette-footer {
+  padding: 2px 4px 2px 12px;
+  border-top: 1px solid alpha(currentColor, 0.15);
+}
 
 /* Key hints under the list. */
 .uti-footer {

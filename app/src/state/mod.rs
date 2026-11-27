@@ -5,6 +5,7 @@ pub mod launcher;
 pub mod list;
 pub mod menu;
 pub mod nav;
+pub mod palette;
 pub mod scrollbar;
 pub mod settings;
 pub mod size;

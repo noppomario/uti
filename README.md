@@ -134,6 +134,10 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
     - While pinned, drag rows to reorder snippets and organize the Launcher: drop on the
       middle of a folder to move into it, or rest on it to open it. Rows inside generated
       menus (apps, power actions) are copied
+    - **New > Special Item…** (or Settings > Launcher > Add Special Items) opens a palette
+      beside the popup, pinning it while open: drag items onto the Launcher, or pick a
+      category with **←/→** and add the selected item before the row with **Enter** or a
+      double-click
     - **Note**: Always-on-top requires the "uti for GNOME" extension on GNOME/Wayland. Without the extension, only auto-hide is disabled.
 
 ### Panel Menu (GNOME)
