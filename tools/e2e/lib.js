@@ -9,6 +9,7 @@ const RD = 'org.gnome.Mutter.RemoteDesktop';
 const APP = 'io.github.noppomario.uti';
 const APP_PATH = '/io/github/noppomario/uti';
 const BTN_LEFT = 0x110;
+const BTN_RIGHT = 0x111;
 /** Size of the virtual monitor (`run.sh`). */
 const MONITOR = [1400, 900];
 
@@ -19,6 +20,11 @@ export const Keys = {
     Right: 0xff53,
     Enter: 0xff0d,
     Escape: 0xff1b,
+    Tab: 0xff09,
+    BackSpace: 0xff08,
+    Delete: 0xffff,
+    F2: 0xffbf,
+    Menu: 0xff67,
 };
 
 const work = GLib.getenv('E2E_WORK');
@@ -105,6 +111,12 @@ export class Input {
         this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_LEFT, true]));
         this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_LEFT, false]));
         sleep(100);
+    }
+
+    rightClick() {
+        this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_RIGHT, true]));
+        this._rd('NotifyPointerButton', new GLib.Variant('(ib)', [BTN_RIGHT, false]));
+        sleep(300);
     }
 
     key(keysym) {
