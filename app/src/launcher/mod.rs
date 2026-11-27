@@ -3,12 +3,14 @@
 //! Provides launcher configuration and recent files functionality.
 
 pub mod apps;
+pub mod edit;
 pub mod entry;
+pub mod form;
 pub mod power;
 pub mod recent_files;
 mod store;
 
-pub use store::{get_launcher_config_path, load_launcher_tree};
+pub use store::{get_launcher_config_path, LauncherFile};
 
 use apps::Category;
 use power::PowerAction;
@@ -23,10 +25,10 @@ pub enum HistorySource {
     /// - If path is not specified: read from system XBEL (appName required)
     RecentlyUsed {
         /// Application name to filter by (optional if path is specified)
-        #[serde(rename = "appName", default)]
+        #[serde(rename = "appName", default, skip_serializing_if = "Option::is_none")]
         app_name: Option<String>,
         /// Custom path to XBEL file (default: ~/.local/share/recently-used.xbel)
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
     /// Use VSCode history from specified path
@@ -73,13 +75,52 @@ pub struct CommandItem {
 }
 
 /// One node of the launcher tree (`items` in `launcher.json`).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LauncherNode {
-    /// Stable id for editing; generated at load when missing (not saved).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    /// Stable id for editing; generated at load when missing and saved
+    /// with the next edit.
     pub id: String,
-    #[serde(flatten)]
     pub kind: NodeKind,
+}
+
+impl LauncherNode {
+    /// A node of `kind` with a new id.
+    pub fn new(kind: NodeKind) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            kind,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct KnownNode<'a> {
+    id: &'a str,
+    #[serde(flatten)]
+    kind: &'a NodeKind,
+}
+
+impl Serialize for LauncherNode {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match &self.kind {
+            NodeKind::Raw(value) => value.serialize(serializer),
+            kind => KnownNode { id: &self.id, kind }.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LauncherNode {
+    /// A node this version cannot read (unknown `type`, invalid fields)
+    /// becomes [`NodeKind::Raw`] instead of failing the whole file.
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let id = value.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+        let kind = NodeKind::deserialize(&value).unwrap_or_else(|e| {
+            eprintln!("launcher.json: keeping an item it cannot show ({e})");
+            NodeKind::Raw(value)
+        });
+        Ok(Self { id, kind })
+    }
 }
 
 /// Node types, by their `type` field. Later types (`directory`, `file`,
@@ -101,10 +142,14 @@ pub enum NodeKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         category: Option<Category>,
     },
-    /// One installed app.
+    /// One installed app, optionally renamed or with another icon.
     App {
         #[serde(rename = "desktopId")]
         desktop_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
     },
     /// One session or power action, or a menu of all of them.
     Power {
@@ -113,9 +158,16 @@ pub enum NodeKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         action: Option<PowerAction>,
     },
-    /// A type this version does not know; dropped at load.
-    #[serde(other)]
-    Unknown,
+    /// An item this version cannot read, kept as written (not shown).
+    #[serde(skip)]
+    Raw(serde_json::Value),
+}
+
+impl NodeKind {
+    /// Shown as a row (not [`NodeKind::Raw`]).
+    pub fn is_known(&self) -> bool {
+        !matches!(self, Self::Raw(_))
+    }
 }
 
 /// Entry of the pre-tree `commands` array.
@@ -135,12 +187,14 @@ pub struct LauncherConfig {
     /// Read as `command` items when `items` is absent.
     #[serde(default)]
     pub commands: Vec<LegacyCommand>,
+    /// Other top-level keys, kept when saving.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl LauncherConfig {
     /// The tree to show: `items`, or else the old `commands`, or else
-    /// [`default_tree`]. Unknown node types are dropped and missing ids
-    /// generated.
+    /// [`default_tree`]. Missing ids are generated.
     pub fn into_tree(self) -> Vec<LauncherNode> {
         let mut nodes = match self.items {
             None if self.commands.is_empty() => default_tree(),
@@ -185,14 +239,7 @@ pub fn default_tree() -> Vec<LauncherNode> {
         .collect()
 }
 
-fn normalize(nodes: &mut Vec<LauncherNode>) {
-    nodes.retain(|n| {
-        let known = n.kind != NodeKind::Unknown;
-        if !known {
-            eprintln!("launcher.json: skipping an item of unknown type");
-        }
-        known
-    });
+fn normalize(nodes: &mut [LauncherNode]) {
     for node in nodes {
         if node.id.is_empty() {
             node.id = uuid::Uuid::new_v4().to_string();
@@ -259,13 +306,32 @@ mod tests {
     }
 
     #[test]
-    fn unknown_types_are_dropped_at_any_depth() {
-        let nodes = tree(
-            r#"{"items": [{"type": "directory", "path": "~"},
-                          {"type": "folder", "name": "A", "children": [{"type": "snippets"}]}]}"#,
+    fn unreadable_items_are_kept_as_written_at_any_depth() {
+        let json = r#"{"items": [{"type": "directory", "id": "d", "path": "~"},
+                          {"type": "folder", "name": "A", "children": [
+                              {"type": "snippets"}, {"type": "command", "name": "no command"}]}]}"#;
+        let nodes = tree(json);
+        assert_eq!(nodes.len(), 2);
+        assert!(!nodes[0].kind.is_known());
+        assert_eq!(nodes[0].id, "d");
+        let NodeKind::Folder { children, .. } = &nodes[1].kind else {
+            panic!("expected a folder");
+        };
+        assert!(children.iter().all(|c| !c.kind.is_known()));
+        let saved = serde_json::to_value(&nodes).unwrap();
+        assert_eq!(saved[0], serde_json::json!({"type": "directory", "id": "d", "path": "~"}));
+        assert_eq!(
+            saved[1]["children"][1],
+            serde_json::json!({"type": "command", "name": "no command"})
         );
-        assert_eq!(nodes.len(), 1);
-        assert!(matches!(&nodes[0].kind, NodeKind::Folder { children, .. } if children.is_empty()));
+    }
+
+    #[test]
+    fn generated_ids_are_saved() {
+        let nodes = tree(r#"{"items": [{"type": "separator"}]}"#);
+        let json = serde_json::to_value(&nodes[0]).unwrap();
+        assert_eq!(json["id"], nodes[0].id.as_str());
+        assert_eq!(serde_json::from_value::<LauncherNode>(json).unwrap(), nodes[0]);
     }
 
     #[test]
@@ -299,7 +365,7 @@ mod tests {
             r#"{"items": [{"type": "apps", "name": "Programs"},
                           {"type": "apps", "category": "AudioVideo"},
                           {"type": "power", "action": "logOut"},
-                          {"type": "app", "desktopId": "org.gnome.Nautilus.desktop"}]}"#,
+                          {"type": "app", "desktopId": "org.gnome.Nautilus.desktop", "name": "Files"}]}"#,
         );
         let kinds: Vec<&NodeKind> = nodes.iter().map(|n| &n.kind).collect();
         assert_eq!(
@@ -318,7 +384,9 @@ mod tests {
                     action: Some(PowerAction::LogOut)
                 },
                 &NodeKind::App {
-                    desktop_id: "org.gnome.Nautilus.desktop".to_string()
+                    desktop_id: "org.gnome.Nautilus.desktop".to_string(),
+                    name: Some("Files".to_string()),
+                    icon: None,
                 },
             ]
         );

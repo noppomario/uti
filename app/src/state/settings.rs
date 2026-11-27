@@ -1,5 +1,7 @@
 //! Settings window pages and deep links
 
+use crate::launcher::edit::Place;
+
 /// Settings window pages, in sidebar order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsPage {
@@ -40,12 +42,30 @@ pub enum SnippetTarget {
     New,
 }
 
+/// Kinds of launcher items the editor creates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewNode {
+    Folder,
+    Command,
+}
+
+/// A launcher item to open in the launcher item editor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LauncherTarget {
+    /// The node with this id.
+    Edit(String),
+    /// A new node, saved at this place.
+    New(NewNode, Place),
+}
+
 /// Where the settings window opens.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SettingsTarget {
     pub page: SettingsPage,
     /// Editor to push on the Snippets page.
     pub snippet: Option<SnippetTarget>,
+    /// Editor to push on the Launcher page.
+    pub launcher: Option<LauncherTarget>,
 }
 
 impl SettingsTarget {
@@ -54,6 +74,16 @@ impl SettingsTarget {
         Self {
             page: SettingsPage::Snippets,
             snippet: Some(snippet),
+            launcher: None,
+        }
+    }
+
+    /// The Launcher page, with `launcher` open in the editor if given.
+    pub fn launcher(launcher: Option<LauncherTarget>) -> Self {
+        Self {
+            page: SettingsPage::Launcher,
+            snippet: None,
+            launcher,
         }
     }
 }
@@ -75,5 +105,6 @@ mod tests {
         let t = SettingsTarget::snippet(SnippetTarget::New);
         assert_eq!(t.page, SettingsPage::Snippets);
         assert_eq!(SettingsTarget::default().page, SettingsPage::General);
+        assert_eq!(SettingsTarget::launcher(None).page, SettingsPage::Launcher);
     }
 }

@@ -15,18 +15,19 @@ use crate::clipboard::ClipboardStore;
 use crate::config::AppConfig;
 use crate::dbus;
 use crate::launcher::apps::{AppMeta, Category};
+use crate::launcher::edit;
 use crate::launcher::entry::{self, Entry, Opener, Sources};
 use crate::launcher::power::{CallArgs, PowerAction};
 use crate::launcher::recent_files;
-use crate::launcher::{load_launcher_tree, LauncherNode, NodeKind};
+use crate::launcher::{get_launcher_config_path, LauncherFile, LauncherNode, NodeKind};
 use crate::settings;
 use crate::snippets::{load_snippets, save_snippets, SnippetsStore};
 use crate::state::launcher::{match_command, rank, SearchText};
 use crate::state::list::{self, Key, Tab};
-use crate::state::menu::row_menu;
+use crate::state::menu::{launcher_menu, row_menu, MenuEntry, MenuItem, Sections};
 use crate::state::nav::{Effect, Focus, Nav};
 use crate::state::scrollbar::Scrollbar;
-use crate::state::settings::{SettingsTarget, SnippetTarget};
+use crate::state::settings::{LauncherTarget, NewNode, SettingsTarget, SnippetTarget};
 use crate::state::size::Size;
 use crate::state::tree::{Row, TreeAction, HOVER_DELAY};
 use crate::state::window::{WindowCommand, WindowState};
@@ -72,21 +73,21 @@ pub enum Msg {
     SearchRevealed,
     /// A row was clicked; visible index in the current tab.
     Activate(usize),
-    /// Context menu of a visible row, at this point in the list (`None`:
-    /// below the selected row). Index 0 on an empty list.
-    OpenMenu(usize, Option<ui::MenuAnchor>),
+    /// Context menu of visible row `index` of Launcher level `depth` (0
+    /// for the other tabs), at this point in its list (`None`: below the
+    /// row). An index past the rows is the empty space below them.
+    OpenMenu(usize, usize, Option<ui::MenuAnchor>),
     MenuClosed,
     /// Shortly after the menu closed: hide if focus went to another window.
     MenuSettled,
-    /// Visible Clipboard row to add to snippets.
-    AddSnippet(usize),
-    /// Visible row of the current tab to delete.
-    DeleteRow(usize),
-    /// Visible Snippets row to open in the settings editor.
-    EditSnippet(usize),
-    NewSnippet,
-    /// Visible Snippets row and how far to move it.
-    MoveSnippet(usize, isize),
+    /// A context menu entry chosen for row `index` of level `depth` (as in
+    /// [`Msg::OpenMenu`]).
+    RowAction(MenuItem, usize, usize),
+    /// Re-render the Launcher keeping its open levels (recent files
+    /// changed).
+    LauncherRefresh,
+    /// The folder delete confirmation closed; the folder id when confirmed.
+    DeleteConfirmed(Option<String>),
     /// A Launcher row at this depth (0: the tab's list) was clicked.
     TreeClick(usize, usize),
     /// The pointer moved onto a Launcher row at this depth.
@@ -107,6 +108,12 @@ pub enum Msg {
     /// Rebuild the settings window (language changed).
     RepopulateSettings,
     SettingsClosed,
+}
+
+/// A row an open Launcher level belongs to, found again after re-rendering.
+enum OpenStep {
+    Node(String),
+    Index(usize),
 }
 
 /// An open Launcher level below the tab's list.
@@ -160,7 +167,7 @@ struct App {
     snippets: SnippetsStore,
     /// Window height already trimmed to whole rows.
     rows_fitted: bool,
-    launcher: Vec<LauncherNode>,
+    launcher: LauncherFile,
     /// Installed apps shown in launcher search, loaded once and refreshed
     /// by `AppInfoMonitor` (no rescans per keystroke).
     apps: Vec<gio::AppInfo>,
@@ -278,7 +285,7 @@ pub fn start(app: &adw::Application, minimized: bool) {
         history,
         snippets: load_snippets(),
         rows_fitted: false,
-        launcher: load_launcher_tree(),
+        launcher: LauncherFile::load(&get_launcher_config_path()),
         app_meta: app_meta(&apps, &argv),
         app_argv: argv,
         apps,
@@ -322,8 +329,9 @@ impl App {
             Msg::Show => self.window.show(Instant::now()),
             Msg::Hide => self.window.hide(),
             Msg::FocusChanged(false) => {
-                // Pinned: a click on another window closes the open levels.
-                if self.ui.pin.is_active() {
+                // Pinned: a click on another window closes the open levels
+                // (not a menu or dialog opened over them: ADR-036).
+                if self.ui.pin.is_active() && self.nav.focus() != Focus::Menu {
                     self.close_cascade();
                 }
                 self.window.focus_lost()
@@ -340,7 +348,14 @@ impl App {
                 self.read_clipboard();
                 None
             },
-            Msg::SetPinned(pinned) => self.window.set_pinned(pinned),
+            Msg::SetPinned(pinned) => {
+                self.sync_more();
+                self.window.set_pinned(pinned)
+            },
+            Msg::LauncherRefresh => {
+                self.rerender_launcher(None);
+                None
+            },
             Msg::Present => {
                 self.ui.root.present();
                 self.sync_focus();
@@ -367,8 +382,11 @@ impl App {
                 None
             },
             Msg::DebugSnapshot => {
-                let popovers: Vec<gtk::Popover> =
+                let mut popovers: Vec<gtk::Popover> =
                     self.cascade.iter().map(|l| l.popover.clone()).collect();
+                if self.ui.menu.is_visible() {
+                    popovers.push(self.ui.menu.clone().upcast());
+                }
                 debug_snapshot(&self.ui.root, &popovers);
                 None
             },
@@ -443,8 +461,8 @@ impl App {
                 None
             },
             Msg::Activate(i) => self.activate(i),
-            Msg::OpenMenu(i, point) => {
-                self.open_menu(i, point);
+            Msg::OpenMenu(depth, i, point) => {
+                self.open_menu(depth, i, point);
                 None
             },
             Msg::MenuClosed => {
@@ -459,24 +477,20 @@ impl App {
             },
             Msg::MenuSettled if self.ui.menu.is_visible() => None,
             Msg::MenuSettled => self.window.popover_closed(self.ui.root.is_active()),
-            Msg::AddSnippet(i) => {
-                self.add_snippet(i);
+            Msg::RowAction(item, depth, i) => {
+                self.row_action(item, depth, i);
                 None
             },
-            Msg::DeleteRow(i) => {
-                self.delete_row(i);
-                None
-            },
-            Msg::EditSnippet(i) => {
-                self.edit_snippet(i);
-                None
-            },
-            Msg::NewSnippet => {
-                self.open_settings(SettingsTarget::snippet(SnippetTarget::New));
-                None
-            },
-            Msg::MoveSnippet(i, delta) => {
-                self.move_snippet(i, delta);
+            Msg::DeleteConfirmed(id) => {
+                if let Some(id) = id {
+                    self.edit_launcher(None, |nodes| edit::remove(nodes, &id).is_some());
+                }
+                self.nav.menu_closed();
+                self.sync_focus();
+                let t = self.tx.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
+                    send(&t, Msg::MenuSettled)
+                });
                 None
             },
             Msg::ClipboardText(text) => {
@@ -498,7 +512,10 @@ impl App {
                 self.tree_action(action)
             },
             Msg::TreeHover(depth, index) => {
-                if let Some(token) = self.nav.tree_mut().hover(depth, index) {
+                let Some(tree) = self.nav.pointer_tree() else {
+                    return;
+                };
+                if let Some(token) = tree.hover(depth, index) {
                     let t = self.tx.clone();
                     glib::timeout_add_local_once(HOVER_DELAY, move || {
                         send(&t, Msg::TreeHoverElapsed(token))
@@ -508,11 +525,13 @@ impl App {
                 None
             },
             Msg::TreeLeave(depth) => {
-                self.nav.tree_mut().leave(depth);
+                if let Some(tree) = self.nav.pointer_tree() {
+                    tree.leave(depth);
+                }
                 None
             },
             Msg::TreeHoverElapsed(token) => {
-                let action = self.nav.tree_mut().hover_elapsed(token);
+                let action = self.nav.pointer_tree().and_then(|t| t.hover_elapsed(token));
                 self.tree_action(action)
             },
         };
@@ -537,7 +556,7 @@ impl App {
                 None
             },
             Some(Effect::OpenMenu(i)) => {
-                self.open_menu(i, None);
+                self.open_menu(0, i, None);
                 None
             },
             Some(Effect::Delete(i)) => {
@@ -546,6 +565,18 @@ impl App {
             },
             Some(Effect::Edit(i)) => {
                 self.edit_snippet(i);
+                None
+            },
+            Some(Effect::TreeMenu { depth, index }) => {
+                self.open_menu(depth, index, None);
+                None
+            },
+            Some(Effect::TreeEdit { depth, index }) => {
+                self.launcher_key(&[MenuItem::Edit], depth, index);
+                None
+            },
+            Some(Effect::TreeDelete { depth, index }) => {
+                self.launcher_key(&[MenuItem::Delete, MenuItem::RemoveFromHistory], depth, index);
                 None
             },
             Some(Effect::ClearQuery) => {
@@ -582,6 +613,10 @@ impl App {
                 None
             },
             Some(TreeAction::Activate { depth, index }) => self.activate_entry(depth, index),
+            // Keys only; pointer input does not produce these.
+            Some(TreeAction::Menu { .. } | TreeAction::Edit { .. } | TreeAction::Delete { .. }) => {
+                None
+            },
             Some(TreeAction::Unhandled) | None => None,
         };
         self.sync_tree();
@@ -623,7 +658,7 @@ impl App {
             "No recent files"
         };
         let (popover, list) = ui::cascade_popover(&parent);
-        self.fill_level(&list, &entries, false);
+        self.fill_level(&list, depth + 1, &entries, false);
         if entries.is_empty() {
             list.append(&ui::empty_row(empty));
         }
@@ -632,6 +667,7 @@ impl App {
         let d = depth + 1;
         list.connect_row_activated(move |_, r| send(&t, Msg::TreeClick(d, r.index() as usize)));
         track_pointer(&list, d, &self.tx);
+        right_click_menu(&list, d, &self.tx);
         if let Some(b) = row.compute_bounds(&parent) {
             popover.set_pointing_to(Some(&gdk::Rectangle::new(
                 0,
@@ -835,57 +871,386 @@ impl App {
         self.tabs.get(&tab)?.visible.get(visible_index).copied()
     }
 
-    /// Shows the context menu of a visible row of the current tab.
-    fn open_menu(&mut self, visible_index: usize, anchor: Option<ui::MenuAnchor>) {
+    /// Menu sections of row `index` of level `depth` of the current tab.
+    fn menu_sections(&self, depth: usize, index: usize) -> Sections {
         let tab = self.nav.tab();
-        let len = self.tabs.get(&tab).map_or(0, |d| d.visible.len());
-        let sections = row_menu(tab, visible_index, len);
-        let Some(listbox) = self.ui.lists.get(&tab) else {
+        if tab != Tab::Launcher {
+            let len = self.tabs.get(&tab).map_or(0, |d| d.visible.len());
+            return row_menu(tab, index, len);
+        }
+        let Some(level) = self.level_entries(depth) else {
+            return Vec::new();
+        };
+        let row = self.sources().menu_row(level, index, depth == 0 && self.searching());
+        launcher_menu(row, self.launcher.editable())
+    }
+
+    fn searching(&self) -> bool {
+        self.tabs.get(&Tab::Launcher).is_some_and(|d| !d.query.trim().is_empty())
+    }
+
+    /// Shows the context menu of row `index` of level `depth` of the
+    /// current tab, at `anchor` in that level's list.
+    fn open_menu(&mut self, depth: usize, index: usize, anchor: Option<ui::MenuAnchor>) {
+        let tab = self.nav.tab();
+        // Edited by hand (or broken) since: show and offer what is there now.
+        if tab == Tab::Launcher && self.launcher.reload_if_changed(&get_launcher_config_path()) {
+            self.rerender_launcher(None);
+            if let Some(settings) = &self.settings {
+                settings.set_launcher(&self.launcher);
+            }
+        }
+        let sections = self.menu_sections(depth, index);
+        let list = if tab == Tab::Launcher {
+            self.level_list(depth).cloned()
+        } else {
+            self.ui.lists.get(&tab).cloned()
+        };
+        let Some(listbox) = list else {
             return;
         };
         if sections.is_empty() {
             return;
         }
-        self.nav.set_selected(tab, visible_index);
+        if tab == Tab::Launcher {
+            self.nav.tree_mut().select(depth, index);
+            self.sync_tree();
+        } else {
+            self.nav.set_selected(tab, index);
+        }
         self.sync_focus();
-        let row = listbox.row_at_index(visible_index as i32);
+        let row = listbox.row_at_index(index as i32);
         // The given anchor, or below the start of the row (keyboard).
         let anchor = anchor.unwrap_or_else(|| {
             let (x, y) = row
                 .as_ref()
-                .and_then(|r| r.compute_bounds(listbox))
+                .and_then(|r| r.compute_bounds(&listbox))
                 .map_or((0.0, 0.0), |b| (f64::from(b.x() + 24.0), f64::from(b.y() + b.height())));
             ui::MenuAnchor { x, y, end: false }
         });
-        let Some(at) = listbox.compute_point(
-            &self.ui.stack,
-            &gtk::graphene::Point::new(anchor.x as f32, anchor.y as f32),
-        ) else {
+        // The menu stays a child of the main window even for a Launcher
+        // level: a grabbing popup on a non-grabbing one (the level) is
+        // dismissed at once (ADR-038). Only its position is the level's.
+        let Some(at) = self.menu_point(depth, &listbox, anchor.x, anchor.y) else {
             return;
         };
+        let menu = &self.ui.menu;
         // A popover's halign sets which side of `pointing_to` it starts at.
-        self.ui.menu.set_halign(if anchor.end {
+        menu.set_halign(if anchor.end {
             gtk::Align::End
         } else {
             gtk::Align::Start
         });
-        self.ui.menu.set_menu_model(Some(&ui::menu_model(&sections, visible_index)));
-        self.ui.menu.set_pointing_to(Some(&gdk::Rectangle::new(
-            at.x() as i32,
-            at.y() as i32,
-            1,
-            1,
-        )));
+        menu.set_menu_model(Some(&ui::menu_model(&sections, depth, index)));
+        menu.set_pointing_to(Some(&gdk::Rectangle::new(at.0 as i32, at.1 as i32, 1, 1)));
         self.nav.menu_opened();
         self.window.popover_opened();
-        self.ui.menu.popup();
+        menu.popup();
         // GtkMenuSectionBox shows its separators from an idle callback, after
         // the popup size is fixed; without a second layout the menu scrolls.
-        let menu = self.ui.menu.clone();
+        let menu = menu.clone();
         glib::idle_add_local_once(move || {
             menu.queue_resize();
             menu.present();
         });
+    }
+
+    /// Point (x, y) of `list` (level `depth`) in the coordinates of the
+    /// menu's parent, the main window's stack.
+    fn menu_point(&self, depth: usize, list: &gtk::ListBox, x: f64, y: f64) -> Option<(f64, f64)> {
+        let point = gtk::graphene::Point::new(x as f32, y as f32);
+        let Some(level) = depth.checked_sub(1).and_then(|d| self.cascade.get(d)) else {
+            let p = list.compute_point(&self.ui.stack, &point)?;
+            return Some((f64::from(p.x()), f64::from(p.y())));
+        };
+        let in_popover = list.compute_point(&level.popover, &point)?;
+        let (ox, oy) = popover_origin(&self.ui.root, &level.popover);
+        let window = gtk::graphene::Point::new(
+            (f64::from(in_popover.x()) + ox) as f32,
+            (f64::from(in_popover.y()) + oy) as f32,
+        );
+        let p = self.ui.root.compute_point(&self.ui.stack, &window)?;
+        // A popover cannot point outside its parent: the menu opens from
+        // the window's edge, at the row's height.
+        let stack = &self.ui.stack;
+        Some((
+            f64::from(p.x()).clamp(0.0, f64::from(stack.width() - 1)),
+            f64::from(p.y()).clamp(0.0, f64::from(stack.height() - 1)),
+        ))
+    }
+
+    /// A menu entry chosen for row `index` of level `depth`.
+    fn row_action(&mut self, item: MenuItem, depth: usize, index: usize) {
+        if self.nav.tab() == Tab::Launcher {
+            self.launcher_action(item, depth, index);
+            return;
+        }
+        match item {
+            MenuItem::AddToSnippets => self.add_snippet(index),
+            MenuItem::Delete | MenuItem::DeleteFromHistory => self.delete_row(index),
+            MenuItem::Edit => self.edit_snippet(index),
+            MenuItem::AddNew => self.open_settings(SettingsTarget::snippet(SnippetTarget::New)),
+            MenuItem::MoveUp => self.move_snippet(index, -1),
+            MenuItem::MoveDown => self.move_snippet(index, 1),
+            _ => {},
+        }
+    }
+
+    /// F2 / Delete on a Launcher row: the first of `items` its menu has.
+    fn launcher_key(&mut self, items: &[MenuItem], depth: usize, index: usize) {
+        let sections = self.menu_sections(depth, index);
+        let has = |item: &MenuItem| sections.iter().flatten().any(|e| *e == MenuEntry::Item(*item));
+        if let Some(item) = items.iter().find(|i| has(i)) {
+            self.launcher_action(*item, depth, index);
+        }
+    }
+
+    /// The rows the open levels belong to, from the root to level `depth`.
+    fn owners(&self, depth: usize) -> Vec<&Entry> {
+        let tree = self.nav.tree();
+        (1..=depth)
+            .filter_map(|d| self.level_entries(d - 1)?.get(tree.owner(d)?))
+            .collect()
+    }
+
+    /// Runs a Launcher menu entry on row `index` of level `depth`.
+    fn launcher_action(&mut self, item: MenuItem, depth: usize, index: usize) {
+        let Some(level) = self.level_entries(depth) else {
+            return;
+        };
+        let entry = level.get(index).cloned();
+        let node_id = match &entry {
+            Some(Entry::Node(path)) => {
+                entry::node_at(&self.launcher.nodes, path).map(|n| n.id.clone())
+            },
+            _ => None,
+        };
+        let new_place = || self.sources().new_place(&self.owners(depth), entry.as_ref());
+        match item {
+            MenuItem::Edit => {
+                if let Some(id) = node_id {
+                    self.open_settings(SettingsTarget::launcher(Some(LauncherTarget::Edit(id))));
+                }
+            },
+            MenuItem::NewFolder | MenuItem::NewCommand => {
+                let kind = if item == MenuItem::NewFolder {
+                    NewNode::Folder
+                } else {
+                    NewNode::Command
+                };
+                if let Some(place) = new_place() {
+                    let target = LauncherTarget::New(kind, place);
+                    self.open_settings(SettingsTarget::launcher(Some(target)));
+                }
+            },
+            MenuItem::NewSeparator => {
+                if let Some(place) = new_place() {
+                    let node = LauncherNode::new(NodeKind::Separator);
+                    let id = node.id.clone();
+                    self.edit_launcher(Some(id), |nodes| edit::insert(nodes, &place, node));
+                }
+            },
+            MenuItem::MoveUp | MenuItem::MoveDown => {
+                let Some(id) = node_id else {
+                    return;
+                };
+                let delta = if item == MenuItem::MoveUp { -1 } else { 1 };
+                let apps = self.app_meta.clone();
+                let shown = move |n: &LauncherNode| entry::node_shown(&apps, n);
+                self.edit_launcher(Some(id.clone()), |nodes| {
+                    edit::move_by(nodes, &id, delta, shown)
+                });
+            },
+            MenuItem::Delete => {
+                let Some(id) = node_id else {
+                    return;
+                };
+                if edit::descendants(&self.launcher.nodes, &id) > 0 {
+                    self.confirm_delete(&id, depth, index);
+                } else {
+                    self.edit_launcher(None, |nodes| edit::remove(nodes, &id).is_some());
+                }
+            },
+            MenuItem::AddToLauncher => {
+                let Some(kind) = entry.as_ref().and_then(|e| self.sources().node_for(e)) else {
+                    return;
+                };
+                let place = self.sources().add_place(&self.owners(depth));
+                let node = LauncherNode::new(kind);
+                self.edit_launcher(None, |nodes| edit::insert(nodes, &place, node));
+            },
+            MenuItem::OpenFolder | MenuItem::CopyPath | MenuItem::RemoveFromHistory => {
+                let Some(Entry::Recent { file, .. }) = entry else {
+                    return;
+                };
+                self.recent_action(item, &file.path);
+            },
+            MenuItem::FixConfig => self.open_settings(SettingsTarget::launcher(None)),
+            _ => {},
+        }
+    }
+
+    /// Open Folder, Copy Path or Remove from History for a recent file.
+    fn recent_action(&mut self, item: MenuItem, path: &str) {
+        let file = gio::File::for_path(path);
+        match item {
+            MenuItem::OpenFolder => {
+                gtk::FileLauncher::new(Some(&file)).open_containing_folder(
+                    Some(&self.ui.root),
+                    None::<&gio::Cancellable>,
+                    |r| {
+                        if let Err(e) = r {
+                            eprintln!("Failed to open the folder: {e}");
+                        }
+                    },
+                );
+                if debug_keys() {
+                    eprintln!("DEBUG open folder of {path}");
+                }
+            },
+            MenuItem::CopyPath => self.ui.root.clipboard().set_text(path),
+            MenuItem::RemoveFromHistory => {
+                if let Err(e) = gtk::RecentManager::default().remove_item(&file.uri()) {
+                    eprintln!("Failed to remove {path} from recent files: {e}");
+                }
+                // The manager writes the file from an idle callback.
+                let t = self.tx.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(200), move || {
+                    send(&t, Msg::LauncherRefresh)
+                });
+            },
+            _ => {},
+        }
+    }
+
+    /// Asks before deleting folder `id` (row `index` of level `depth`) with
+    /// its items.
+    fn confirm_delete(&mut self, id: &str, depth: usize, index: usize) {
+        let Some(node) = edit::find(&self.launcher.nodes, id) else {
+            return;
+        };
+        let name = match &node.kind {
+            NodeKind::Folder { name, .. } => name.clone(),
+            _ => return,
+        };
+        let count = edit::descendants(&self.launcher.nodes, id);
+        let dialog = ui::delete_folder_dialog(
+            &format!("Delete “{name}”?"),
+            &format!("The {count} items in it are deleted too."),
+            "Cancel",
+            "Delete",
+        );
+        let (t, id) = (self.tx.clone(), id.to_owned());
+        dialog.connect_response(None, move |_, response| {
+            let confirmed = (response == ui::DELETE_RESPONSE).then(|| id.clone());
+            send(&t, Msg::DeleteConfirmed(confirmed));
+        });
+        self.nav.tree_mut().select(depth, index);
+        self.nav.menu_opened();
+        self.window.popover_opened();
+        dialog.present(Some(&self.ui.root));
+    }
+
+    /// Applies `edit` to the launcher tree and saves it, then re-renders
+    /// the Launcher keeping the open levels and selecting node `select`.
+    fn edit_launcher(
+        &mut self,
+        select: Option<String>,
+        edit: impl FnOnce(&mut Vec<LauncherNode>) -> bool,
+    ) {
+        let open = self.open_path();
+        let tree = self.nav.tree();
+        let at = (tree.active(), tree.selected(tree.active()).unwrap_or(0));
+        match self.launcher.edit(&get_launcher_config_path(), edit) {
+            Ok(true) => {},
+            Ok(false) => return,
+            Err(e) => eprintln!("{e}"),
+        }
+        self.refresh_launcher();
+        self.reopen(&open, select.as_deref(), at);
+        if let Some(settings) = &self.settings {
+            settings.set_launcher(&self.launcher);
+        }
+    }
+
+    /// Re-renders the Launcher, keeping its open levels and selection (or
+    /// selecting node `select`).
+    fn rerender_launcher(&mut self, select: Option<&str>) {
+        let open = self.open_path();
+        let tree = self.nav.tree();
+        let at = (tree.active(), tree.selected(tree.active()).unwrap_or(0));
+        self.refresh_launcher();
+        self.reopen(&open, select, at);
+    }
+
+    /// Shows the rows' "more" buttons while pinned (organize mode).
+    fn sync_more(&self) {
+        let pinned = self.ui.pin.is_active();
+        let lists = self.ui.lists.values().chain(self.cascade.iter().map(|l| &l.list));
+        for list in lists {
+            ui::show_more_buttons(list, pinned);
+        }
+    }
+
+    /// The open levels as the rows they belong to: a tree node by id, a
+    /// generated row by index.
+    fn open_path(&self) -> Vec<OpenStep> {
+        let tree = self.nav.tree();
+        (1..=tree.depth())
+            .filter_map(|d| {
+                let index = tree.owner(d)?;
+                Some(match self.level_entries(d - 1)?.get(index)? {
+                    Entry::Node(path) => {
+                        OpenStep::Node(entry::node_at(&self.launcher.nodes, path)?.id.clone())
+                    },
+                    _ => OpenStep::Index(index),
+                })
+            })
+            .collect()
+    }
+
+    /// Row of `level` that `step` names.
+    fn find_step(&self, level: &[Entry], step: &OpenStep) -> Option<usize> {
+        match step {
+            OpenStep::Index(i) => (*i < level.len()).then_some(*i),
+            OpenStep::Node(id) => level.iter().position(|e| match e {
+                Entry::Node(path) => {
+                    entry::node_at(&self.launcher.nodes, path).is_some_and(|n| n.id == *id)
+                },
+                _ => false,
+            }),
+        }
+    }
+
+    /// Opens the levels of `open` again (after re-rendering) and selects
+    /// node `select` where it is shown, else the row at `at` (depth, index).
+    fn reopen(&mut self, open: &[OpenStep], select: Option<&str>, at: (usize, usize)) {
+        let mut depth = 0;
+        for step in open {
+            let Some(index) = self.level_entries(depth).and_then(|l| self.find_step(l, step))
+            else {
+                break;
+            };
+            self.nav.tree_mut().select(depth, index);
+            self.open_level(depth, index, false);
+            depth += 1;
+        }
+        let active = select
+            .and_then(|id| {
+                (0..=depth).rev().find_map(|d| {
+                    let i =
+                        self.find_step(self.level_entries(d)?, &OpenStep::Node(id.to_owned()))?;
+                    Some((d, i))
+                })
+            })
+            .unwrap_or_else(|| {
+                let d = at.0.min(depth);
+                let len = self.level_entries(d).map_or(0, <[Entry]>::len);
+                (d, at.1.min(len.saturating_sub(1)))
+            });
+        self.nav.tree_mut().select(active.0, active.1);
+        self.sync_tree();
+        self.sync_more();
     }
 
     /// Adds a visible Clipboard row to snippets; the history item stays.
@@ -1012,7 +1377,7 @@ impl App {
                 } else if let Some(action) = src.power_at(&path) {
                     self.power(action);
                 } else {
-                    let item = entry::command_at(&self.launcher, &path)?;
+                    let item = entry::command_at(&self.launcher.nodes, &path)?;
                     spawn(&item.command, &item.args, None);
                 }
             },
@@ -1020,7 +1385,7 @@ impl App {
                 opener: Opener::Command(command),
                 file,
             } => {
-                let item = entry::command_at(&self.launcher, &command)?;
+                let item = entry::command_at(&self.launcher.nodes, &command)?;
                 spawn(&item.command, &item.args, Some(&file.path));
             },
             Entry::Recent {
@@ -1099,7 +1464,7 @@ impl App {
     /// Rows come from the tree, installed apps and their recent files.
     fn sources(&self) -> Sources<'_> {
         Sources {
-            nodes: &self.launcher,
+            nodes: &self.launcher.nodes,
             apps: &self.app_meta,
             recent_apps: &self.recent_apps,
         }
@@ -1112,6 +1477,11 @@ impl App {
 
     /// Shows the settings window at `target`, creating it on first use.
     fn open_settings(&mut self, target: SettingsTarget) {
+        // GNOME does not raise an existing window from the popup (focus
+        // stealing prevention), but focuses a new one: open it anew.
+        if let Some(ui) = self.settings.take_if(|ui| !ui.window.is_active()) {
+            ui.window.destroy();
+        }
         if self.settings.is_none() {
             let Some(app) = self.ui.root.application().and_downcast::<adw::Application>() else {
                 return;
@@ -1125,7 +1495,7 @@ impl App {
             self.settings = Some(self.populate_settings(&window, target.page));
         }
         if let Some(ui) = &self.settings {
-            ui.open(&target, &self.snippets);
+            ui.open(&target, &self.snippets, &self.launcher, &self.app_meta);
             ui.window.present();
             debug_snapshot(&ui.window, &[]);
         }
@@ -1141,6 +1511,7 @@ impl App {
             window,
             &self.config,
             &self.snippets,
+            &self.launcher,
             page,
             std::rc::Rc::new(move |e| send(&t, Msg::Setting(e))),
         )
@@ -1204,6 +1575,25 @@ impl App {
                 self.snippets_changed();
                 return;
             },
+            settings::Event::LauncherSave { target, kind } => {
+                match target {
+                    LauncherTarget::Edit(id) => {
+                        self.edit_launcher(Some(id.clone()), |nodes| {
+                            edit::update(nodes, &id, kind)
+                        });
+                    },
+                    LauncherTarget::New(_, place) => {
+                        let node = LauncherNode::new(kind);
+                        let id = node.id.clone();
+                        self.edit_launcher(Some(id), |nodes| edit::insert(nodes, &place, node));
+                    },
+                }
+                return;
+            },
+            settings::Event::LauncherDelete(id) => {
+                self.edit_launcher(None, |nodes| edit::remove(nodes, &id).is_some());
+                return;
+            },
             settings::Event::SnippetMove(id, delta) => {
                 if self.snippets.move_by(&id, delta) {
                     self.snippets_changed();
@@ -1218,7 +1608,7 @@ impl App {
                 self.history.max_items = self.config.clipboard_history_limit;
                 self.apply_size();
                 self.apply_scrollbar();
-                self.launcher = load_launcher_tree();
+                self.launcher = LauncherFile::load(&get_launcher_config_path());
                 self.snippets = load_snippets();
                 for tab in Tab::ALL {
                     self.refresh(tab);
@@ -1350,9 +1740,11 @@ impl App {
                 more: true,
             };
             let tx = self.tx.clone();
-            listbox
-                .append(&ui::build_row(&spec, move |i, point| send(&tx, Msg::OpenMenu(i, point))));
+            listbox.append(&ui::build_row(&spec, move |i, point| {
+                send(&tx, Msg::OpenMenu(0, i, point))
+            }));
         }
+        ui::show_more_buttons(listbox, self.ui.pin.is_active());
         if self.nav.tab() == tab && self.ui.root.is_visible() {
             self.sync_focus();
         }
@@ -1362,6 +1754,9 @@ impl App {
     /// searching, matching commands of the whole tree and installed apps.
     /// Closes the open levels.
     fn refresh_launcher(&mut self) {
+        // Levels are popovers parented to the rows' lists, which
+        // `remove_all` would try (and fail) to remove.
+        self.truncate_cascade(0);
         let query = self.tabs.get(&Tab::Launcher).map(|d| d.query.clone()).unwrap_or_default();
         let searching = !query.trim().is_empty();
         self.read_recent_apps();
@@ -1385,7 +1780,7 @@ impl App {
         let rows = self.launcher_rows.iter().map(|e| self.sources().row(e)).collect();
         self.nav.set_launcher_rows(rows);
         if let Some(list) = self.ui.lists.get(&Tab::Launcher) {
-            self.fill_level(list, &self.launcher_rows, searching);
+            self.fill_level(list, 0, &self.launcher_rows, searching);
         }
         self.sync_tree();
         if self.nav.tab() == Tab::Launcher && self.ui.root.is_visible() {
@@ -1395,7 +1790,7 @@ impl App {
 
     /// Renders Launcher rows into `list`; `searching` shows each command's
     /// folders as its tooltip.
-    fn fill_level(&self, list: &gtk::ListBox, entries: &[Entry], searching: bool) {
+    fn fill_level(&self, list: &gtk::ListBox, depth: usize, entries: &[Entry], searching: bool) {
         list.remove_all();
         let rows: Vec<Row> = entries.iter().map(|e| self.sources().row(e)).collect();
         for (index, (entry, row)) in entries.iter().zip(&rows).enumerate() {
@@ -1416,10 +1811,14 @@ impl App {
                 } else {
                     ui::Branch::Folder
                 }),
-                more: false,
+                more: true,
             };
-            list.append(&ui::build_row(&spec, |_, _| {}));
+            let tx = self.tx.clone();
+            list.append(&ui::build_row(&spec, move |i, point| {
+                send(&tx, Msg::OpenMenu(depth, i, point))
+            }));
         }
+        ui::show_more_buttons(list, self.ui.pin.is_active());
     }
 
     /// Icon of a Launcher row: folders and file types by theme name, apps
@@ -1432,30 +1831,31 @@ impl App {
         let app_icon =
             |a: usize| self.apps.get(a).and_then(|app| app.icon()).unwrap_or_else(generic);
         match entry {
-            Entry::Node(path) => match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
-                Some(NodeKind::Folder { .. }) => themed(&["folder"]),
-                Some(NodeKind::Apps { category, .. }) => {
-                    themed(category.map_or(&["view-app-grid-symbolic"], Category::icons))
-                },
-                Some(NodeKind::Power { action, .. }) => {
-                    themed(action.map_or(&["system-shutdown-symbolic"], PowerAction::icons))
-                },
-                Some(NodeKind::App { .. }) => {
-                    self.sources().app_at(path).map_or_else(generic, app_icon)
-                },
-                Some(NodeKind::Command(c)) => {
-                    if let Some(icon) = &c.icon {
-                        return if icon.starts_with('/') {
-                            gio::FileIcon::new(&gio::File::for_path(icon)).upcast()
-                        } else {
-                            themed(&[icon])
-                        };
-                    }
-                    match_command(&c.command, &c.args, &self.app_argv)
-                        .and_then(|i| self.apps.get(i)?.icon())
-                        .unwrap_or_else(generic)
-                },
-                _ => generic(),
+            Entry::Node(path) => {
+                match entry::node_at(&self.launcher.nodes, path).map(|n| &n.kind) {
+                    Some(NodeKind::Folder { .. }) => themed(&["folder"]),
+                    Some(NodeKind::Apps { category, .. }) => {
+                        themed(category.map_or(&["view-app-grid-symbolic"], Category::icons))
+                    },
+                    Some(NodeKind::Power { action, .. }) => {
+                        themed(action.map_or(&["system-shutdown-symbolic"], PowerAction::icons))
+                    },
+                    Some(NodeKind::App {
+                        icon: Some(icon), ..
+                    }) => named_icon(icon),
+                    Some(NodeKind::App { .. }) => {
+                        self.sources().app_at(path).map_or_else(generic, app_icon)
+                    },
+                    Some(NodeKind::Command(c)) => {
+                        if let Some(icon) = &c.icon {
+                            return named_icon(icon);
+                        }
+                        match_command(&c.command, &c.args, &self.app_argv)
+                            .and_then(|i| self.apps.get(i)?.icon())
+                            .unwrap_or_else(generic)
+                    },
+                    _ => generic(),
+                }
             },
             Entry::Category(c) => themed(c.icons()),
             Entry::Power(p) => themed(p.icons()),
@@ -1469,6 +1869,40 @@ impl App {
 
     /// Launcher tree state and each level's row rectangles (main window
     /// coordinates; its top-left is at the pointer when shown), for e2e tests.
+    /// Label and rectangle (window coordinates) of each shown menu entry.
+    fn debug_menu_items(&self) -> Vec<serde_json::Value> {
+        fn walk(w: &gtk::Widget, out: &mut Vec<gtk::Widget>) {
+            if w.type_().name() == "GtkModelButton" {
+                out.push(w.clone());
+                return;
+            }
+            let mut child = w.first_child();
+            while let Some(c) = child {
+                walk(&c, out);
+                child = c.next_sibling();
+            }
+        }
+        let menu = &self.ui.menu;
+        if !menu.is_visible() {
+            return Vec::new();
+        }
+        let mut buttons = Vec::new();
+        walk(menu.upcast_ref(), &mut buttons);
+        let (ox, oy) = popover_origin(&self.ui.root, menu.upcast_ref());
+        buttons
+            .iter()
+            .filter(|b| b.is_mapped())
+            .filter_map(|b| {
+                let r = b.compute_bounds(menu)?;
+                Some(serde_json::json!({
+                    "label": b.property::<Option<String>>("text").unwrap_or_default(),
+                    "sensitive": b.is_sensitive(),
+                    "rect": [f64::from(r.x()) + ox, f64::from(r.y()) + oy, r.width(), r.height()],
+                }))
+            })
+            .collect()
+    }
+
     fn debug_state(&self) -> serde_json::Value {
         let tree = self.nav.tree();
         let root = &self.ui.root;
@@ -1503,8 +1937,10 @@ impl App {
                     .iter()
                     .map(|e| self.entry_text(e, false).0)
                     .collect();
+                let more = list.map_or(0, ui::visible_more_buttons);
                 serde_json::json!({
                     "texts": texts,
+                    "more": more,
                     "selected": tree.selected(d),
                     "owner": tree.owner(d),
                     "rows": rows,
@@ -1517,6 +1953,9 @@ impl App {
             "tab": ui::page_name(self.nav.tab()),
             "active": tree.active(),
             "levels": levels,
+            "menu": self.ui.menu.is_visible(),
+            "menuItems": self.debug_menu_items(),
+            "editor": self.settings.as_ref().and_then(|s| s.editor_title()),
         })
     }
 
@@ -1531,7 +1970,7 @@ impl App {
         match entry {
             Entry::Node(path) => {
                 let name = src.node_name(path).unwrap_or_default().to_string();
-                let tip = match entry::node_at(&self.launcher, path).map(|n| &n.kind) {
+                let tip = match entry::node_at(&self.launcher.nodes, path).map(|n| &n.kind) {
                     _ if searching => src.breadcrumb(path),
                     Some(NodeKind::Command(c)) => c.command.clone(),
                     Some(NodeKind::App { .. }) => {
@@ -1546,6 +1985,15 @@ impl App {
             Entry::Recent { file, .. } => (file.name.clone(), file.path.clone()),
             Entry::App(a) => app_text(*a),
         }
+    }
+}
+
+/// An icon by theme name, or from a file for an absolute path.
+fn named_icon(icon: &str) -> gio::Icon {
+    if icon.starts_with('/') {
+        gio::FileIcon::new(&gio::File::for_path(icon)).upcast()
+    } else {
+        gio::ThemedIcon::new(icon).upcast()
     }
 }
 
@@ -1692,6 +2140,16 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
     menu.set_parent(&stack);
     let t = tx.clone();
     menu.connect_closed(move |_| send(&t, Msg::MenuClosed));
+    // The popup keeps the size of the page it opened with; a larger
+    // submenu ("New") would scroll inside it. Resized once the page's slide
+    // (and size interpolation) is over.
+    menu.connect_notify_local(Some("visible-submenu"), |menu, _| {
+        let menu = menu.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+            menu.queue_resize();
+            menu.present();
+        });
+    });
     root.insert_action_group(ui::ROW_ACTIONS, Some(&row_actions(tx)));
 
     // Keep Nav in step when focus moves by mouse or the Tab key.
@@ -1762,33 +2220,24 @@ fn build_ui(app: &adw::Application, tx: &Sender, size: Size) -> Ui {
     }
 }
 
-/// A row action name and the message it sends for a visible row index.
-type RowActionSpec = (&'static str, fn(usize) -> Msg);
-
-/// Row index actions of the context menu (see [`ui::menu_model`]).
+/// Context menu actions (see [`ui::menu_model`]); each takes the row's
+/// `(depth, index)`.
 fn row_actions(tx: &Sender) -> gio::SimpleActionGroup {
     let group = gio::SimpleActionGroup::new();
-    let indexed: [RowActionSpec; 5] = [
-        ("add-snippet", Msg::AddSnippet),
-        ("delete", Msg::DeleteRow),
-        ("edit", Msg::EditSnippet),
-        ("move-up", |i| Msg::MoveSnippet(i, -1)),
-        ("move-down", |i| Msg::MoveSnippet(i, 1)),
-    ];
-    for (name, make) in indexed {
-        let action = gio::SimpleAction::new(name, Some(glib::VariantTy::INT32));
+    // Both deletes share one action, which runs the tab's delete.
+    for item in MenuItem::ALL.into_iter().filter(|i| *i != MenuItem::DeleteFromHistory) {
+        let (_, name, _) = ui::menu_entry(item);
+        let action = gio::SimpleAction::new(name, Some(&<(i32, i32)>::static_variant_type()));
+        // The special item palette comes with P5.
+        action.set_enabled(item != MenuItem::NewSpecial);
         let t = tx.clone();
         action.connect_activate(move |_, v| {
-            if let Some(i) = v.and_then(|v| v.get::<i32>()) {
-                send(&t, make(i.max(0) as usize));
+            if let Some((depth, index)) = v.and_then(|v| v.get::<(i32, i32)>()) {
+                send(&t, Msg::RowAction(item, depth.max(0) as usize, index.max(0) as usize));
             }
         });
         group.add_action(&action);
     }
-    let action = gio::SimpleAction::new("new", None);
-    let t = tx.clone();
-    action.connect_activate(move |_, _| send(&t, Msg::NewSnippet));
-    group.add_action(&action);
     group
 }
 
@@ -1809,16 +2258,25 @@ fn build_list(tab: Tab, tx: &Sender) -> gtk::ListBox {
     } else {
         listbox.connect_row_activated(move |_, row| send(&t, Msg::Activate(row.index() as usize)));
     }
+    right_click_menu(&listbox, 0, tx);
+    listbox
+}
+
+/// Opens the context menu of the row under a right click on `list` (Launcher
+/// level `depth`); below the rows, of the space after them.
+fn right_click_menu(list: &gtk::ListBox, depth: usize, tx: &Sender) {
     let right_click = gtk::GestureClick::builder().button(gdk::BUTTON_SECONDARY).build();
     let t = tx.clone();
-    let lb = listbox.clone();
+    let lb = list.clone();
     right_click.connect_pressed(move |gesture, _, x, y| {
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        let index = lb.row_at_y(y as i32).map_or(0, |r| r.index() as usize);
-        send(&t, Msg::OpenMenu(index, Some(ui::MenuAnchor { x, y, end: false })));
+        let index = lb.row_at_y(y as i32).map_or_else(
+            || (0..).take_while(|&i| lb.row_at_index(i).is_some()).count(),
+            |r| r.index() as usize,
+        );
+        send(&t, Msg::OpenMenu(depth, index, Some(ui::MenuAnchor { x, y, end: false })));
     });
-    listbox.add_controller(right_click);
-    listbox
+    list.add_controller(right_click);
 }
 
 /// Starts `command args.. [extra]` without a shell; `false` if it could not

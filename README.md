@@ -200,8 +200,8 @@ To add snippets manually, edit this file with any unique `id` string.
 
 ### Launcher Configuration
 
-Launcher commands: `~/.config/uti/launcher.json`. Without it, the Launcher shows installed apps
-by category and power actions.
+Launcher items: `~/.config/uti/launcher.json`. Without it, the Launcher shows installed apps
+by category and power actions. Right-click an item (or press F2 / Del) to edit it from the popup.
 
 ```json
 {

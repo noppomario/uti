@@ -32,14 +32,15 @@ This document explains how to configure `~/.config/uti/launcher.json`.
 | `command`   | `name`, `command`, `args` (default `[]`), `historySource`, `icon` | Launches; recent files open as children |
 | `separator` | -                                                       | A line                                  |
 | `apps`      | `name`, `category` (e.g. `Development`)                 | Installed apps of `category`, or without it one level per category |
-| `app`       | `desktopId` (e.g. `org.gnome.Nautilus.desktop`)         | Launches the app; recent files as children |
+| `app`       | `desktopId` (e.g. `org.gnome.Nautilus.desktop`), `name`, `icon` | Launches the app; recent files as children |
 | `power`     | `name`, `action` (`lock`, `suspend`, `logOut`, `restart`, `powerOff`) | Runs `action`, or without it lists all five |
 
 A command shows the icon of the installed app that runs the same program (and, when several
 do, the same arguments); set `icon` to an icon name or an absolute file path to override it.
 
-Every item may have an `id`; uti generates one when it is missing. Items of an unknown `type`
-are skipped.
+Items can also be edited from the launcher itself (right-click, Menu key or F2); uti then
+rewrites the file with an `id` on every item. Items it cannot read (an unknown `type`, invalid
+fields) are not shown but kept as written.
 
 `category` is a freedesktop main category (`AudioVideo`, `Development`, `Education`, `Game`,
 `Graphics`, `Network`, `Office`, `Science`, `Settings`, `System`, `Utility`) or `Other`. Without
