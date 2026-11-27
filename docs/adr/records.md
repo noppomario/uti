@@ -2320,3 +2320,49 @@ that this version does not understand survives edits.
 **Negative**: the file is rewritten in uti's formatting; GNOME does not
 raise an existing Settings window from the popup, so it is opened anew when
 inactive.
+
+## ADR-039
+
+### Organizing by drag-and-drop in the popup
+
+**Date**: 2026-11-27
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Launcher items are moved with Move Up / Down only within a level (ADR-038);
+Orchis organizes its launcher by dragging, with the launcher kept shown.
+Measured in the headless e2e shell (GNOME 51): GTK drags between the main
+window and its non-grabbing levels work with RemoteDesktop input, the window
+loses `is-active` during a drag, and ordinary pointer motion events stop.
+
+### Decision
+
+- Rows can be dragged only while pinned (organize mode, ADR-038), so a drag
+  never hides the popup. While dragging, focus loss does not close the open
+  levels either.
+- Launcher: tree rows move; rows of generated menus (apps, categories, power
+  actions) are copied as "Add to Launcher" does; recent files and search
+  results are not draggable. Drops go to the root (not while searching) and
+  to folder levels of the tree, never into the dragged node itself.
+- A folder row's top and bottom quarters drop before or after it, its middle
+  drops at the end of the folder; other rows split in halves. An insertion
+  line (accent line with a dot) marks the spot, a folder row is outlined;
+  spots that would change nothing show nothing.
+- Spring-loading: resting on a folder's middle for the hover delay (300 ms)
+  opens it; other rows close the open level after the same delay (ADR-037
+  rules, `Tree::drag_hover`). Levels closed during a drag are only hidden
+  until it ends, since the dragged row may be in one.
+- The drop is applied when the drag ends (rebuilding the rows during the
+  drop would destroy the drag's source), with a timeout in case the source
+  never reports the end.
+- Snippets: rows reorder the same way; Move Up / Down stay for the keyboard.
+  Lists near their edges scroll while dragging.
+
+### Consequences
+
+**Positive**: items are arranged where they are seen, across levels.
+
+**Negative**: an unpinned popup cannot be organized by dragging; drag feel
+(start threshold, delays) is only checked on real hardware.

@@ -62,6 +62,27 @@ impl SnippetsStore {
         self.items.insert(to, item);
         true
     }
+
+    /// Moves snippet `id` before snippet `before` (to the end for `None`);
+    /// `false` if either is absent or the order stays the same.
+    pub fn move_before(&mut self, id: &str, before: Option<&str>) -> bool {
+        let Some(from) = self.items.iter().position(|i| i.id == id) else {
+            return false;
+        };
+        let to = match before {
+            Some(b) => match self.items.iter().position(|i| i.id == b) {
+                Some(to) => to,
+                None => return false,
+            },
+            None => self.items.len(),
+        };
+        if to == from || to == from + 1 {
+            return false;
+        }
+        let item = self.items.remove(from);
+        self.items.insert(if to > from { to - 1 } else { to }, item);
+        true
+    }
 }
 
 /// Load snippets from file
@@ -197,6 +218,24 @@ mod tests {
         assert_eq!(values(&s), ["a", "b", "c"]);
         assert!(!s.move_by(&a, -1));
         assert!(!s.move_by("missing", 1));
+    }
+
+    #[test]
+    fn move_before_another_or_to_the_end() {
+        let mut s = store(&["a", "b", "c"]);
+        let id = |s: &SnippetsStore, i: usize| s.items[i].id.clone();
+        let (a, c) = (id(&s, 0), id(&s, 2));
+        assert!(s.move_before(&c, Some(&a)));
+        assert_eq!(values(&s), ["c", "a", "b"]);
+        assert!(s.move_before(&c, None));
+        assert_eq!(values(&s), ["a", "b", "c"]);
+        let b = id(&s, 1);
+        assert!(!s.move_before(&b, Some(&b)), "before itself");
+        assert!(!s.move_before(&b, Some(&c)), "before its next one");
+        assert!(!s.move_before(&c, None), "already last");
+        assert!(!s.move_before(&b, Some("missing")));
+        assert!(s.move_before(&a, Some(&c)));
+        assert_eq!(values(&s), ["b", "a", "c"]);
     }
 
     #[test]

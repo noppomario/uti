@@ -1,5 +1,6 @@
 //! Pure UI state transitions, tested without GTK.
 
+pub mod drop;
 pub mod launcher;
 pub mod list;
 pub mod menu;

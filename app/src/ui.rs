@@ -245,7 +245,7 @@ pub fn cascade_popover(parent: &gtk::ListBox) -> (gtk::Popover, gtk::ListBox) {
         .propagate_natural_width(true)
         .propagate_natural_height(true)
         .max_content_height(max_height)
-        .child(&list)
+        .child(&with_drop_line(&list))
         .build();
     let popover = gtk::Popover::builder()
         .has_arrow(false)
@@ -403,4 +403,198 @@ pub fn menu_model(sections: &[Vec<MenuEntry>], depth: usize, index: usize) -> gi
         menu.append_section(None, &part);
     }
     menu
+}
+
+/// Content of a row drag inside the popup (drops from other apps carry
+/// other values).
+const DRAG_MARKER: &str = "uti-row";
+
+/// `list` with an insertion line over it, shown while dragging.
+pub fn with_drop_line(list: &gtk::ListBox) -> gtk::Overlay {
+    let line = gtk::Box::builder()
+        .valign(gtk::Align::Start)
+        .can_target(false)
+        .visible(false)
+        .css_classes(["uti-drop-line"])
+        .build();
+    line.append(
+        &gtk::Box::builder()
+            .valign(gtk::Align::Center)
+            .css_classes(["uti-drop-dot"])
+            .build(),
+    );
+    line.append(
+        &gtk::Box::builder()
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .css_classes(["uti-drop-bar"])
+            .build(),
+    );
+    let overlay = gtk::Overlay::builder().child(list).build();
+    overlay.add_overlay(&line);
+    overlay
+}
+
+/// Height of the insertion line widget (dot included), for centering it.
+const DROP_LINE_HEIGHT: f64 = 6.0;
+
+fn drop_line(list: &gtk::ListBox) -> Option<gtk::Widget> {
+    let overlay = list.parent().and_downcast::<gtk::Overlay>()?;
+    let mut child = overlay.first_child();
+    while let Some(w) = child {
+        if w.has_css_class("uti-drop-line") {
+            return Some(w);
+        }
+        child = w.next_sibling();
+    }
+    None
+}
+
+/// Shows the insertion line of `list` at `y` (list coordinates), or hides it.
+pub fn show_drop_line(list: &gtk::ListBox, y: Option<f64>) {
+    let Some(line) = drop_line(list) else {
+        return;
+    };
+    if let Some(y) = y {
+        line.set_margin_top((y - DROP_LINE_HEIGHT / 2.0).max(0.0) as i32);
+    }
+    line.set_visible(y.is_some());
+}
+
+/// The insertion line's top in `list` coordinates, when shown (debug state).
+pub fn drop_line_y(list: &gtk::ListBox) -> Option<f64> {
+    drop_line(list).filter(|l| l.is_visible()).map(|l| f64::from(l.margin_top()))
+}
+
+/// Highlights row `index` of `list` as the folder a drop goes into.
+pub fn mark_drop_into(list: &gtk::ListBox, index: Option<usize>) {
+    let mut i = 0;
+    while let Some(row) = list.row_at_index(i) {
+        if index == Some(i as usize) {
+            row.add_css_class("uti-drop-into");
+        } else {
+            row.remove_css_class("uti-drop-into");
+        }
+        i += 1;
+    }
+}
+
+/// The row of `list` highlighted by [`mark_drop_into`] (debug state).
+pub fn drop_into(list: &gtk::ListBox) -> Option<usize> {
+    (0..)
+        .map_while(|i| list.row_at_index(i))
+        .position(|r| r.has_css_class("uti-drop-into"))
+}
+
+/// Top of row `index` of `list` (its bottom for `below`), in list
+/// coordinates.
+pub fn row_edge(list: &gtk::ListBox, index: usize, below: bool) -> Option<f64> {
+    let b = list.row_at_index(index as i32)?.compute_bounds(list)?;
+    Some(f64::from(b.y() + if below { b.height() } else { 0.0 }))
+}
+
+/// Lets `row` be dragged while `enabled()` holds; the row is dimmed and
+/// shown under the pointer while dragged.
+pub fn drag_source(
+    row: &gtk::ListBoxRow,
+    enabled: impl Fn() -> bool + 'static,
+    on_begin: impl Fn() + 'static,
+    on_end: impl Fn() + 'static,
+) {
+    let source = gtk::DragSource::builder().actions(gdk::DragAction::MOVE).build();
+    let hot = std::rc::Rc::new(std::cell::Cell::new((0, 0)));
+    let h = hot.clone();
+    source.connect_prepare(move |_, x, y| {
+        h.set((x as i32, y as i32));
+        enabled().then(|| gdk::ContentProvider::for_value(&DRAG_MARKER.to_value()))
+    });
+    let r = row.clone();
+    source.connect_drag_begin(move |source, _| {
+        let image = gtk::WidgetPaintable::new(Some(&r)).current_image();
+        let (x, y) = hot.get();
+        source.set_icon(Some(&image), x, y);
+        r.add_css_class("uti-dragging");
+        on_begin();
+    });
+    let r = row.clone();
+    source.connect_drag_end(move |_, _, _| {
+        r.remove_css_class("uti-dragging");
+        on_end();
+    });
+    row.add_controller(source);
+}
+
+/// The row of `list` at `y` (list coordinates) and `y` within it.
+fn hit_at(list: &gtk::ListBox, y: f64) -> Option<crate::state::drop::Hit> {
+    let row = list.row_at_y(y as i32)?;
+    let b = row.compute_bounds(list)?;
+    Some(crate::state::drop::Hit {
+        index: row.index() as usize,
+        y: y - f64::from(b.y()),
+        height: f64::from(b.height()),
+    })
+}
+
+/// Takes row drags over `list`: reports the row under the pointer while
+/// moving and at the drop, and scrolls near the edges of its scrolled
+/// window. `accept` says whether the current spot takes the drop.
+pub fn drop_target(
+    list: &gtk::ListBox,
+    accept: std::rc::Rc<std::cell::Cell<bool>>,
+    on_motion: impl Fn(Option<crate::state::drop::Hit>) + 'static,
+    on_leave: impl Fn() + 'static,
+    on_drop: impl Fn(Option<crate::state::drop::Hit>) + 'static,
+) {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let target = gtk::DropTarget::new(glib::Type::STRING, gdk::DragAction::MOVE);
+    // Pixels to scroll per tick; a ticker runs while it is not zero.
+    let scroll = Rc::new(Cell::new(0.0));
+    let ticking = Rc::new(Cell::new(false));
+    let (lb, a, s, t) = (list.clone(), accept.clone(), scroll.clone(), ticking);
+    target.connect_motion(move |_, _, y| {
+        on_motion(hit_at(&lb, y));
+        if let Some(pane) = lb
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+        {
+            let vy = lb.compute_point(&pane, &gtk::graphene::Point::new(0.0, y as f32));
+            let vy = vy.map_or(0.0, |p| f64::from(p.y()));
+            s.set(crate::state::drop::autoscroll(vy, f64::from(pane.height())));
+            if s.get() != 0.0 && !t.get() {
+                t.set(true);
+                let (s, t) = (s.clone(), t.clone());
+                glib::timeout_add_local(std::time::Duration::from_millis(30), move || {
+                    let adj = pane.vadjustment();
+                    if s.get() == 0.0 {
+                        t.set(false);
+                        return glib::ControlFlow::Break;
+                    }
+                    adj.set_value(adj.value() + s.get());
+                    glib::ControlFlow::Continue
+                });
+            }
+        }
+        if a.get() {
+            gdk::DragAction::MOVE
+        } else {
+            gdk::DragAction::empty()
+        }
+    });
+    let s = scroll.clone();
+    target.connect_leave(move |_| {
+        s.set(0.0);
+        on_leave();
+    });
+    let lb = list.clone();
+    target.connect_drop(move |_, value, _, y| {
+        scroll.set(0.0);
+        if value.get::<String>().ok().as_deref() != Some(DRAG_MARKER) {
+            return false;
+        }
+        on_drop(hit_at(&lb, y));
+        accept.get()
+    });
+    list.add_controller(target);
 }

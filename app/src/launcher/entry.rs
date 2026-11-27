@@ -8,6 +8,7 @@ use super::edit::{self, Place};
 use super::power::PowerAction;
 use super::recent_files::{self, RecentFile};
 use super::{CommandItem, HistorySource, LauncherNode, NodeKind};
+use crate::state::drop::Spot;
 use crate::state::menu::LauncherRow;
 use crate::state::tree::Row;
 
@@ -393,6 +394,59 @@ impl Sources<'_> {
     }
 }
 
+/// What dragging a row carries.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Drag {
+    /// A tree node, moved.
+    Move(String),
+    /// A generated row, added as this new node (as "Add to Launcher").
+    Copy(NodeKind),
+}
+
+impl Sources<'_> {
+    /// What dragging `entry` carries; `None` for rows that cannot be
+    /// dragged (recent files).
+    pub fn drag(&self, entry: &Entry) -> Option<Drag> {
+        match entry {
+            Entry::Node(path) => Some(Drag::Move(node_at(self.nodes, path)?.id.clone())),
+            _ => self.node_for(entry).map(Drag::Copy),
+        }
+    }
+
+    /// `entry` is a folder of the tree: it takes drops and opens while
+    /// dragging over it.
+    pub fn is_folder(&self, entry: &Entry) -> bool {
+        matches!(entry, Entry::Node(path)
+            if matches!(node_at(self.nodes, path).map(|n| &n.kind), Some(NodeKind::Folder { .. })))
+    }
+
+    /// Where a drop at `spot` in `level` (the open levels lead to it
+    /// through `owners`) puts a node; `None` when the level is not a folder
+    /// of the tree.
+    pub fn drop_place(&self, owners: &[&Entry], level: &[Entry], spot: Spot) -> Option<Place> {
+        match spot {
+            Spot::Before(i) => match level.get(i)? {
+                at @ Entry::Node(_) => self.new_place(owners, Some(at)),
+                _ => None,
+            },
+            Spot::Into(i) => {
+                let Entry::Node(path) = level.get(i)? else {
+                    return None;
+                };
+                let node = node_at(self.nodes, path)?;
+                let NodeKind::Folder { children, .. } = &node.kind else {
+                    return None;
+                };
+                Some(Place {
+                    parent: Some(node.id.clone()),
+                    index: children.len(),
+                })
+            },
+            Spot::End => self.new_place(owners, None),
+        }
+    }
+}
+
 fn power_entries() -> Vec<Entry> {
     PowerAction::ALL.into_iter().map(Entry::Power).collect()
 }
@@ -528,6 +582,48 @@ mod tests {
                     index: 3
                 }
             );
+        });
+    }
+
+    #[test]
+    fn drops_land_between_rows_into_folders_or_at_the_end() {
+        let n = tree();
+        let id = |path: &[usize]| node_at(&n, path).unwrap().id.clone();
+        with(&n, |s| {
+            let root = s.root_entries();
+            let place = |parent: Option<String>, index| Some(Place { parent, index });
+            assert_eq!(s.drop_place(&[], &root, Spot::Before(2)), place(None, 2));
+            assert_eq!(s.drop_place(&[], &root, Spot::End), place(None, 3));
+            assert_eq!(s.drop_place(&[], &root, Spot::Into(1)), place(Some(id(&[1])), 3));
+            assert_eq!(s.drop_place(&[], &root, Spot::Into(0)), None, "not a folder");
+            let dev = Entry::Node(vec![1]);
+            let level = s.children(&dev);
+            assert_eq!(s.drop_place(&[&dev], &level, Spot::Before(1)), place(Some(id(&[1])), 1));
+            let category = Entry::Category(Category::Development);
+            let apps = s.children(&category);
+            assert_eq!(s.drop_place(&[&category], &apps, Spot::Before(0)), None);
+            assert_eq!(s.drop_place(&[&category], &apps, Spot::End), None, "generated level");
+        });
+    }
+
+    #[test]
+    fn nodes_move_and_generated_rows_copy() {
+        let n = tree();
+        with(&n, |s| {
+            assert_eq!(s.drag(&Entry::Node(vec![1])), Some(Drag::Move(n[1].id.clone())));
+            assert!(matches!(s.drag(&Entry::App(1)), Some(Drag::Copy(NodeKind::App { .. }))));
+            let recent = Entry::Recent {
+                opener: Opener::App(1),
+                file: RecentFile {
+                    name: "a".into(),
+                    path: "/a".into(),
+                    timestamp: String::new(),
+                },
+            };
+            assert_eq!(s.drag(&recent), None);
+            assert!(s.is_folder(&Entry::Node(vec![1])));
+            assert!(!s.is_folder(&Entry::Node(vec![0])));
+            assert!(!s.is_folder(&Entry::Category(Category::Game)));
         });
     }
 
