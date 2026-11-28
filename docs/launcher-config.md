@@ -34,6 +34,10 @@ This document explains how to configure `~/.config/uti/launcher.json`.
 | `apps`      | `name`, `category` (e.g. `Development`)                 | Installed apps of `category`, or without it one level per category |
 | `app`       | `desktopId` (e.g. `org.gnome.Nautilus.desktop`), `name`, `icon` | Launches the app; recent files as children |
 | `power`     | `name`, `action` (`lock`, `suspend`, `logOut`, `restart`, `powerOff`) | Runs `action`, or without it lists all five |
+| `file`      | `path`, `name`, `icon`                                  | Opens the file with its default app     |
+| `directory` | `path` (a path or a URI such as `trash:///`), `name`, `icon` | Lists the folder when opened: "Open This Folder", subfolders, then files (hidden files left out, at most 200) |
+| `url`       | `url`, `name`, `icon`                                   | Opens the link with its default app     |
+| `recent`    | `name`                                                  | Recent files of every app               |
 
 A command shows the icon of the installed app that runs the same program (and, when several
 do, the same arguments); set `icon` to an icon name or an absolute file path to override it.
@@ -45,7 +49,11 @@ fields) are not shown but kept as written.
 `category` is a freedesktop main category (`AudioVideo`, `Development`, `Education`, `Game`,
 `Graphics`, `Network`, `Office`, `Science`, `Settings`, `System`, `Utility`) or `Other`. Without
 `name`, `apps` and `power` are named after their category or action ("Applications" and "Power"
-without one).
+without one), `file` and `directory` after their file name, `url` after its host. Paths may
+start with `~`.
+
+While the popup is pinned, files, folders and links dragged from other apps (Files, a browser)
+become `file`, `directory`, `url` items, or `app` for the desktop file of an installed app.
 
 A file with the older `"commands": [...]` array (commands only) is still read as `command` items.
 Without `items` and `commands` (or without the file), the tree is `apps`, a separator and one

@@ -455,6 +455,9 @@ pub fn menu_entry(item: MenuItem) -> (&'static str, &'static str, Option<&'stati
         NewFolder => ("Folder…", "new-folder", None),
         NewSeparator => ("Separator", "new-separator", None),
         NewCommand => ("Command…", "new-command", None),
+        NewFile => ("File Link…", "new-file", None),
+        NewDirectory => ("Folder Link…", "new-directory", None),
+        NewUrl => ("Web Link…", "new-url", None),
         NewSpecial => ("Special Item…", "new-special", None),
         AddToLauncher => ("Add to Launcher", "add-to-launcher", None),
         OpenFolder => ("Open Folder", "open-folder", None),
@@ -628,26 +631,45 @@ fn hit_at(list: &gtk::ListBox, y: f64) -> Option<crate::state::drop::Hit> {
     })
 }
 
-/// Takes row drags over `list`: reports the row under the pointer while
-/// moving and at the drop, and scrolls near the edges of its scrolled
-/// window. `accept` says whether the current spot takes the drop.
+/// A drag from another app (no drag of this process behind the drop).
+fn external(target: &gtk::DropTarget) -> bool {
+    target.current_drop().is_some_and(|d| d.drag().is_none())
+}
+
+/// URIs dropped from another app: files, or text holding URIs (links).
+fn dropped_uris(value: &glib::Value) -> Option<Vec<String>> {
+    if let Ok(files) = value.get::<gdk::FileList>() {
+        return Some(files.files().iter().map(|f| f.uri().to_string()).collect());
+    }
+    crate::launcher::external::uri_list(&value.get::<String>().ok()?)
+}
+
+/// Takes row drags over `list`, and files and links dragged from other
+/// apps (always copied, so the other app never deletes them): reports the
+/// row under the pointer while moving (and whether the drag is from
+/// another app) and at the drop (with the URIs from another app), and
+/// scrolls near the edges of its scrolled window. `accept` says whether
+/// the current spot takes the drop.
 pub fn drop_target(
     list: &gtk::ListBox,
     accept: std::rc::Rc<std::cell::Cell<bool>>,
-    on_motion: impl Fn(Option<crate::state::drop::Hit>) + 'static,
+    on_motion: impl Fn(Option<crate::state::drop::Hit>, bool) + 'static,
     on_leave: impl Fn() + 'static,
-    on_drop: impl Fn(Option<crate::state::drop::Hit>) + 'static,
+    on_drop: impl Fn(Option<crate::state::drop::Hit>, Option<Vec<String>>) + 'static,
 ) {
     use std::cell::Cell;
     use std::rc::Rc;
 
-    let target = gtk::DropTarget::new(glib::Type::STRING, gdk::DragAction::MOVE);
+    let target =
+        gtk::DropTarget::new(glib::Type::INVALID, gdk::DragAction::MOVE | gdk::DragAction::COPY);
+    target.set_types(&[gdk::FileList::static_type(), glib::Type::STRING]);
     // Pixels to scroll per tick; a ticker runs while it is not zero.
     let scroll = Rc::new(Cell::new(0.0));
     let ticking = Rc::new(Cell::new(false));
     let (lb, a, s, t) = (list.clone(), accept.clone(), scroll.clone(), ticking);
-    target.connect_motion(move |_, _, y| {
-        on_motion(hit_at(&lb, y));
+    target.connect_motion(move |target, _, y| {
+        let external = external(target);
+        on_motion(hit_at(&lb, y), external);
         if let Some(pane) = lb
             .ancestor(gtk::ScrolledWindow::static_type())
             .and_downcast::<gtk::ScrolledWindow>()
@@ -669,10 +691,10 @@ pub fn drop_target(
                 });
             }
         }
-        if a.get() {
-            gdk::DragAction::MOVE
-        } else {
-            gdk::DragAction::empty()
+        match (a.get(), external) {
+            (false, _) => gdk::DragAction::empty(),
+            (true, false) => gdk::DragAction::MOVE,
+            (true, true) => gdk::DragAction::COPY,
         }
     });
     let s = scroll.clone();
@@ -681,12 +703,19 @@ pub fn drop_target(
         on_leave();
     });
     let lb = list.clone();
-    target.connect_drop(move |_, value, _, y| {
+    target.connect_drop(move |target, value, _, y| {
         scroll.set(0.0);
-        if value.get::<String>().ok().as_deref() != Some(DRAG_MARKER) {
-            return false;
+        if !external(target) {
+            if value.get::<String>().ok().as_deref() != Some(DRAG_MARKER) {
+                return false;
+            }
+            on_drop(hit_at(&lb, y), None);
+        } else {
+            let Some(uris) = dropped_uris(value) else {
+                return false;
+            };
+            on_drop(hit_at(&lb, y), Some(uris));
         }
-        on_drop(hit_at(&lb, y));
         accept.get()
     });
     list.add_controller(target);

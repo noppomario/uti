@@ -92,6 +92,8 @@ Main application with Clipboard, Snippets and Launcher tabs, plus a settings win
   `launcher/entry.rs`, applied once the drag ends (ADR-039)
 - Special item palette: catalog in `launcher/palette.rs`, keys in `state/palette.rs`, a
   non-grabbing popover left of the popup (ADR-040)
+- Files, folders (listed when opened, `launcher/places.rs`) and links; drops from other apps
+  map to items in `launcher/external.rs` (ADR-041)
 
 ### uti for GNOME
 

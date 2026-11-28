@@ -198,10 +198,10 @@ mod tests {
     #[test]
     fn unreadable_items_survive_an_edit() {
         let dir = TempDir::new().unwrap();
-        let path = file(&dir, Some(r#"{"items": [{"type": "directory", "path": "~"}]}"#));
+        let path = file(&dir, Some(r#"{"items": [{"type": "future", "path": "~"}]}"#));
         let mut f = LauncherFile::load(&path);
         f.edit(&path, push_separator).unwrap();
-        assert_eq!(saved(&path)["items"][0], serde_json::json!({"type": "directory", "path": "~"}));
+        assert_eq!(saved(&path)["items"][0], serde_json::json!({"type": "future", "path": "~"}));
     }
 
     #[test]

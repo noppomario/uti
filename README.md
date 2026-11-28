@@ -27,7 +27,7 @@
 - 🎹 **Double Ctrl Toggle**: Press Ctrl twice quickly (within 300ms) to show/hide the window
 - 📋 **Clipboard History**: Stores clipboard items for quick access
 - ⭐ **Snippets**: Keep frequently used text; add from clipboard history, manage in Settings
-- 🚀 **App Launcher**: Cascading menu of installed apps by category, power actions and your own commands, with recent files for each app
+- 🚀 **App Launcher**: Cascading menu of installed apps by category, power actions, folders, files, links and your own commands, with recent files for each app
 - 🔍 **Search**: Filter clipboard history or search system applications in real-time
 - 📌 **Window Pinning**: Pin button keeps the window always-on-top with auto-hide disabled
 - 🖥️ **Panel Menu**: Show/Hide, Settings and more from the GNOME panel (uti for GNOME)
@@ -133,7 +133,8 @@ gsettings set org.gnome.shell.extensions.uti enable-tray-icon false
 10. Click **📌** (pin button) to keep window always-on-top and disable auto-hide
     - While pinned, drag rows to reorder snippets and organize the Launcher: drop on the
       middle of a folder to move into it, or rest on it to open it. Rows inside generated
-      menus (apps, power actions) are copied
+      menus (apps, power actions) are copied. Files, folders and links dragged from other
+      apps are added as launcher items
     - **New > Special Item…** (or Settings > Launcher > Add Special Items) opens a palette
       beside the popup, pinning it while open: drag items onto the Launcher, or pick a
       category with **←/→** and add the selected item before the row with **Enter** or a

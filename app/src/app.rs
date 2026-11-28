@@ -7,6 +7,7 @@
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -19,7 +20,11 @@ use crate::dbus;
 use crate::launcher::apps::{AppMeta, Category};
 use crate::launcher::edit::{self, Anchor, Place};
 use crate::launcher::entry::{self, Entry, Opener, Sources};
-use crate::launcher::palette::{self as catalog, PaletteCategory, PaletteItem, SettingsPanel};
+use crate::launcher::external::{self, Local};
+use crate::launcher::palette::{
+    self as catalog, PaletteCategory, PaletteItem, Places, SettingsPanel,
+};
+use crate::launcher::places::{self, DirItem, UserDir};
 use crate::launcher::power::{CallArgs, PowerAction};
 use crate::launcher::recent_files;
 use crate::launcher::{get_launcher_config_path, LauncherFile, LauncherNode, NodeKind};
@@ -105,11 +110,15 @@ pub enum Msg {
     TreeHoverElapsed(u64),
     /// A row drag started from visible row `index` of a list.
     DragBegin(DropList, usize),
-    /// A row drag moved over a list (`None`: below its rows).
-    DragMotion(DropList, Option<Hit>),
+    /// A drag moved over a list (`None`: below its rows); `true` for a
+    /// drag from another app.
+    DragMotion(DropList, Option<Hit>, bool),
     DragLeave(DropList),
-    /// A row was dropped on a list; applied once the drag has ended.
-    Drop(DropList, Option<Hit>),
+    /// A row (or URIs from another app) was dropped on a list; applied once
+    /// the drag has ended.
+    Drop(DropList, Option<Hit>, Option<Vec<String>>),
+    /// A drag from another app left a list this long ago, with this token.
+    ExternalLeft(u64),
     /// The row drag ended (dropped or cancelled).
     DragEnd,
     /// A palette category tab was chosen.
@@ -154,6 +163,9 @@ enum Payload {
     Launcher(entry::Drag),
     /// A snippet, by id.
     Snippet(String),
+    /// Files or links from another app: the nodes for them, known once
+    /// dropped.
+    External(Vec<NodeKind>),
 }
 
 /// A row drag in progress.
@@ -165,6 +177,9 @@ struct DragState {
     dropped: Option<DropPlace>,
     /// Last row hovered, for spring-loading: (depth, index, opens).
     hovered: Option<(usize, usize, bool)>,
+    /// A drag from another app reports no end: its last leave, ended
+    /// unless motion follows.
+    left: Option<u64>,
 }
 
 /// Where a drop puts the dragged item.
@@ -262,6 +277,9 @@ struct App {
     /// Application names with recent files, read when Launcher rows are
     /// built.
     recent_apps: HashSet<String>,
+    /// Home, user directories and bookmarks, read at start.
+    places: Places,
+    home: PathBuf,
     /// Rows of the Launcher tab's list.
     launcher_rows: Vec<Entry>,
     /// Open Launcher levels, mirroring `nav.tree()` depths 1..
@@ -272,6 +290,8 @@ struct App {
     palette: Option<OpenPalette>,
     /// Category the palette opens on (the last one shown).
     palette_category: usize,
+    /// Next token of a drag from another app leaving a list.
+    drag_token: u64,
     /// Open the palette once the popup is shown (from Settings).
     palette_pending: bool,
     /// Levels closed during a drag, unparented once it ends (the dragged
@@ -325,6 +345,66 @@ fn load_panels() -> Vec<SettingsPanel> {
         .filter_map(|(a, argv)| {
             let icon = a.icon().and_then(|i| IconExt::to_string(&i));
             SettingsPanel::from_desktop(&a.id()?, &a.name(), icon.as_deref(), &argv)
+        })
+        .collect()
+}
+
+/// Home, XDG user directories and GTK bookmarks.
+fn load_places() -> Places {
+    use glib::UserDirectory as U;
+    let home = glib::home_dir().to_string_lossy().into_owned();
+    let dirs: Vec<(UserDir, Option<String>)> = [
+        (UserDir::Desktop, U::Desktop),
+        (UserDir::Documents, U::Documents),
+        (UserDir::Downloads, U::Downloads),
+        (UserDir::Music, U::Music),
+        (UserDir::Pictures, U::Pictures),
+        (UserDir::Videos, U::Videos),
+        (UserDir::Public, U::PublicShare),
+        (UserDir::Templates, U::Templates),
+    ]
+    .into_iter()
+    .map(|(d, u)| (d, glib::user_special_dir(u).map(|p| p.to_string_lossy().into_owned())))
+    .collect();
+    let bookmarks = std::fs::read_to_string(glib::user_config_dir().join("gtk-3.0/bookmarks"))
+        .map(|t| places::bookmarks(&t))
+        .unwrap_or_default();
+    Places {
+        user: places::user_dirs(&dirs, &home),
+        home,
+        bookmarks,
+    }
+}
+
+/// A file by path or URI.
+fn gfile(path: &str) -> gio::File {
+    if places::is_uri(path) {
+        gio::File::for_uri(path)
+    } else {
+        gio::File::for_path(path)
+    }
+}
+
+/// The entries of folder `dir` (path or URI); empty when unreadable.
+fn read_dir(dir: &str) -> Vec<DirItem> {
+    let file = gfile(dir);
+    let attrs = "standard::name,standard::display-name,standard::type";
+    let Ok(children) =
+        file.enumerate_children(attrs, gio::FileQueryInfoFlags::NONE, None::<&gio::Cancellable>)
+    else {
+        return Vec::new();
+    };
+    children
+        .filter_map(Result::ok)
+        .map(|info| {
+            let child = file.child(info.name());
+            DirItem {
+                name: info.display_name().to_string(),
+                path: child
+                    .path()
+                    .map_or_else(|| child.uri().to_string(), |p| p.to_string_lossy().into_owned()),
+                dir: info.file_type() == gio::FileType::Directory,
+            }
         })
         .collect()
 }
@@ -395,11 +475,14 @@ pub fn start(app: &adw::Application, minimized: bool) {
         app_argv: argv,
         apps,
         recent_apps: HashSet::new(),
+        places: load_places(),
+        home: glib::home_dir(),
         launcher_rows: Vec::new(),
         cascade: Vec::new(),
         config,
         settings: None,
         drag: None,
+        drag_token: 0,
         palette: None,
         palette_category: 0,
         palette_pending: false,
@@ -665,11 +748,46 @@ impl App {
                 self.drag_begin(list, index);
                 None
             },
-            Msg::DragMotion(list, hit) => {
+            Msg::DragMotion(list, hit, external) => {
+                if external && self.drag.is_none() && self.ui.pin.is_active() {
+                    self.drag = Some(DragState {
+                        payload: Payload::External(Vec::new()),
+                        from: (list, usize::MAX),
+                        dropped: None,
+                        hovered: None,
+                        left: None,
+                    });
+                    self.nav.tree_mut().cancel_pending();
+                }
+                if let Some(drag) = &mut self.drag {
+                    drag.left = None;
+                }
                 self.drag_motion(list, hit);
                 None
             },
+            Msg::ExternalLeft(token) => {
+                if self.drag.as_ref().is_some_and(|d| {
+                    matches!(d.payload, Payload::External(_)) && d.left == Some(token)
+                }) {
+                    self.drag_end();
+                }
+                None
+            },
             Msg::DragLeave(list) => {
+                if let Some(drag) = self
+                    .drag
+                    .as_mut()
+                    .filter(|d| matches!(d.payload, Payload::External(_)) && d.dropped.is_none())
+                {
+                    let token = self.drag_token;
+                    self.drag_token += 1;
+                    drag.left = Some(token);
+                    let t = self.tx.clone();
+                    glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(300),
+                        move || send(&t, Msg::ExternalLeft(token)),
+                    );
+                }
                 if self.drop_shown().is_some_and(|(l, _)| l == list) {
                     self.show_drop(None);
                 }
@@ -678,10 +796,18 @@ impl App {
                 }
                 None
             },
-            Msg::Drop(list, hit) => {
+            Msg::Drop(list, hit, uris) => {
                 let at = self.drop_at(list, hit).map(|(place, _)| place);
+                let kinds = uris.map(|uris| self.dropped_nodes(&uris));
                 if let Some(drag) = &mut self.drag {
                     drag.dropped = at;
+                    if let (Payload::External(nodes), Some(kinds)) = (&mut drag.payload, kinds) {
+                        *nodes = kinds;
+                        // No drag end comes from another app: apply it once
+                        // the drop has returned.
+                        let t = self.tx.clone();
+                        glib::idle_add_local_once(move || send(&t, Msg::DragEnd));
+                    }
                 }
                 self.show_drop(None);
                 // In case the source row is gone and never reports the end.
@@ -1262,11 +1388,17 @@ impl App {
                     self.open_settings(SettingsTarget::launcher(Some(LauncherTarget::Edit(id))));
                 }
             },
-            MenuItem::NewFolder | MenuItem::NewCommand => {
-                let kind = if item == MenuItem::NewFolder {
-                    NewNode::Folder
-                } else {
-                    NewNode::Command
+            MenuItem::NewFolder
+            | MenuItem::NewCommand
+            | MenuItem::NewFile
+            | MenuItem::NewDirectory
+            | MenuItem::NewUrl => {
+                let kind = match item {
+                    MenuItem::NewFolder => NewNode::Folder,
+                    MenuItem::NewFile => NewNode::File,
+                    MenuItem::NewDirectory => NewNode::Directory,
+                    MenuItem::NewUrl => NewNode::Url,
+                    _ => NewNode::Command,
                 };
                 if let Some(place) = new_place() {
                     let target = LauncherTarget::New(kind, place);
@@ -1310,10 +1442,11 @@ impl App {
                 self.edit_launcher(None, |nodes| edit::insert(nodes, &place, node));
             },
             MenuItem::OpenFolder | MenuItem::CopyPath | MenuItem::RemoveFromHistory => {
-                let Some(Entry::Recent { file, .. }) = entry else {
-                    return;
-                };
-                self.recent_action(item, &file.path);
+                match entry {
+                    Some(Entry::Recent { file, .. }) => self.recent_action(item, &file.path),
+                    Some(Entry::Listed { path, .. }) => self.recent_action(item, &path),
+                    _ => {},
+                }
             },
             MenuItem::NewSpecial => {
                 if let Some(place) = new_place() {
@@ -1328,7 +1461,7 @@ impl App {
 
     /// Open Folder, Copy Path or Remove from History for a recent file.
     fn recent_action(&mut self, item: MenuItem, path: &str) {
-        let file = gio::File::for_path(path);
+        let file = gfile(path);
         match item {
             MenuItem::OpenFolder => {
                 gtk::FileLauncher::new(Some(&file)).open_containing_folder(
@@ -1440,6 +1573,7 @@ impl App {
             from: (list, index),
             dropped: None,
             hovered: None,
+            left: None,
         });
         self.nav.tree_mut().cancel_pending();
     }
@@ -1482,7 +1616,7 @@ impl App {
     fn drop_at(&self, list: DropList, hit: Option<Hit>) -> Option<(DropPlace, Indicator)> {
         let drag = self.drag.as_ref()?;
         match (list, &drag.payload) {
-            (DropList::Launcher(d), Payload::Launcher(payload)) => {
+            (DropList::Launcher(d), payload @ (Payload::Launcher(_) | Payload::External(_))) => {
                 if self.searching() {
                     return None;
                 }
@@ -1490,7 +1624,7 @@ impl App {
                 let src = self.sources();
                 let spot = drop::spot(level.len(), |i| src.is_folder(&level[i]), hit);
                 let place = src.drop_place(&self.owners(d), level, spot)?;
-                if let entry::Drag::Move(id) = payload {
+                if let Payload::Launcher(entry::Drag::Move(id)) = payload {
                     let nodes = &self.launcher.nodes;
                     if edit::check_move(nodes, id, &place).is_err()
                         || edit::is_noop(nodes, id, &place)
@@ -1578,6 +1712,19 @@ impl App {
                 let id = node.id.clone();
                 self.edit_launcher(Some(id), |nodes| edit::insert(nodes, &place, node));
             },
+            (Payload::External(kinds), Some(DropPlace::Launcher(place))) => {
+                let nodes: Vec<LauncherNode> = kinds.into_iter().map(LauncherNode::new).collect();
+                let first = nodes.first().map(|n| n.id.clone());
+                self.edit_launcher(first, |nodes_| {
+                    nodes.into_iter().enumerate().all(|(i, node)| {
+                        let at = Place {
+                            parent: place.parent.clone(),
+                            index: place.index + i,
+                        };
+                        edit::insert(nodes_, &at, node)
+                    })
+                });
+            },
             (Payload::Snippet(id), Some(DropPlace::Snippet(before)))
                 if self.snippets.move_before(&id, before.as_deref()) =>
             {
@@ -1586,6 +1733,22 @@ impl App {
             },
             _ => {},
         }
+    }
+
+    /// Nodes for URIs dropped from another app, in order; ones that are
+    /// gone or not URIs are left out.
+    fn dropped_nodes(&self, uris: &[String]) -> Vec<NodeKind> {
+        let local = |path: &str| match gio::File::for_path(path)
+            .query_file_type(gio::FileQueryInfoFlags::NONE, None::<&gio::Cancellable>)
+        {
+            gio::FileType::Directory => Local::Dir,
+            gio::FileType::Unknown => Local::Missing,
+            _ => Local::File,
+        };
+        let installed = |id: &str| self.app_meta.iter().any(|a| a.id == id);
+        uris.iter()
+            .filter_map(|uri| external::node_for(uri, local, installed, &self.home))
+            .collect()
     }
 
     /// Opens the special item palette (or moves its anchor) on the
@@ -1605,7 +1768,7 @@ impl App {
         let panels = load_panels();
         let items: Vec<Vec<PaletteItem>> = PaletteCategory::ALL
             .iter()
-            .map(|c| catalog::items(*c, &self.app_meta, &panels))
+            .map(|c| catalog::items(*c, &self.app_meta, &panels, &self.places))
             .collect();
         let tabs: Vec<(&str, &str)> =
             PaletteCategory::ALL.iter().map(|c| (c.icon(), c.label())).collect();
@@ -1966,10 +2129,26 @@ impl App {
                 } else if let Some(action) = src.power_at(&path) {
                     self.power(action);
                 } else {
-                    let item = entry::command_at(&self.launcher.nodes, &path)?;
-                    spawn(&item.command, &item.args, None);
+                    match &entry::node_at(&self.launcher.nodes, &path)?.kind {
+                        NodeKind::File { path, .. } => {
+                            self.open_uri(&gfile(&places::expand(path, &self.home)).uri())
+                        },
+                        NodeKind::Url { url, .. } => self.open_uri(url),
+                        _ => {
+                            let item = entry::command_at(&self.launcher.nodes, &path)?;
+                            spawn(&item.command, &item.args, None);
+                        },
+                    }
                 }
             },
+            Entry::Recent {
+                opener: Opener::Default,
+                file,
+            } => self.open_uri(&gio::File::for_path(&file.path).uri()),
+            Entry::Listed { path, .. } | Entry::OpenDir(path) | Entry::More { dir: path, .. } => {
+                self.open_uri(&gfile(&path).uri())
+            },
+            Entry::Gap => return None,
             Entry::Recent {
                 opener: Opener::Command(command),
                 file,
@@ -1987,6 +2166,24 @@ impl App {
         }
         self.close_cascade();
         self.window.hide()
+    }
+
+    /// Opens `uri` with its default app; only logs it with `UTI_DRY_OPEN`
+    /// (e2e checks).
+    fn open_uri(&self, uri: &str) {
+        eprintln!("open: {uri}");
+        if std::env::var_os("UTI_DRY_OPEN").is_some() {
+            return;
+        }
+        let context = gtk::prelude::WidgetExt::display(&self.ui.root).app_launch_context();
+        if dev_sandbox() {
+            for var in SANDBOX_VARS {
+                context.unsetenv(var);
+            }
+        }
+        if let Err(e) = gio::AppInfo::launch_default_for_uri(uri, Some(&context)) {
+            eprintln!("Failed to open {uri}: {e}");
+        }
     }
 
     /// Launches installed app `index`, with `file` when given.
@@ -2056,6 +2253,8 @@ impl App {
             nodes: &self.launcher.nodes,
             apps: &self.app_meta,
             recent_apps: &self.recent_apps,
+            list_dir: &read_dir,
+            home: &self.home,
         }
     }
 
@@ -2373,7 +2572,7 @@ impl App {
             let texts: Vec<SearchText<'_>> = candidates
                 .iter()
                 .map(|c| SearchText {
-                    name: c.name,
+                    name: &c.name,
                     description: c.description,
                 })
                 .collect();
@@ -2459,6 +2658,28 @@ impl App {
                     Some(NodeKind::App { .. }) => {
                         self.sources().app_at(path).map_or_else(generic, app_icon)
                     },
+                    Some(
+                        NodeKind::File {
+                            icon: Some(icon), ..
+                        }
+                        | NodeKind::Directory {
+                            icon: Some(icon), ..
+                        }
+                        | NodeKind::Url {
+                            icon: Some(icon), ..
+                        },
+                    ) => named_icon(icon),
+                    Some(NodeKind::File { path, .. }) => file_icon(path),
+                    Some(NodeKind::Directory { path, .. }) => {
+                        themed(places::dir_icons(path, &self.home, &self.places.user))
+                    },
+                    Some(NodeKind::Url { url, .. }) => {
+                        let scheme = url.split(':').next().unwrap_or("https");
+                        gio::AppInfo::default_for_uri_scheme(scheme)
+                            .and_then(|a| a.icon())
+                            .unwrap_or_else(|| themed(&["web-browser-symbolic"]))
+                    },
+                    Some(NodeKind::Recent { .. }) => themed(&["document-open-recent-symbolic"]),
                     Some(NodeKind::Command(c)) => {
                         if let Some(icon) = &c.icon {
                             return named_icon(icon);
@@ -2472,11 +2693,15 @@ impl App {
             },
             Entry::Category(c) => themed(c.icons()),
             Entry::Power(p) => themed(p.icons()),
-            Entry::Recent { file, .. } => {
-                let (content_type, _) = gio::content_type_guess(Some(&file.path), None);
-                gio::content_type_get_icon(&content_type)
-            },
+            Entry::Recent { file, .. } => file_icon(&file.path),
             Entry::App(a) => app_icon(*a),
+            Entry::Listed { path, dir: true } => {
+                themed(places::dir_icons(path, &self.home, &self.places.user))
+            },
+            Entry::Listed { path, .. } => file_icon(path),
+            Entry::OpenDir(_) => themed(&["folder-open"]),
+            Entry::More { .. } => themed(&["view-more-horizontal-symbolic", "view-more-symbolic"]),
+            Entry::Gap => generic(),
         }
     }
 
@@ -2655,6 +2880,10 @@ impl App {
                 let tip = match entry::node_at(&self.launcher.nodes, path).map(|n| &n.kind) {
                     _ if searching => src.breadcrumb(path),
                     Some(NodeKind::Command(c)) => c.command.clone(),
+                    Some(NodeKind::File { path, .. } | NodeKind::Directory { path, .. }) => {
+                        path.clone()
+                    },
+                    Some(NodeKind::Url { url, .. }) => url.clone(),
                     Some(NodeKind::App { .. }) => {
                         src.app_at(path).map(|a| app_text(a).1).unwrap_or_default()
                     },
@@ -2666,8 +2895,18 @@ impl App {
             Entry::Power(p) => (p.label().to_string(), p.label().to_string()),
             Entry::Recent { file, .. } => (file.name.clone(), file.path.clone()),
             Entry::App(a) => app_text(*a),
+            Entry::Listed { path, .. } => (places::base_name(path), path.clone()),
+            Entry::OpenDir(path) => ("Open This Folder".to_string(), path.clone()),
+            Entry::More { dir, hidden } => (format!("{hidden} More…"), dir.clone()),
+            Entry::Gap => Default::default(),
         }
     }
+}
+
+/// Icon of a file's content type, guessed from its name.
+fn file_icon(path: &str) -> gio::Icon {
+    let (content_type, _) = gio::content_type_guess(Some(path), None);
+    gio::content_type_get_icon(&content_type)
 }
 
 /// An icon by theme name, or from a file for an absolute path.
@@ -2981,9 +3220,9 @@ fn drop_target(list_box: &gtk::ListBox, list: DropList, tx: &Sender, ok: &Rc<Cel
     ui::drop_target(
         list_box,
         ok.clone(),
-        move |hit| send(&m, Msg::DragMotion(list, hit)),
+        move |hit, external| send(&m, Msg::DragMotion(list, hit, external)),
         move || send(&l, Msg::DragLeave(list)),
-        move |hit| send(&d, Msg::Drop(list, hit)),
+        move |hit, uris| send(&d, Msg::Drop(list, hit, uris)),
     );
 }
 

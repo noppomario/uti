@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::gio;
+use gtk::{gio, glib};
 
 use crate::autostart;
 use crate::config::AppConfig;
@@ -16,7 +16,7 @@ use crate::i18n::{tr, LANGUAGES};
 use crate::launcher::apps::{AppMeta, Category};
 use crate::launcher::form::{self, History};
 use crate::launcher::power::PowerAction;
-use crate::launcher::{edit, get_launcher_config_path, CommandItem, LauncherFile, NodeKind};
+use crate::launcher::{self, edit, get_launcher_config_path, CommandItem, LauncherFile, NodeKind};
 use crate::snippets::{SnippetItem, SnippetsStore};
 use crate::state::scrollbar::Scrollbar;
 use crate::state::settings::{
@@ -174,6 +174,30 @@ impl SettingsUi {
                     history_source: None,
                     icon: None,
                 }),
+                0,
+            ),
+            LauncherTarget::New(NewNode::File, _) => (
+                NodeKind::File {
+                    path: String::new(),
+                    name: None,
+                    icon: None,
+                },
+                0,
+            ),
+            LauncherTarget::New(NewNode::Directory, _) => (
+                NodeKind::Directory {
+                    path: String::new(),
+                    name: None,
+                    icon: None,
+                },
+                0,
+            ),
+            LauncherTarget::New(NewNode::Url, _) => (
+                NodeKind::Url {
+                    url: String::new(),
+                    name: None,
+                    icon: None,
+                },
                 0,
             ),
         };
@@ -686,6 +710,42 @@ impl LauncherEditor<'_> {
         combo(&self.t(key), labels, selected)
     }
 
+    /// A button choosing a file (or a `folder`) into `entry`.
+    fn browse_button(&self, entry: &adw::EntryRow, folder: bool) -> gtk::Button {
+        let button = gtk::Button::builder()
+            .icon_name("document-open-symbolic")
+            .tooltip_text(self.t("browse"))
+            .valign(gtk::Align::Center)
+            .css_classes(["flat"])
+            .build();
+        let (window, entry) = (self.window.clone(), entry.clone());
+        button.connect_clicked(move |_| {
+            let dialog = gtk::FileDialog::new();
+            let home = dirs::home_dir().unwrap_or_default();
+            let current = launcher::places::expand(&entry.text(), &home);
+            if !current.is_empty() && !launcher::places::is_uri(&current) {
+                let file = gio::File::for_path(&current);
+                if folder {
+                    dialog.set_initial_folder(Some(&file));
+                } else {
+                    dialog.set_initial_file(Some(&file));
+                }
+            }
+            let entry = entry.clone();
+            let done = move |r: Result<gio::File, glib::Error>| {
+                if let Some(path) = r.ok().and_then(|f| f.path()) {
+                    entry.set_text(&path.to_string_lossy());
+                }
+            };
+            if folder {
+                dialog.select_folder(Some(&window), None::<&gio::Cancellable>, done);
+            } else {
+                dialog.open(Some(&window), None::<&gio::Cancellable>, done);
+            }
+        });
+        button
+    }
+
     /// Opens the editor of `kind` for `target`; `children` is the number
     /// of items in a folder, `app` the app of an `app` node.
     fn push(
@@ -698,6 +758,7 @@ impl LauncherEditor<'_> {
         let group = adw::PreferencesGroup::new();
         let mut entries: Vec<adw::EntryRow> = Vec::new();
         let mut combos: Vec<adw::ComboRow> = Vec::new();
+        let folder = matches!(kind, NodeKind::Directory { .. });
         let (title, read): (&str, ReadForm) = match kind {
             NodeKind::Folder { name, .. } => {
                 let name = self.entry("name", &name);
@@ -836,12 +897,61 @@ impl LauncherEditor<'_> {
                 });
                 ("editPower", read)
             },
+            NodeKind::File { path, name, icon } | NodeKind::Directory { path, name, icon } => {
+                group.set_description(Some(&self.t("linkDefaults")));
+                let name = self.entry("nameOptional", name.as_deref().unwrap_or_default());
+                let path = self.entry("path", &path);
+                path.add_suffix(&self.browse_button(&path, folder));
+                let icon = self.entry("icon", icon.as_deref().unwrap_or_default());
+                entries.extend([name.clone(), path.clone(), icon.clone()]);
+                let home = dirs::home_dir().unwrap_or_default();
+                let read: ReadForm = Rc::new(move || {
+                    let (path, name, icon) = (
+                        form::path(&path.text(), &home)?,
+                        form::optional(&name.text()),
+                        form::optional(&icon.text()),
+                    );
+                    Some(if folder {
+                        NodeKind::Directory { path, name, icon }
+                    } else {
+                        NodeKind::File { path, name, icon }
+                    })
+                });
+                (if folder { "editDirectory" } else { "editFile" }, read)
+            },
+            NodeKind::Url { url, name, icon } => {
+                group.set_description(Some(&self.t("linkDefaults")));
+                let name = self.entry("nameOptional", name.as_deref().unwrap_or_default());
+                let url = self.entry("url", &url);
+                let icon = self.entry("icon", icon.as_deref().unwrap_or_default());
+                entries.extend([name.clone(), url.clone(), icon.clone()]);
+                let read: ReadForm = Rc::new(move || {
+                    Some(NodeKind::Url {
+                        url: form::url(&url.text())?,
+                        name: form::optional(&name.text()),
+                        icon: form::optional(&icon.text()),
+                    })
+                });
+                ("editUrl", read)
+            },
+            NodeKind::Recent { name } => {
+                let name = self.entry("nameOptional", name.as_deref().unwrap_or_default());
+                entries.push(name.clone());
+                let read: ReadForm = Rc::new(move || {
+                    Some(NodeKind::Recent {
+                        name: form::optional(&name.text()),
+                    })
+                });
+                ("editRecent", read)
+            },
             NodeKind::Separator | NodeKind::Raw(_) => return,
         };
-        let title = if matches!(target, LauncherTarget::New(NewNode::Command, _)) {
-            "newCommand"
-        } else {
-            title
+        let title = match target {
+            LauncherTarget::New(NewNode::Command, _) => "newCommand",
+            LauncherTarget::New(NewNode::File, _) => "newFile",
+            LauncherTarget::New(NewNode::Directory, _) => "newDirectory",
+            LauncherTarget::New(NewNode::Url, _) => "newUrl",
+            _ => title,
         };
         for e in &entries {
             group.add(e);

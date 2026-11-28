@@ -47,6 +47,9 @@ pub enum SnippetTarget {
 pub enum NewNode {
     Folder,
     Command,
+    File,
+    Directory,
+    Url,
 }
 
 /// A launcher item to open in the launcher item editor.
