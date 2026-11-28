@@ -5,8 +5,10 @@
 pub mod apps;
 pub mod edit;
 pub mod entry;
+pub mod external;
 pub mod form;
 pub mod palette;
+pub mod places;
 pub mod power;
 pub mod recent_files;
 mod store;
@@ -124,8 +126,7 @@ impl<'de> Deserialize<'de> for LauncherNode {
     }
 }
 
-/// Node types, by their `type` field. Later types (`directory`, `file`,
-/// `url`, `recent`, `snippets`) are added here; see ADR-037.
+/// Node types, by their `type` field (ADR-037, ADR-041).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum NodeKind {
@@ -158,6 +159,36 @@ pub enum NodeKind {
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         action: Option<PowerAction>,
+    },
+    /// A file, opened with its default app. `path` may start with `~`.
+    File {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
+    },
+    /// A folder listed as a menu (read when opened). `path` may start with
+    /// `~` or be a URI (`trash:///`).
+    Directory {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
+    },
+    /// A link, opened with the default app for its scheme.
+    Url {
+        url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
+    },
+    /// Recent files of every app, newest first.
+    Recent {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
     /// An item this version cannot read, kept as written (not shown).
     #[serde(skip)]
@@ -308,7 +339,7 @@ mod tests {
 
     #[test]
     fn unreadable_items_are_kept_as_written_at_any_depth() {
-        let json = r#"{"items": [{"type": "directory", "id": "d", "path": "~"},
+        let json = r#"{"items": [{"type": "future", "id": "d", "path": "~"},
                           {"type": "folder", "name": "A", "children": [
                               {"type": "snippets"}, {"type": "command", "name": "no command"}]}]}"#;
         let nodes = tree(json);
@@ -320,7 +351,7 @@ mod tests {
         };
         assert!(children.iter().all(|c| !c.kind.is_known()));
         let saved = serde_json::to_value(&nodes).unwrap();
-        assert_eq!(saved[0], serde_json::json!({"type": "directory", "id": "d", "path": "~"}));
+        assert_eq!(saved[0], serde_json::json!({"type": "future", "id": "d", "path": "~"}));
         assert_eq!(
             saved[1]["children"][1],
             serde_json::json!({"type": "command", "name": "no command"})
@@ -397,6 +428,32 @@ mod tests {
         assert!(json.get("name").is_none());
         let json = serde_json::to_value(&nodes[0]).unwrap();
         assert!(json.get("category").is_none());
+    }
+
+    #[test]
+    fn place_and_link_nodes_read_their_fields() {
+        let nodes = tree(
+            r#"{"items": [{"type": "file", "path": "~/a.pdf"},
+                          {"type": "directory", "path": "trash:///", "name": "Trash"},
+                          {"type": "url", "url": "https://example.com", "icon": "web"},
+                          {"type": "recent"},
+                          {"type": "file"}]}"#,
+        );
+        assert_eq!(
+            nodes[0].kind,
+            NodeKind::File {
+                path: "~/a.pdf".to_string(),
+                name: None,
+                icon: None
+            }
+        );
+        assert!(matches!(&nodes[1].kind, NodeKind::Directory { path, name: Some(n), .. }
+            if path == "trash:///" && n == "Trash"));
+        assert!(matches!(&nodes[2].kind, NodeKind::Url { icon: Some(i), .. } if i == "web"));
+        assert_eq!(nodes[3].kind, NodeKind::Recent { name: None });
+        assert!(!nodes[4].kind.is_known(), "a file needs a path");
+        let json = serde_json::to_value(&nodes[3]).unwrap();
+        assert_eq!(json, serde_json::json!({"id": nodes[3].id, "type": "recent"}));
     }
 
     #[test]

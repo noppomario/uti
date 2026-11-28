@@ -74,11 +74,20 @@ check(p.category === 0 && p.texts.join() === 'New Folder,Separator', `Basic firs
 check(p.rows[0][0] + p.rows[0][2] <= 2, `left of the popup: ${JSON.stringify(p.rows[0])}`);
 snapshot('palette-open');
 
-// Keys: Right to Power and Session, Enter adds before Settings, in order.
+// Places: home, the trash and recent files.
 input.key(Keys.Right);
 input.key(Keys.Right);
 p = palette();
-check(p.category === 2 && p.texts.includes('Lock'), `Right switches categories: ${p.texts}`);
+check(
+    p.category === 2 && p.texts[0] === 'Home' && p.texts.slice(-2).join() === 'Trash,Recent Files',
+    `Places lists home, the trash and recent files: ${p.texts}`,
+);
+snapshot('palette-places');
+
+// Keys: Right to Power and Session, Enter adds before Settings, in order.
+input.key(Keys.Right);
+p = palette();
+check(p.category === 3 && p.texts.includes('Lock'), `Right switches categories: ${p.texts}`);
 input.key(Keys.Down);
 check(palette().selected === 1, 'Down selects Lock');
 input.key(Keys.Enter);
@@ -96,7 +105,7 @@ check(state().palette?.visible && state().focus === 'Palette', 'the palette stay
 // GNOME Settings panels are commands.
 input.key(Keys.Right);
 p = palette();
-check(p.category === 3 && p.texts.length > 0, `GNOME Settings lists panels: ${p.texts.length}`);
+check(p.category === 4 && p.texts.length > 0, `GNOME Settings lists panels: ${p.texts.length}`);
 input.key(Keys.Enter);
 sleep(300);
 const panel = items()[6];
@@ -106,7 +115,10 @@ check(
 );
 snapshot('palette-settings');
 
-// Double-click adds too.
+// Double-click adds too. First rest on a leaf row: a level opened under the
+// resting pointer may flip left over the palette (wide).
+input.glide(...at(texts().indexOf('Settings'), 0.5), 60);
+sleep(500);
 clickTab(0);
 check(palette().category === 0, 'a tab click shows Basic');
 const separators = () => items().filter(i => i.type === 'separator').length;
@@ -129,7 +141,7 @@ input.drag(...at(0, 0.2), {
 });
 check(mid?.drag && mid.drop?.list === 0 && mid.drop.line !== undefined, `a line shows the spot: ${JSON.stringify(mid?.drop)}`);
 check(labels()[0] === 'New Folder' && items()[0].children.length === 0, `dropped before Files: ${labels().slice(0, 3)}`);
-clickTab(2);
+clickTab(3);
 const office = texts().indexOf('Office');
 input.glide(...center(palette().rows[5]), 60);
 sleep(100);
@@ -166,7 +178,8 @@ action('debug-key', 'palette');
 check(waitFor(() => state().visible && state().palette?.visible), 'Settings opens the popup with the palette');
 s = state();
 check(s.tab === 'launcher' && s.pinned, `on the Launcher, pinned: ${s.tab}`);
-check(s.palette.category === 2, `it opens on the last category: ${s.palette.category}`);
+check(s.palette.category === 3, `it opens on the last category: ${s.palette.category}`);
+input.key(Keys.Left);
 input.key(Keys.Left);
 input.key(Keys.Left);
 input.key(Keys.Enter);

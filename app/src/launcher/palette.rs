@@ -1,6 +1,9 @@
 //! Items of the special item palette, by category (no GIO types)
 
+use std::path::Path;
+
 use super::apps::{self, AppMeta};
+use super::places::{self, Bookmark, UserDir};
 use super::power::PowerAction;
 use super::{CommandItem, NodeKind};
 
@@ -14,11 +17,12 @@ pub enum PaletteCategory {
     Applications,
     Power,
     Settings,
+    Places,
 }
 
 impl PaletteCategory {
-    pub const ALL: [PaletteCategory; 4] =
-        [Self::Basic, Self::Applications, Self::Power, Self::Settings];
+    pub const ALL: [PaletteCategory; 5] =
+        [Self::Basic, Self::Applications, Self::Places, Self::Power, Self::Settings];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -26,6 +30,7 @@ impl PaletteCategory {
             Self::Applications => "Applications",
             Self::Power => "Power and Session",
             Self::Settings => "GNOME Settings",
+            Self::Places => "Places",
         }
     }
 
@@ -36,8 +41,52 @@ impl PaletteCategory {
             Self::Applications => "view-app-grid-symbolic",
             Self::Power => "system-shutdown-symbolic",
             Self::Settings => "preferences-system-symbolic",
+            Self::Places => "user-home-symbolic",
         }
     }
+}
+
+/// Folders the Places category offers.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Places {
+    pub home: String,
+    /// XDG user directories ([`places::user_dirs`]).
+    pub user: Vec<(UserDir, String)>,
+    pub bookmarks: Vec<Bookmark>,
+}
+
+fn directory(path: &str, name: Option<&str>) -> NodeKind {
+    NodeKind::Directory {
+        path: path.to_string(),
+        name: name.map(String::from),
+        icon: None,
+    }
+}
+
+/// Home, the user directories, bookmarks (not already listed), the trash
+/// and recent files; paths under home saved with `~`.
+fn places_items(p: &Places) -> Vec<PaletteItem> {
+    let home = Path::new(&p.home);
+    let mut out = vec![item("Home", &["user-home"], directory("~", Some("Home")))];
+    for (dir, path) in &p.user {
+        let saved = places::contract(path, home);
+        out.push(item(&places::base_name(path), dir.icons(), directory(&saved, None)));
+    }
+    for b in &p.bookmarks {
+        if b.path == p.home || p.user.iter().any(|(_, u)| *u == b.path) {
+            continue;
+        }
+        let name = b.label.clone().unwrap_or_else(|| places::base_name(&b.path));
+        let saved = places::contract(&b.path, home);
+        out.push(item(&name, &["folder"], directory(&saved, b.label.as_deref())));
+    }
+    out.push(item("Trash", &["user-trash"], directory("trash:///", Some("Trash"))));
+    out.push(item(
+        "Recent Files",
+        &["document-open-recent-symbolic"],
+        NodeKind::Recent { name: None },
+    ));
+    out
 }
 
 /// A panel of GNOME Settings, from its hidden `gnome-*-panel.desktop` file.
@@ -89,8 +138,10 @@ pub fn items(
     category: PaletteCategory,
     apps: &[AppMeta],
     panels: &[SettingsPanel],
+    places: &Places,
 ) -> Vec<PaletteItem> {
     match category {
+        PaletteCategory::Places => places_items(places),
         PaletteCategory::Basic => vec![
             item(
                 "New Folder",
@@ -192,7 +243,7 @@ mod tests {
 
     #[test]
     fn basic_has_folder_and_separator() {
-        let items = items(PaletteCategory::Basic, &[], &[]);
+        let items = items(PaletteCategory::Basic, &[], &[], &Places::default());
         assert_eq!(names(&items), ["New Folder", "Separator"]);
         assert!(matches!(&items[0].kind, NodeKind::Folder { name, children }
             if name == "New Folder" && children.is_empty()));
@@ -202,7 +253,7 @@ mod tests {
     #[test]
     fn applications_lists_the_menu_then_categories_that_have_apps() {
         let apps = [app("Gimp", "Graphics"), app("Firefox", "Network"), app("Chess", "Game")];
-        let items = items(PaletteCategory::Applications, &apps, &[]);
+        let items = items(PaletteCategory::Applications, &apps, &[], &Places::default());
         assert_eq!(names(&items), ["Applications", "Games", "Graphics", "Internet"]);
         assert_eq!(
             items[0].kind,
@@ -223,7 +274,7 @@ mod tests {
 
     #[test]
     fn power_lists_the_menu_then_each_action() {
-        let items = items(PaletteCategory::Power, &[], &[]);
+        let items = items(PaletteCategory::Power, &[], &[], &Places::default());
         assert_eq!(names(&items), ["Power", "Lock", "Suspend", "Log Out", "Restart", "Power Off"]);
         assert_eq!(
             items[5].kind,
@@ -248,7 +299,7 @@ mod tests {
                 args: vec!["system".to_string(), "about".to_string()],
             },
         ];
-        let items = items(PaletteCategory::Settings, &[], &panels);
+        let items = items(PaletteCategory::Settings, &[], &panels, &Places::default());
         assert_eq!(names(&items), ["about", "Wi-Fi"]);
         assert_eq!(items[0].icons, ["preferences-system-symbolic"]);
         assert!(matches!(&items[0].kind, NodeKind::Command(c) if c.args == ["system", "about"]));
@@ -258,6 +309,32 @@ mod tests {
         assert_eq!((c.name.as_str(), c.command.as_str()), ("Wi-Fi", "gnome-control-center"));
         assert_eq!(c.args, ["wifi"]);
         assert_eq!(c.icon.as_deref(), Some("network-wireless-symbolic"));
+    }
+
+    #[test]
+    fn places_lists_home_user_dirs_bookmarks_trash_and_recent() {
+        let places = Places {
+            home: "/home/u".to_string(),
+            user: vec![(UserDir::Documents, "/home/u/Documents".to_string())],
+            bookmarks: vec![
+                Bookmark {
+                    path: "/home/u/Documents".to_string(),
+                    label: None,
+                },
+                Bookmark {
+                    path: "/srv/data".to_string(),
+                    label: Some("Data".to_string()),
+                },
+            ],
+        };
+        let items = items(PaletteCategory::Places, &[], &[], &places);
+        assert_eq!(names(&items), ["Home", "Documents", "Data", "Trash", "Recent Files"]);
+        assert_eq!(items[0].kind, directory("~", Some("Home")));
+        assert_eq!(items[1].kind, directory("~/Documents", None));
+        assert_eq!(items[1].icons[0], "folder-documents");
+        assert_eq!(items[2].kind, directory("/srv/data", Some("Data")));
+        assert_eq!(items[3].kind, directory("trash:///", Some("Trash")));
+        assert_eq!(items[4].kind, NodeKind::Recent { name: None });
     }
 
     #[test]

@@ -1,0 +1,12 @@
+{
+  "items": [
+    { "type": "directory", "path": "@DATA@/tree/Docs" },
+    { "type": "directory", "path": "@DATA@/tree/Big", "name": "Big" },
+    { "type": "file", "path": "@DATA@/tree/Docs/b.txt" },
+    { "type": "url", "url": "https://example.com/page" },
+    { "type": "recent" },
+    { "type": "separator" },
+    { "type": "folder", "name": "Drop", "children": [] },
+    { "type": "command", "name": "Settings", "command": "true", "args": ["settings"] }
+  ]
+}

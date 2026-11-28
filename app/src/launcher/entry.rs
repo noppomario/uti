@@ -1,10 +1,14 @@
 //! Rows of the launcher levels: tree nodes, generated rows and recent files
 //! (no GTK)
 
+use std::borrow::Cow;
 use std::collections::HashSet;
+use std::path::Path;
 
 use super::apps::{self, AppMeta, Category};
 use super::edit::{self, Place};
+use super::external;
+use super::places::{self, DirItem, LISTING_CAP};
 use super::power::PowerAction;
 use super::recent_files::{self, RecentFile};
 use super::{CommandItem, HistorySource, LauncherNode, NodeKind};
@@ -12,14 +16,18 @@ use crate::state::drop::Spot;
 use crate::state::menu::LauncherRow;
 use crate::state::tree::Row;
 
-/// Where rows come from: the tree, installed apps and the app names that
-/// have recent files.
+/// Where rows come from: the tree, installed apps, the app names that
+/// have recent files and folders on disk.
 #[derive(Clone, Copy)]
 pub struct Sources<'a> {
     pub nodes: &'a [LauncherNode],
     pub apps: &'a [AppMeta],
     /// Application names in `recently-used.xbel`.
     pub recent_apps: &'a HashSet<String>,
+    /// Reads a folder (path or URI) when its level opens.
+    pub list_dir: &'a dyn Fn(&str) -> Vec<DirItem>,
+    /// For `~` in `file` and `directory` paths.
+    pub home: &'a Path,
 }
 
 /// What opens a recent file.
@@ -29,6 +37,8 @@ pub enum Opener {
     Command(Vec<usize>),
     /// The installed app at this index.
     App(usize),
+    /// The file's default app (`recent` nodes).
+    Default,
 }
 
 /// A row of a launcher level.
@@ -45,6 +55,21 @@ pub enum Entry {
         opener: Opener,
         file: RecentFile,
     },
+    /// A file or folder listed by a `directory` level (path or URI).
+    Listed {
+        path: String,
+        dir: bool,
+    },
+    /// The first row of a folder's level: opens it in the file manager.
+    OpenDir(String),
+    /// The last row of a folder's level when `hidden` entries are left
+    /// out: opens it in the file manager.
+    More {
+        dir: String,
+        hidden: usize,
+    },
+    /// A separator in a generated level.
+    Gap,
 }
 
 /// The node at `path`.
@@ -77,7 +102,7 @@ pub fn command_at<'a>(nodes: &'a [LauncherNode], path: &[usize]) -> Option<&'a C
     }
 }
 
-impl Sources<'_> {
+impl<'a> Sources<'a> {
     /// Index of the installed app with this desktop id.
     pub fn app_index(&self, desktop_id: &str) -> Option<usize> {
         self.apps.iter().position(|a| a.id == desktop_id)
@@ -165,18 +190,16 @@ impl Sources<'_> {
             return entries;
         }
         let (opener, files) = match entry {
-            Entry::Node(path) => {
-                if let Some(app) = self.app_at(path) {
-                    (Opener::App(app), self.app_recent(app))
-                } else {
-                    let Some(source) =
-                        command_at(self.nodes, path).and_then(|c| c.history_source.as_ref())
-                    else {
-                        return Vec::new();
-                    };
-                    (Opener::Command(path.clone()), source.recent_files())
-                }
+            Entry::Node(path) => match &node_at(self.nodes, path).map(|n| &n.kind) {
+                Some(NodeKind::Directory { path, .. }) => {
+                    return self.dir_children(&places::expand(path, self.home));
+                },
+                Some(NodeKind::Recent { .. }) => {
+                    (Opener::Default, recent_files::get_recent_files_from_xbel(None, None))
+                },
+                _ => self.node_recent(path),
             },
+            Entry::Listed { path, dir: true } => return self.dir_children(path),
             Entry::App(app) => (Opener::App(*app), self.app_recent(*app)),
             _ => return Vec::new(),
         };
@@ -187,6 +210,38 @@ impl Sources<'_> {
                 file,
             })
             .collect()
+    }
+
+    /// Recent files of the `app` or `command` node at `path`.
+    fn node_recent(&self, path: &[usize]) -> (Opener, Vec<RecentFile>) {
+        if let Some(app) = self.app_at(path) {
+            return (Opener::App(app), self.app_recent(app));
+        }
+        match command_at(self.nodes, path).and_then(|c| c.history_source.as_ref()) {
+            Some(source) => (Opener::Command(path.to_vec()), source.recent_files()),
+            None => (Opener::Default, Vec::new()),
+        }
+    }
+
+    /// Rows of a folder's level: "open this folder", then its listing, then
+    /// how many entries were left out.
+    fn dir_children(&self, dir: &str) -> Vec<Entry> {
+        let (items, hidden) = places::listing((self.list_dir)(dir), LISTING_CAP);
+        let mut rows = vec![Entry::OpenDir(dir.to_string())];
+        if !items.is_empty() {
+            rows.push(Entry::Gap);
+        }
+        rows.extend(items.into_iter().map(|i| Entry::Listed {
+            path: i.path,
+            dir: i.dir,
+        }));
+        if hidden > 0 {
+            rows.push(Entry::More {
+                dir: dir.to_string(),
+                hidden,
+            });
+        }
+        rows
     }
 
     fn app_recent(&self, app: usize) -> Vec<RecentFile> {
@@ -203,9 +258,13 @@ impl Sources<'_> {
                 Some(
                     NodeKind::Folder { .. }
                     | NodeKind::Apps { .. }
-                    | NodeKind::Power { action: None, .. },
+                    | NodeKind::Power { action: None, .. }
+                    | NodeKind::Directory { .. }
+                    | NodeKind::Recent { .. },
                 ) => Row::FOLDER,
-                Some(NodeKind::Power { .. }) => Row::LEAF,
+                Some(NodeKind::Power { .. } | NodeKind::File { .. } | NodeKind::Url { .. }) => {
+                    Row::LEAF
+                },
                 Some(NodeKind::Command(c)) if c.history_source.is_some() => Row::BRANCH_LEAF,
                 Some(NodeKind::Command(_)) => Row::LEAF,
                 Some(NodeKind::App { .. }) => {
@@ -215,14 +274,31 @@ impl Sources<'_> {
             },
             Entry::Category(_) => Row::FOLDER,
             Entry::App(app) => self.app_row(*app),
-            Entry::Power(_) | Entry::Recent { .. } => Row::LEAF,
+            Entry::Listed { dir: true, .. } => Row::FOLDER,
+            Entry::Power(_)
+            | Entry::Recent { .. }
+            | Entry::Listed { .. }
+            | Entry::OpenDir(_)
+            | Entry::More { .. } => Row::LEAF,
+            Entry::Gap => Row::SEPARATOR,
         }
     }
 
     /// Display name of a node: folders, commands and apps by their name,
-    /// `apps` and `power` by theirs or that of their category or action.
-    pub fn node_name(&self, path: &[usize]) -> Option<&str> {
-        Some(match &node_at(self.nodes, path)?.kind {
+    /// `apps` and `power` by theirs or that of their category or action,
+    /// files and folders by theirs or their file name, links by theirs or
+    /// their host.
+    pub fn node_name(&self, path: &[usize]) -> Option<Cow<'a, str>> {
+        fn named(name: &Option<String>, default: impl FnOnce() -> String) -> Cow<'_, str> {
+            name.as_deref().map_or_else(|| Cow::Owned(default()), Cow::Borrowed)
+        }
+        let nodes: &'a [LauncherNode] = self.nodes;
+        Some(Cow::Borrowed(match &node_at(nodes, path)?.kind {
+            NodeKind::File { path, name, .. } | NodeKind::Directory { path, name, .. } => {
+                return Some(named(name, || places::base_name(path)));
+            },
+            NodeKind::Url { url, name, .. } => return Some(named(name, || external::host(url))),
+            NodeKind::Recent { name } => name.as_deref().unwrap_or("Recent Files"),
             NodeKind::Folder { name, .. } => name,
             NodeKind::Command(c) => &c.name,
             NodeKind::Apps { name, category } => name
@@ -234,9 +310,12 @@ impl Sources<'_> {
             NodeKind::App {
                 name: Some(name), ..
             } if self.app_at(path).is_some() => name,
-            NodeKind::App { .. } => &self.apps[self.app_at(path)?].name,
+            NodeKind::App { .. } => {
+                let apps: &'a [AppMeta] = self.apps;
+                &apps[self.app_at(path)?].name
+            },
             NodeKind::Separator | NodeKind::Raw(_) => return None,
-        })
+        }))
     }
 
     /// Names from the root down to the node at `path`: `Dev › Code`.
@@ -263,15 +342,22 @@ impl Sources<'_> {
                     NodeKind::Folder { children, .. } => walk(src, children, path, out, in_tree),
                     NodeKind::Command(c) => out.push(Searchable {
                         entry: Entry::Node(path.clone()),
-                        name: &c.name,
+                        name: Cow::Borrowed(&c.name),
                         description: &c.command,
+                    }),
+                    NodeKind::File { path: p, .. }
+                    | NodeKind::Directory { path: p, .. }
+                    | NodeKind::Url { url: p, .. } => out.push(Searchable {
+                        entry: Entry::Node(path.clone()),
+                        name: src.node_name(path).unwrap_or_default(),
+                        description: p,
                     }),
                     NodeKind::App { name, .. } => {
                         if let Some(a) = src.app_at(path) {
                             in_tree.insert(a);
                             out.push(Searchable {
                                 entry: Entry::Node(path.clone()),
-                                name: name.as_deref().unwrap_or(&src.apps[a].name),
+                                name: Cow::Borrowed(name.as_deref().unwrap_or(&src.apps[a].name)),
                                 description: &src.apps[a].description,
                             });
                         }
@@ -287,7 +373,7 @@ impl Sources<'_> {
         out.extend(self.apps.iter().enumerate().filter(|(i, _)| !in_tree.contains(i)).map(
             |(i, a)| Searchable {
                 entry: Entry::App(i),
-                name: &a.name,
+                name: Cow::Borrowed(&a.name),
                 description: &a.description,
             },
         ));
@@ -313,6 +399,8 @@ impl Sources<'_> {
             Some(Entry::Recent { opener, .. }) => LauncherRow::Recent {
                 removable: self.system_history(opener),
             },
+            Some(Entry::Listed { .. }) => LauncherRow::Listed,
+            Some(Entry::OpenDir(_) | Entry::More { .. } | Entry::Gap) => LauncherRow::Fixed,
             Some(_) => LauncherRow::Generated,
         }
     }
@@ -320,7 +408,7 @@ impl Sources<'_> {
     /// Recent files of `opener` come from the system `recently-used.xbel`.
     fn system_history(&self, opener: &Opener) -> bool {
         match opener {
-            Opener::App(_) => true,
+            Opener::App(_) | Opener::Default => true,
             Opener::Command(path) => matches!(
                 command_at(self.nodes, path).and_then(|c| c.history_source.as_ref()),
                 Some(HistorySource::RecentlyUsed { path: None, .. })
@@ -389,7 +477,27 @@ impl Sources<'_> {
                 name: None,
                 action: Some(*p),
             },
-            Entry::Node(_) | Entry::Recent { .. } => return None,
+            Entry::Listed { path, dir } => {
+                let path = places::contract(path, self.home);
+                if *dir {
+                    NodeKind::Directory {
+                        path,
+                        name: None,
+                        icon: None,
+                    }
+                } else {
+                    NodeKind::File {
+                        path,
+                        name: None,
+                        icon: None,
+                    }
+                }
+            },
+            Entry::Node(_)
+            | Entry::Recent { .. }
+            | Entry::OpenDir(_)
+            | Entry::More { .. }
+            | Entry::Gap => return None,
         })
     }
 }
@@ -455,7 +563,7 @@ fn power_entries() -> Vec<Entry> {
 #[derive(Debug, PartialEq)]
 pub struct Searchable<'a> {
     pub entry: Entry,
-    pub name: &'a str,
+    pub name: Cow<'a, str>,
     pub description: &'a str,
 }
 
@@ -508,7 +616,148 @@ mod tests {
             nodes,
             apps: &apps,
             recent_apps: &recent,
+            list_dir: &fake_dir,
+            home: Path::new("/home/u"),
         })
+    }
+
+    /// `/home/u/Docs`: a hidden file, `b.txt`, folder `Sub`; `/big`: more
+    /// files than a level lists; anything else empty.
+    fn fake_dir(dir: &str) -> Vec<DirItem> {
+        let item = |name: &str, d: bool| DirItem {
+            name: name.to_string(),
+            path: format!("{dir}/{name}"),
+            dir: d,
+        };
+        match dir {
+            "/home/u/Docs" => vec![item(".hidden", false), item("b.txt", false), item("Sub", true)],
+            "/big" => (0..LISTING_CAP + 3).map(|i| item(&format!("f{i:03}"), false)).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn directories_list_open_row_then_folders_then_files() {
+        let n = nodes(
+            r#"{"items": [{"type": "directory", "path": "~/Docs"},
+                          {"type": "directory", "path": "/big", "name": "Big"},
+                          {"type": "directory", "path": "/empty"}]}"#,
+        );
+        with(&n, |s| {
+            let root = s.root_entries();
+            assert_eq!(s.row(&root[0]), Row::FOLDER);
+            assert_eq!(s.node_name(&[0]).as_deref(), Some("Docs"));
+            assert_eq!(s.node_name(&[1]).as_deref(), Some("Big"));
+            let docs = s.children(&root[0]);
+            let dir = |p: &str| Entry::Listed {
+                path: p.to_string(),
+                dir: true,
+            };
+            assert_eq!(
+                docs,
+                [
+                    Entry::OpenDir("/home/u/Docs".to_string()),
+                    Entry::Gap,
+                    dir("/home/u/Docs/Sub"),
+                    Entry::Listed {
+                        path: "/home/u/Docs/b.txt".to_string(),
+                        dir: false
+                    },
+                ]
+            );
+            let rows: Vec<Row> = docs.iter().map(|e| s.row(e)).collect();
+            assert_eq!(rows, [Row::LEAF, Row::SEPARATOR, Row::FOLDER, Row::LEAF]);
+            assert_eq!(s.menu_children(&root[0]), None, "read from disk");
+            let big = s.children(&root[1]);
+            assert_eq!(big.len(), 2 + LISTING_CAP + 1);
+            assert_eq!(
+                big.last(),
+                Some(&Entry::More {
+                    dir: "/big".to_string(),
+                    hidden: 3
+                })
+            );
+            assert_eq!(s.children(&root[2]), [Entry::OpenDir("/empty".to_string())]);
+        });
+    }
+
+    #[test]
+    fn listed_rows_open_their_folders_and_become_nodes() {
+        let n = tree();
+        with(&n, |s| {
+            let sub = Entry::Listed {
+                path: "/home/u/Docs".to_string(),
+                dir: true,
+            };
+            assert_eq!(s.children(&sub).len(), 4);
+            assert_eq!(s.menu_row(std::slice::from_ref(&sub), 0, false), LauncherRow::Listed);
+            assert_eq!(
+                s.node_for(&sub),
+                Some(NodeKind::Directory {
+                    path: "~/Docs".to_string(),
+                    name: None,
+                    icon: None
+                })
+            );
+            let file = Entry::Listed {
+                path: "/tmp/a.txt".to_string(),
+                dir: false,
+            };
+            assert!(
+                matches!(s.drag(&file), Some(Drag::Copy(NodeKind::File { path, .. })) if path == "/tmp/a.txt")
+            );
+            let open = Entry::OpenDir("/tmp".to_string());
+            assert_eq!(s.menu_row(&[open.clone(), Entry::Gap], 0, false), LauncherRow::Fixed);
+            assert_eq!(s.menu_row(&[open.clone(), Entry::Gap], 1, false), LauncherRow::Fixed);
+            assert_eq!(s.drag(&open), None);
+            assert_eq!(s.drag(&Entry::Gap), None);
+        });
+    }
+
+    #[test]
+    fn files_links_and_recent_nodes() {
+        let n = nodes(
+            r#"{"items": [{"type": "file", "path": "~/a%20b.pdf"},
+                          {"type": "url", "url": "https://example.com/x"},
+                          {"type": "url", "url": "https://example.com", "name": "Example"},
+                          {"type": "recent"}]}"#,
+        );
+        with(&n, |s| {
+            let root = s.root_entries();
+            let rows: Vec<Row> = root.iter().map(|e| s.row(e)).collect();
+            assert_eq!(rows, [Row::LEAF, Row::LEAF, Row::LEAF, Row::FOLDER]);
+            assert_eq!(s.node_name(&[0]).as_deref(), Some("a b.pdf"));
+            assert_eq!(s.node_name(&[1]).as_deref(), Some("example.com"));
+            assert_eq!(s.node_name(&[2]).as_deref(), Some("Example"));
+            assert_eq!(s.node_name(&[3]).as_deref(), Some("Recent Files"));
+            assert_eq!(s.menu_children(&root[3]), None, "\"No recent files\" when empty");
+            assert!(s.children(&root[0]).is_empty());
+            let found: Vec<(Entry, String)> = s
+                .searchable()
+                .into_iter()
+                .take(3)
+                .map(|c| (c.entry, format!("{} {}", c.name, c.description)))
+                .collect();
+            assert_eq!(found[0].1, "a b.pdf ~/a%20b.pdf");
+            assert_eq!(found[2], (Entry::Node(vec![2]), "Example https://example.com".to_string()));
+        });
+    }
+
+    #[test]
+    fn recent_files_of_every_app_are_the_system_history() {
+        let n = tree();
+        with(&n, |s| {
+            let file = RecentFile {
+                name: "a".into(),
+                path: "/a".into(),
+                timestamp: String::new(),
+            };
+            let row = Entry::Recent {
+                opener: Opener::Default,
+                file,
+            };
+            assert_eq!(s.menu_row(&[row], 0, false), LauncherRow::Recent { removable: true });
+        });
     }
 
     #[test]
@@ -700,8 +949,8 @@ mod tests {
             );
             assert_eq!(s.children(&Entry::Category(Category::Network)), [Entry::App(0)]);
             assert_eq!(s.children(&root[1]).len(), 5);
-            assert_eq!(s.node_name(&[0]), Some("Applications"));
-            assert_eq!(s.node_name(&[1]), Some("Power"));
+            assert_eq!(s.node_name(&[0]).as_deref(), Some("Applications"));
+            assert_eq!(s.node_name(&[1]).as_deref(), Some("Power"));
         });
     }
 
@@ -717,11 +966,11 @@ mod tests {
             assert_eq!(root, [Entry::Node(vec![0]), Entry::Node(vec![1]), Entry::Node(vec![2])]);
             assert_eq!(s.row(&root[0]), Row::FOLDER);
             assert_eq!(s.children(&root[0]), [Entry::App(1)]);
-            assert_eq!(s.node_name(&[0]), Some("Programming"));
+            assert_eq!(s.node_name(&[0]).as_deref(), Some("Programming"));
             assert_eq!(s.row(&root[1]), Row::LEAF);
             assert_eq!(s.menu_children(&root[1]), None);
-            assert_eq!(s.node_name(&[1]), Some("Lock Screen"));
-            assert_eq!(s.node_name(&[2]), Some("Power Off"));
+            assert_eq!(s.node_name(&[1]).as_deref(), Some("Lock Screen"));
+            assert_eq!(s.node_name(&[2]).as_deref(), Some("Power Off"));
             assert_eq!(s.power_at(&[2]), Some(PowerAction::PowerOff));
             assert_eq!(s.power_at(&[0]), None);
         });
@@ -735,7 +984,7 @@ mod tests {
         );
         with(&n, |s| {
             assert_eq!(s.root_entries(), [Entry::Node(vec![1])]);
-            assert_eq!(s.node_name(&[1]), Some("Chess"));
+            assert_eq!(s.node_name(&[1]).as_deref(), Some("Chess"));
             assert_eq!(s.row(&Entry::Node(vec![1])), Row::LEAF);
         });
     }
@@ -753,17 +1002,17 @@ mod tests {
     fn search_lists_the_tree_then_apps_not_in_it() {
         let n = tree();
         with(&n, |s| {
-            let found: Vec<(Entry, &str)> =
-                s.searchable().into_iter().map(|c| (c.entry, c.name)).collect();
+            let found: Vec<(Entry, String)> =
+                s.searchable().into_iter().map(|c| (c.entry, c.name.into_owned())).collect();
             assert_eq!(
                 found,
                 [
-                    (Entry::Node(vec![0]), "Files"),
-                    (Entry::Node(vec![1, 0]), "Code"),
-                    (Entry::Node(vec![1, 2, 0]), "Calc"),
-                    (Entry::Node(vec![1, 2, 1]), "Editor"),
-                    (Entry::App(0), "Firefox"),
-                    (Entry::App(2), "Chess"),
+                    (Entry::Node(vec![0]), "Files".to_string()),
+                    (Entry::Node(vec![1, 0]), "Code".to_string()),
+                    (Entry::Node(vec![1, 2, 0]), "Calc".to_string()),
+                    (Entry::Node(vec![1, 2, 1]), "Editor".to_string()),
+                    (Entry::App(0), "Firefox".to_string()),
+                    (Entry::App(2), "Chess".to_string()),
                 ]
             );
         });

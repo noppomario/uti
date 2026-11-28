@@ -2410,3 +2410,61 @@ keyboard.
 
 **Negative**: near the screen's left edge GTK flips the palette to the right,
 over the levels; the panel list follows the installed GNOME Settings.
+
+## ADR-041
+
+### File, folder, link and recent-files items; drops from other apps
+
+**Date**: 2026-11-28
+**Status**: Accepted
+**Decision Makers**: Project team
+
+### Context
+
+Orchis registers files, folders and apps by dragging them from Explorer onto
+its pinned launcher, and lists folders as cascading menus. ADR-037 planned
+`directory`, `file`, `url`, `recent` and `snippets` nodes; the phase 1 spike
+never saw a drop from Nautilus. Its drop target took only `G_TYPE_STRING`,
+which Nautilus (a `GdkFileList`, sent as `text/uri-list`) never offers.
+With `GdkFileList` accepted, drops from another GTK 4 app arrive in the
+headless e2e shell, at the root and in levels.
+
+### Decision
+
+- Node types: `file` {path}, `directory` {path}, `url` {url}, each with
+  optional `name` and `icon`; `recent` {name}. Paths under home are saved
+  with `~`; a `directory` path may be a URI (`trash:///`). Names default to
+  the file name or the link's host; a link's icon is that of the default
+  app for its scheme.
+- A `directory` level is read when it opens: "Open This Folder", a
+  separator, subfolders (which cascade the same way), then files, by name
+  ignoring case, hidden (`.x`) and backup (`x~`) entries left out. Past 200
+  entries a last "N More…" row opens the folder in the file manager.
+  Listed rows offer Open Folder, Copy Path and Add to Launcher, and are
+  dragged as copies (ADR-039).
+- `recent` lists the system history of every app, newest first.
+- Files, links and listed files open with their default app; folders in the
+  file manager. New ▸ gains File Link…, Folder Link… and Web Link…; their
+  editors have a file chooser for the path.
+- The palette (ADR-040) gains Places: home, XDG user directories, local GTK
+  bookmarks, the trash and recent files.
+- No `snippets` node: snippets are used from their own tab.
+- Drops from other apps (only while pinned, as ADR-039): the drop target
+  takes `GdkFileList` and text; text counts only when every line is a URI.
+  It always answers COPY, so the source app never deletes what was
+  dragged. A folder becomes `directory`, the desktop file of an installed
+  app `app`, another file `file`, any other URI `url`; several in order.
+  Insertion line and spring-loading work as for rows. Such a drag reports
+  no end: it ends at the drop, or when no motion follows a leave within
+  300 ms. The e2e checks drag from `tools/e2e/drag-source.js`, a second GTK
+  app offering what Nautilus and browsers offer.
+
+### Consequences
+
+**Positive**: anything Files or a browser can drag becomes a launcher item;
+folders can be browsed from the popup.
+
+**Negative**: a large or slow folder is read on the UI thread when its level
+opens; links are named after their host (the page title needs
+`text/x-moz-url`); Nautilus, browsers and the trash are only checked on
+real hardware.

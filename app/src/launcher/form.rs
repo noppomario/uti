@@ -10,6 +10,19 @@ pub fn optional(text: &str) -> Option<String> {
     (!text.is_empty()).then(|| text.to_owned())
 }
 
+/// A link as typed: trimmed, `None` without a scheme (`https://…`).
+pub fn url(text: &str) -> Option<String> {
+    let text = text.trim();
+    super::external::uri_list(text)
+        .filter(|u| u.len() == 1)
+        .map(|_| text.to_owned())
+}
+
+/// A path as typed, saved with `~` under `home`; `None` when empty.
+pub fn path(text: &str, home: &std::path::Path) -> Option<String> {
+    optional(text).map(|p| super::places::contract(&p, home))
+}
+
 /// Arguments as typed in one line, split like a shell would; `None` when
 /// the quoting is unbalanced.
 pub fn parse_args(text: &str) -> Option<Vec<String>> {
@@ -91,6 +104,17 @@ mod tests {
     fn optional_fields_are_trimmed() {
         assert_eq!(optional("  Code "), Some("Code".to_owned()));
         assert_eq!(optional("   "), None);
+    }
+
+    #[test]
+    fn links_need_a_scheme_and_paths_are_contracted() {
+        assert_eq!(url(" https://example.com/a "), Some("https://example.com/a".to_owned()));
+        assert_eq!(url("example.com"), None);
+        assert_eq!(url("https://a\nhttps://b"), None);
+        let home = std::path::Path::new("/home/u");
+        assert_eq!(path(" /home/u/x ", home), Some("~/x".to_owned()));
+        assert_eq!(path("trash:///", home), Some("trash:///".to_owned()));
+        assert_eq!(path(" ", home), None);
     }
 
     #[test]

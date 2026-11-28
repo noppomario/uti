@@ -15,6 +15,9 @@ pub enum MenuItem {
     NewFolder,
     NewSeparator,
     NewCommand,
+    NewFile,
+    NewDirectory,
+    NewUrl,
     /// Opens the special item palette (ADR-040).
     NewSpecial,
     AddToLauncher,
@@ -26,7 +29,7 @@ pub enum MenuItem {
 }
 
 impl MenuItem {
-    pub const ALL: [MenuItem; 16] = {
+    pub const ALL: [MenuItem; 19] = {
         use MenuItem::*;
         [
             AddToSnippets,
@@ -39,6 +42,9 @@ impl MenuItem {
             NewFolder,
             NewSeparator,
             NewCommand,
+            NewFile,
+            NewDirectory,
+            NewUrl,
             NewSpecial,
             AddToLauncher,
             OpenFolder,
@@ -115,21 +121,36 @@ pub enum LauncherRow {
     Generated,
     /// A recent file; `removable` when it comes from the system history.
     Recent { removable: bool },
+    /// A file or folder listed by a `directory` level.
+    Listed,
+    /// A row of a generated level without actions ("open this folder").
+    Fixed,
     /// A folder without rows.
     Empty,
 }
+
+/// The "New" submenu of launcher rows.
+const NEW: [MenuItem; 7] = {
+    use MenuItem::*;
+    [NewFolder, NewSeparator, NewCommand, NewFile, NewDirectory, NewUrl, NewSpecial]
+};
 
 /// Sections for a Launcher row; `editable` is false while `launcher.json`
 /// fails to parse.
 pub fn launcher_menu(row: LauncherRow, editable: bool) -> Sections {
     use MenuItem::*;
-    let new = || MenuEntry::New(vec![NewFolder, NewSeparator, NewCommand, NewSpecial]);
-    if let LauncherRow::Recent { removable } = row {
-        let mut sections = vec![vec![OpenFolder, CopyPath]];
-        if removable {
-            sections.push(vec![RemoveFromHistory]);
-        }
-        return items(sections);
+    let new = || MenuEntry::New(NEW.to_vec());
+    match row {
+        LauncherRow::Recent { removable } => {
+            let mut sections = vec![vec![OpenFolder, CopyPath]];
+            if removable {
+                sections.push(vec![RemoveFromHistory]);
+            }
+            return items(sections);
+        },
+        LauncherRow::Fixed => return Vec::new(),
+        LauncherRow::Listed if !editable => return items(vec![vec![OpenFolder, CopyPath]]),
+        _ => {},
     }
     if !editable {
         return items(vec![vec![FixConfig]]);
@@ -156,8 +177,9 @@ pub fn launcher_menu(row: LauncherRow, editable: bool) -> Sections {
             sections
         },
         LauncherRow::Generated => items(vec![vec![AddToLauncher]]),
+        LauncherRow::Listed => items(vec![vec![OpenFolder, CopyPath], vec![AddToLauncher]]),
         LauncherRow::Empty => vec![vec![new()]],
-        LauncherRow::Recent { .. } => unreachable!("handled above"),
+        LauncherRow::Recent { .. } | LauncherRow::Fixed => unreachable!("handled above"),
     }
 }
 
@@ -215,7 +237,11 @@ mod tests {
 
     #[test]
     fn launcher_nodes_follow_the_snippet_sections() {
-        let new = MenuEntry::New(vec![NewFolder, NewSeparator, NewCommand, NewSpecial]);
+        let new = MenuEntry::New(NEW.to_vec());
+        assert_eq!(
+            NEW,
+            [NewFolder, NewSeparator, NewCommand, NewFile, NewDirectory, NewUrl, NewSpecial]
+        );
         assert_eq!(
             launcher_menu(node(1, 3), true),
             [
@@ -259,6 +285,16 @@ mod tests {
             flat(&launcher_menu(LauncherRow::Recent { removable: false }, false)),
             [vec![OpenFolder, CopyPath]]
         );
+    }
+
+    #[test]
+    fn listed_files_open_copy_or_add_and_fixed_rows_have_no_menu() {
+        assert_eq!(
+            flat(&launcher_menu(LauncherRow::Listed, true)),
+            [vec![OpenFolder, CopyPath], vec![AddToLauncher]]
+        );
+        assert_eq!(flat(&launcher_menu(LauncherRow::Listed, false)), [vec![OpenFolder, CopyPath]]);
+        assert!(launcher_menu(LauncherRow::Fixed, true).is_empty());
     }
 
     #[test]

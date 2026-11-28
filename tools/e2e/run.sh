@@ -2,8 +2,9 @@
 # End-to-end checks of the GTK app in a headless GNOME Shell on a private
 # session bus: a scenario (gjs) moves the pointer and types through Mutter's
 # RemoteDesktop API and asserts on the app's `debug-state`.
-# Each scenario runs against a fresh app.
-# Usage: tools/e2e/run.sh [scenario.js] (default: every *.js here but lib.js)
+# Each scenario runs against a fresh app and `fixtures/<scenario>.launcher.json`
+# (else `fixtures/launcher.json`).
+# Usage: tools/e2e/run.sh [scenario.js] (default: every *.js here but the helpers)
 # Env: E2E_SIZE (theme.size, default normal), E2E_KEEP=1 keeps target/e2e.
 set -euo pipefail
 
@@ -20,6 +21,12 @@ if [[ -z "${E2E_INNER:-}" ]]; then
   cp -r "$here/fixtures/recently-used.xbel" "$here/fixtures/files.xbel" "$here/fixtures/applications" \
     "$work/data/"
   printf '{"theme": {"size": "%s"}}\n' "${E2E_SIZE:-normal}" >"$work/config/uti/config.json"
+  # Folders for directory levels: hidden and backup files, a subfolder, and
+  # more files than a level lists.
+  tree="$work/data/tree"
+  mkdir -p "$tree/Docs/Sub" "$tree/Big"
+  touch "$tree/Docs/.hidden" "$tree/Docs/notes~" "$tree/Docs/b.txt" "$tree/Docs/a.pdf" "$tree/Docs/Sub/c.txt"
+  for i in $(seq -w 1 205); do touch "$tree/Big/f$i.txt"; done
   exec env E2E_INNER=1 dbus-run-session -- "$0" "$@"
 fi
 
@@ -36,7 +43,7 @@ sleep 3
 
 scenarios=("$@")
 if [[ ${#scenarios[@]} -eq 0 ]]; then
-  mapfile -t scenarios < <(find "$here" -maxdepth 1 -name '*.js' ! -name lib.js | sort)
+  mapfile -t scenarios < <(find "$here" -maxdepth 1 -name '*.js' ! -name lib.js ! -name drag-source.js | sort)
 fi
 status=0
 for scenario in "${scenarios[@]}"; do
@@ -44,13 +51,15 @@ for scenario in "${scenarios[@]}"; do
   echo "== $name"
   # A fresh app, launcher.json and snippets.json per scenario: no tab, pin,
   # search or edit carries over.
-  sed "s|@DATA@|$work/data|g" "$here/fixtures/launcher.json" >"$work/config/uti/launcher.json"
+  fixture="$here/fixtures/$name.launcher.json"
+  [[ -f "$fixture" ]] || fixture="$here/fixtures/launcher.json"
+  sed "s|@DATA@|$work/data|g" "$fixture" >"$work/config/uti/launcher.json"
   cp "$here/fixtures/snippets.json" "$work/config/uti/"
   WAYLAND_DISPLAY=$display GDK_BACKEND=wayland GTK_A11Y=none UTI_DEV_SANDBOX=1 UTI_DEBUG_KEYS=1 \
-    UTI_DRY_POWER=1 UTI_DEBUG_SNAPSHOT="$work/last.png" XDG_CONFIG_HOME="$work/config" \
+    UTI_DRY_POWER=1 UTI_DRY_OPEN=1 UTI_DEBUG_SNAPSHOT="$work/last.png" XDG_CONFIG_HOME="$work/config" \
     XDG_DATA_HOME="$work/data" "$root/target/debug/uti" --minimized >"$work/$name.log" 2>&1 &
   app=$!
-  E2E_WORK="$work" E2E_LOG="$work/$name.log" gjs -m "$scenario" || status=1
+  E2E_WORK="$work" E2E_DISPLAY=$display E2E_LOG="$work/$name.log" gjs -m "$scenario" || status=1
   kill "$app"
   wait "$app" || true
 done

@@ -210,6 +210,41 @@ export function showLauncher(input, origin) {
     return state();
 }
 
+/**
+ * Starts `drag-source.js` (another app to drag from) with `items` and finds
+ * its window by moving the pointer over the screen. Returns
+ * {row(i): center of row i, log(): its output, stop()}.
+ */
+export function startDragSource(input, items) {
+    const probe = `${work}/probe.json`;
+    const out = `${work}/drag-source.log`;
+    GLib.unlink(probe);
+    const [lib] = GLib.filename_from_uri(import.meta.url);
+    const script = GLib.build_filenamev([GLib.path_get_dirname(lib), 'drag-source.js']);
+    const env = GLib.get_environ().concat([`WAYLAND_DISPLAY=${GLib.getenv('E2E_DISPLAY')}`, 'GDK_BACKEND=wayland', 'GTK_A11Y=none']);
+    const argv = ['sh', '-c', 'exec gjs -m "$0" "$1" "$2" >"$3" 2>&1', script, JSON.stringify(items), probe, out];
+    const [, pid] = GLib.spawn_async(null, argv, env, GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD, null);
+    sleep(2000);
+    let origin = null;
+    for (let y = 60; y < MONITOR[1] && !origin; y += 40) {
+        for (let x = 20; x < MONITOR[0] && !origin; x += 60) {
+            input.moveTo(x, y);
+            if (GLib.file_test(probe, GLib.FileTest.EXISTS)) {
+                sleep(100);
+                const [, bytes] = GLib.file_get_contents(probe);
+                const [lx, ly] = JSON.parse(new TextDecoder().decode(bytes));
+                origin = [input.x - lx, input.y - ly];
+            }
+        }
+    }
+    return {
+        origin,
+        row: i => [origin[0] + 130, origin[1] + 24 + 48 * i],
+        log: () => new TextDecoder().decode(GLib.file_get_contents(out)[1]),
+        stop: () => GLib.spawn_command_line_sync(`kill ${pid}`),
+    };
+}
+
 export function check(ok, what) {
     print(`${ok ? 'ok  ' : 'FAIL'} ${what}`);
     if (!ok) failures.push(what);
